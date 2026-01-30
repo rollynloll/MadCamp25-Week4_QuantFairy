@@ -1,17 +1,37 @@
 import { useEffect, useState } from "react";
-import { AlertCircle, Play, Wifi } from "lucide-react";
+import { AlertCircle, Play, RotateCw, Square, Wifi } from "lucide-react";
+import { useKillSwitch } from "@/hooks/useKillSwitch";
+import type { BotState } from "@/types/dashboard";
+import { useBotControl } from "@/hooks/useBotcontrol";
 
 type TradeMode = "paper" | "live";
 
 interface HeaderProps {
   mode: TradeMode;
   onModeChange: (mode: TradeMode) => void;
+  botState: BotState;
 }
 
-export default function Header({ mode, onModeChange }: HeaderProps) {
+export default function Header({ mode, onModeChange, botState }: HeaderProps) {
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== "undefined" ? navigator.onLine : true
   );
+
+  const { enabled, toggle } = useKillSwitch(false);
+  const { state: uiBotState, loading, stop, runNow } = useBotControl(botState);
+
+  const handleChange = async (next: "paper" | "live") => {
+    if (next === "live") {
+      const ok = window.confirm("Live 모드로 전환할까요?");
+      if (!ok) return;
+    }
+    await onModeChange(next);
+  }
+
+  const handleBotClick = async () => {
+    if (uiBotState === "running") return stop();
+    if (uiBotState === "stopped") return runNow();
+  }
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -31,7 +51,7 @@ export default function Header({ mode, onModeChange }: HeaderProps) {
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2 bg-[#0a0d14] rounded-lg p-1">
           <button
-            onClick={() => onModeChange("paper")}
+            onClick={() => handleChange("paper")}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
               mode === "paper"
                 ? "bg-gray-700 text-white"
@@ -41,7 +61,7 @@ export default function Header({ mode, onModeChange }: HeaderProps) {
             Paper
           </button>
           <button
-            onClick={() => onModeChange("live")}
+            onClick={() => handleChange("live")}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
               mode === "live"
                 ? "bg-red-600/20 text-red-400 ring-1 ring-red-500/50"
@@ -66,6 +86,26 @@ export default function Header({ mode, onModeChange }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-6">
+        {/* Kill Switch */}
+        <button
+          type="button"
+          aria-pressed={enabled}
+          onClick={() => toggle(!enabled, "manual")}
+          className={`group inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-all ${
+            enabled
+              ? "bg-red-600/20 text-red-300 ring-1 ring-red-500/50 hover:bg-red-600/30"
+              : "bg-amber-400/10 text-amber-200 ring-1 ring-amber-400/40 hover:bg-amber-400/20"
+          }`}
+        >
+          <span
+            className={`h-2 w-2 rounded-full ${
+              enabled ? "bg-red-400 animate-pulse" : "bg-amber-300"
+            }`}
+          />
+          {enabled ? "Kill Switch On" : "Enable Kill Switch"}
+        </button>
+
+        {/* connection */}
         <div className="flex items-center gap-2 text-sm">
           <Wifi
             className={`w-4 h-4 ${
@@ -77,10 +117,44 @@ export default function Header({ mode, onModeChange }: HeaderProps) {
           </span>
         </div>
 
-        <div className="flex items-center gap-2 text-sm">
-          <Play className="w-4 h-4 text-green-500" />
-          <span className="text-gray-400">Running</span>
-        </div>
+        <button
+          type="button"
+          onClick={handleBotClick}
+          disabled={loading || uiBotState === "queued" || uiBotState === "error"}
+          className="flex items-center gap-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {uiBotState === "running" && (
+            <Play className="w-4 h-4 text-green-500" />
+          )}
+          {uiBotState === "queued" && (
+            <RotateCw className="w-4 h-4 text-blue-400" />
+          )}
+          {uiBotState === "stopped" && (
+            <Square className="w-4 h-4 text-red-500" />
+          )}
+          {uiBotState === "error" && (
+            <Square className="w-4 h-4 text-red-500" />
+          )}
+          <span
+            className={`${
+              uiBotState === "running"
+                ? "text-green-400"
+                : uiBotState === "queued"
+                ? "text-blue-300"
+                : uiBotState === "stopped"
+                ? "text-red-400"
+                : "text-red-400"
+            }`}
+          >
+            {uiBotState === "running"
+              ? "Running"
+              : uiBotState === "queued"
+              ? "Queued"
+              : uiBotState === "stopped"
+              ? "Stop"
+              : "Error"}
+          </span>
+        </button>
 
         <div className="flex items-center gap-3 pl-6 border-l border-gray-800">
           <div className="text-right">

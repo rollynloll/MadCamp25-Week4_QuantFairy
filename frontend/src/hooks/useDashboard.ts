@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
-import type { DashboardData } from "@/types/dashboard";
 import { getDashboard } from "@/api/dashboard";
+import type { DashboardResponse, Range } from "@/types/dashboard";
 
 interface UseDashboardResult {
-  data: DashboardData | null;
+  data: DashboardResponse | null;
   loading: boolean;
   error: string | null;
 }
 
-export function useDashboard(): UseDashboardResult {
-  const [data, setData] = useState<DashboardData | null>(null);
+export function useDashboard(range: Range): UseDashboardResult {
+  const [data, setData] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -17,8 +17,11 @@ export function useDashboard(): UseDashboardResult {
     let isMounted = true;
 
     const load = async () => {
+      setLoading(true);
+      setError(null);
+
       try {
-        const result = await getDashboard();
+        const result = await getDashboard(range);
         if (isMounted) {
           setData(result);
         }
@@ -38,7 +41,7 @@ export function useDashboard(): UseDashboardResult {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [range]);
 
   return { data, loading, error };
 }

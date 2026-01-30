@@ -9,7 +9,6 @@ from app.storage.bootstrap import bootstrap_storage
 from app.strategies.routes import router as strategies_router
 from app.trading.routes import router as trading_router
 
-
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title=settings.app_name, version="1.0")
