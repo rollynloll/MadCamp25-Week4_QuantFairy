@@ -43,6 +43,7 @@ env/
 # Env files
 .env
 .env.*
+!.env.example
 
 # Misc
 .cache/

@@ -1,0 +1,94 @@
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass
+
+from app.core.config import Settings
+
+try:
+    from alpaca.trading.client import TradingClient
+except Exception:  # pragma: no cover - optional dependency
+    TradingClient = None
+
+
+LIVE_BASE_URL = "https://api.alpaca.markets"
+
+
+@dataclass
+class AlpacaAccount:
+    equity: float
+    cash: float
+    buying_power: float
+    currency: str
+
+
+@dataclass
+class AlpacaAccountResult:
+    account: AlpacaAccount | None
+    latency_ms: int | None
+    error: str | None = None
+
+
+class AlpacaClient:
+    def __init__(self, settings: Settings, environment: str) -> None:
+        self.settings = settings
+        self.environment = environment
+        self._client = None
+
+    def _configured(self) -> bool:
+        return bool(self.settings.alpaca_api_key and self.settings.alpaca_secret_key)
+
+    def _get_client(self):
+        if not self._configured():
+            return None
+        if TradingClient is None:
+            return None
+        if self._client is None:
+            base_url = (
+                self.settings.alpaca_base_url
+                if self.environment == "paper"
+                else LIVE_BASE_URL
+            )
+            self._client = TradingClient(
+                self.settings.alpaca_api_key,
+                self.settings.alpaca_secret_key,
+                paper=self.environment == "paper",
+                base_url=base_url,
+            )
+        return self._client
+
+    def get_account(self) -> AlpacaAccountResult:
+        client = self._get_client()
+        if client is None:
+            return AlpacaAccountResult(
+                account=None,
+                latency_ms=None,
+                error="Alpaca client not configured",
+            )
+        start = time.monotonic()
+        try:
+            account = client.get_account()
+            latency_ms = int((time.monotonic() - start) * 1000)
+            return AlpacaAccountResult(
+                account=AlpacaAccount(
+                    equity=float(account.equity),
+                    cash=float(account.cash),
+                    buying_power=float(account.buying_power),
+                    currency=str(account.currency),
+                ),
+                latency_ms=latency_ms,
+            )
+        except Exception as exc:  # pragma: no cover - depends on Alpaca
+            latency_ms = int((time.monotonic() - start) * 1000)
+            return AlpacaAccountResult(
+                account=None, latency_ms=latency_ms, error=str(exc)
+            )
+
+    def get_portfolio_history(self, timeframe: str):
+        client = self._get_client()
+        if client is None:
+            return None
+        try:  # pragma: no cover - depends on Alpaca
+            return client.get_portfolio_history(timeframe=timeframe)
+        except Exception:
+            return None
