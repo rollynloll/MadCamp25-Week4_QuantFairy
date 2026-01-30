@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { AlertCircle, Play, Wifi } from "lucide-react";
+import { useKillSwitch } from "@/hooks/useKillSwitch";
 
 type TradeMode = "paper" | "live";
 
@@ -12,6 +13,8 @@ export default function Header({ mode, onModeChange }: HeaderProps) {
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== "undefined" ? navigator.onLine : true
   );
+
+  const { enabled, toggle } = useKillSwitch(false);
 
   const handleChange = async (next: "paper" | "live") => {
     if (next === "live") {
@@ -74,6 +77,24 @@ export default function Header({ mode, onModeChange }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-6">
+        <button
+          type="button"
+          aria-pressed={enabled}
+          onClick={() => toggle(!enabled, "manual")}
+          className={`group inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-all ${
+            enabled
+              ? "bg-red-600/20 text-red-300 ring-1 ring-red-500/50 hover:bg-red-600/30"
+              : "bg-amber-400/10 text-amber-200 ring-1 ring-amber-400/40 hover:bg-amber-400/20"
+          }`}
+        >
+          <span
+            className={`h-2 w-2 rounded-full ${
+              enabled ? "bg-red-400 animate-pulse" : "bg-amber-300"
+            }`}
+          />
+          {enabled ? "Kill Switch On" : "Enable Kill Switch"}
+        </button>
+
         <div className="flex items-center gap-2 text-sm">
           <Wifi
             className={`w-4 h-4 ${

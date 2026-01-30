@@ -35,3 +35,20 @@ export async function setTradingMode(environment: ModeEnvironment) {
 
   return res.json() as Promise<{ environment: ModeEnvironment }>;
 }
+
+export async function setKillSwitch(enabled: boolean, reason: string) {
+  const res = await fetch("/api/v1/trading/kill-switch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled, reason }),
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    const message =
+      body?.error?.message ?? `Failed to set kill switch (${res.status})`;
+    throw new Error(message);
+  }
+
+  return res.json() as Promise<{ enabled: boolean }>;
+}
