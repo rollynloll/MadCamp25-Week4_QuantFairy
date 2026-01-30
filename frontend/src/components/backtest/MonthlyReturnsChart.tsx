@@ -1,0 +1,26 @@
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import type { MonthlyReturn } from "@/types/backtest";
+
+export default function MonthlyReturnsChart({ data }: { data: MonthlyReturn[] }) {
+  return (
+    <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
+      <h2 className="text-lg font-semibold mb-6">Monthly Returns</h2>
+      <ResponsiveContainer width="100%" height={200}>
+        <BarChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+          <XAxis dataKey="month" stroke="#6b7280" style={{ fontSize: 12 }} />
+          <YAxis stroke="#6b7280" style={{ fontSize: 12 }} />
+          <Tooltip
+            contentStyle={{
+              backgroundColor: "#1f2937",
+              border: "1px solid #374151",
+              borderRadius: "6px",
+              fontSize: 12,
+            }}
+          />
+          <Bar dataKey="return" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
