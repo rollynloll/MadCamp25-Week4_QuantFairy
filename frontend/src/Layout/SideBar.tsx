@@ -23,7 +23,7 @@ const navItems: NavItem[] = [
 ];
 
 export default function SideBar() {
-  const { state: botState, loading: botLoading, start, stop, runNow } = useBotControl("stopped");
+  const { loading: botLoading, start, stop, runNow } = useBotControl("stopped");
 
   return (
     <aside className="w-64 bg-[#0d1117] border-r border-gray-800 flex flex-col">

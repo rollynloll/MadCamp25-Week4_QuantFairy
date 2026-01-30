@@ -1,4 +1,4 @@
-import { Activity, DollarSign, Target, Zap } from "lucide-react";
+import { Activity, DollarSign, Target } from "lucide-react";
 import MetricCard from "@/components/MetricCard";
 import PerformanceChart from "@/components/PerformanceChart";
 import ActiveStrategies from "@/components/ActiveStrategies";
