@@ -13,6 +13,14 @@ export default function Header({ mode, onModeChange }: HeaderProps) {
     typeof navigator !== "undefined" ? navigator.onLine : true
   );
 
+  const handleChange = async (next: "paper" | "live") => {
+    if (next === "live") {
+      const ok = window.confirm("Live 모드로 전환할까요?");
+      if (!ok) return;
+    }
+    await onModeChange(next);
+  }
+
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
