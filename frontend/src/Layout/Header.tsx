@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { AlertCircle, Play, RotateCw, Square, Wifi } from "lucide-react";
 import { useKillSwitch } from "@/hooks/useKillSwitch";
 import type { BotState } from "@/types/dashboard";
-import { useBotControl } from "@/hooks/useBotcontrol";
+import { useBotControl } from "@/hooks/useBotControl";
 
 type TradeMode = "paper" | "live";
 
