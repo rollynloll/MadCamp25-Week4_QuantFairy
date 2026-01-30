@@ -1,7 +1,29 @@
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { PerformancePoint } from "@/types/dashboard";
+import { useMemo, useState } from "react";
+
+
+type Range = "1D" | "1W" | "1M" | "3M" | "1Y" | "ALL";
 
 export default function PerformanceChart({ data }: { data: PerformancePoint[] }) {
+
+  const [range, setRange] = useState<Range>("1M");
+  const filtered = useMemo(() => {
+    if (range === "ALL") return data;
+
+    const limitMap: Record<Range, number> = {
+      "1D": 1,
+      "1W": 7,
+      "1M": 30,
+      "3M": 90,
+      "1Y": 365,
+      "ALL": data.length,
+    };
+
+    const limit = limitMap[range];
+    return data.slice(-limit);
+  }, [data, range]);
+  
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
       <div className="flex items-center justify-between mb-6">

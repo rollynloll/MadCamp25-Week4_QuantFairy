@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { AlertCircle, Play, Wifi } from "lucide-react";
 
 type TradeMode = "paper" | "live";
@@ -8,6 +9,22 @@ interface HeaderProps {
 }
 
 export default function Header({ mode, onModeChange }: HeaderProps) {
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator !== "undefined" ? navigator.onLine : true
+  );
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
   return (
     <header className="h-16 bg-[#0d1117] border-b border-gray-800 flex items-center justify-between px-6">
@@ -50,13 +67,19 @@ export default function Header({ mode, onModeChange }: HeaderProps) {
 
       <div className="flex items-center gap-6">
         <div className="flex items-center gap-2 text-sm">
-          <Wifi className="w-4 h-4 text-green-500" />
-          <span className="text-gray-400">Connected</span>
+          <Wifi
+            className={`w-4 h-4 ${
+              isOnline ? "text-green-500" : "text-red-500"
+            }`}
+          />
+          <span className="text-gray-400">
+            {isOnline ? "Connected" : "Unconnected"}
+          </span>
         </div>
 
         <div className="flex items-center gap-2 text-sm">
           <Play className="w-4 h-4 text-green-500" />
-          <span className="text-gray-400">2 Strategies Running</span>
+          <span className="text-gray-400">Running</span>
         </div>
 
         <div className="flex items-center gap-3 pl-6 border-l border-gray-800">
