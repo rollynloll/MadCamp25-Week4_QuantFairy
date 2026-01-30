@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import List, Literal
 
 from fastapi import APIRouter, Header, Query
@@ -20,6 +21,7 @@ from app.storage.user_settings_repo import UserSettingsRepository
 
 
 router = APIRouter()
+logger = logging.getLogger("quantfairy.dashboard")
 
 
 RangeLiteral = Literal["1D", "1W", "1M", "3M", "1Y", "ALL"]
@@ -55,7 +57,6 @@ def _max_drawdown_pct(equity_curve: List[dict]) -> float:
                 max_drawdown = drawdown
     return max_drawdown
 
-
 @router.get("/dashboard", response_model=DashboardResponse)
 async def get_dashboard(
     range: RangeLiteral = Query(default="1M", description="Time range"),
@@ -64,6 +65,7 @@ async def get_dashboard(
 ):
     settings = get_settings()
     resolved_user_id = resolve_user_id(settings, x_user_id or user_id)
+    logger.info("GET /api/v1/dashboard range=%s user_id=%s", range, resolved_user_id)
 
     settings_repo = UserSettingsRepository(settings)
     strategies_repo = StrategiesRepository(settings)
@@ -97,10 +99,16 @@ async def get_dashboard(
     equity = float(account_row["equity"]) if account_row else 0.0
     cash = float(account_row["cash"]) if account_row else 0.0
 
-    worker_state = "running"
+    # ✅ 프론트 타입이 string을 기대하므로 ISO string 고정
+    worker_state= "running"  # (타입 alias 있으면 맞춰도 됨)
     worker_heartbeat = now_kst().isoformat()
 
+    # ✅ bot_state: 프론트 타입과 불일치 값 방지
     bot_state = user_settings.get("bot_state", "running")
+    allowed_bot_states = {"running", "stopped", "error", "queued"}
+    if bot_state not in allowed_bot_states:
+        bot_state = "running"
+
     next_run_at = user_settings.get("next_run_at") or plus_hours(1).isoformat()
     default_run = {
         "run_id": "run_init",
@@ -120,10 +128,10 @@ async def get_dashboard(
         bot_last_run["ended_at"] = now_kst().isoformat()
 
     active_strategies = []
-    allowed_states = {"running", "paused", "idle", "error"}
+    allowed_strategy_states = {"running", "paused", "idle", "error"}
     strategies_repo.ensure_seed(resolved_user_id)
     for strat in strategies_repo.list_active(resolved_user_id):
-        state = strat.get("state") if strat.get("state") in allowed_states else "idle"
+        state = strat.get("state") if strat.get("state") in allowed_strategy_states else "idle"
         active_strategies.append(
             {
                 "strategy_id": strat["strategy_id"],
@@ -153,9 +161,14 @@ async def get_dashboard(
             }
         )
 
+    # ✅ alerts.link: tab이 없으면 키를 제거해서 (undefined vs null) 이슈 방지
     alerts = []
     for alert in alerts_repo.list_recent(resolved_user_id):
         link = alert.get("link") or {}
+        link_obj = {"page": link.get("page") or "trading"}
+        if link.get("tab") is not None:
+            link_obj["tab"] = link.get("tab")
+
         alerts.append(
             {
                 "alert_id": alert.get("alert_id") or "alert_unknown",
@@ -164,29 +177,60 @@ async def get_dashboard(
                 "title": alert.get("title") or "Alert",
                 "message": alert.get("message") or "",
                 "occurred_at": alert.get("occurred_at") or now_kst().isoformat(),
-                "link": {"page": link.get("page") or "trading", "tab": link.get("tab")},
+                "link": link_obj,
             }
         )
 
-    equity_curve = portfolio_repo.list_equity_curve(
+    # ✅ equity_curve: repo 반환 포맷이 달라도 프론트 타입 {t, equity}로 normalize
+    equity_curve_raw = portfolio_repo.list_equity_curve(
         resolved_user_id, environment, _range_days(range)
-    )
+    ) or []
+
+    def _pick_time_key(row: dict) -> str | None:
+        # 흔히 나오는 key들을 모두 허용
+        return (
+            row.get("t")
+            or row.get("time")
+            or row.get("ts")
+            or row.get("date")
+            or row.get("datetime")
+            or row.get("created_at")
+        )
+
+    equity_curve = []
+    for row in equity_curve_raw:
+        if not isinstance(row, dict):
+            continue
+        t = _pick_time_key(row)
+        if t is None:
+            continue
+        equity_val = row.get("equity")
+        # 혹시 다른 이름(value 등)으로 올 수도 있으니 보조
+        if equity_val is None:
+            equity_val = row.get("value") or row.get("equity_value")
+        equity_curve.append({"t": str(t), "equity": float(equity_val or 0)})
+
     if not equity_curve and equity > 0:
-        equity_curve = _equity_curve_fallback(equity)
+        # fallback도 프론트 타입에 맞게 {t, equity}로
+        fallback = _equity_curve_fallback(equity) or []
+        equity_curve = []
+        for row in fallback:
+            if isinstance(row, dict):
+                t = _pick_time_key(row) or row.get("t")
+                equity_val = row.get("equity") if row.get("equity") is not None else row.get("value")
+                if t is not None:
+                    equity_curve.append({"t": str(t), "equity": float(equity_val or 0)})
 
     first_equity = equity_curve[0]["equity"] if equity_curve else equity
     last_equity = equity_curve[-1]["equity"] if equity_curve else equity
     return_pct = ((last_equity - first_equity) / first_equity) * 100 if first_equity else 0.0
     max_drawdown_pct = _max_drawdown_pct(equity_curve)
 
-    today_pnl_value = sum(
-        float(s["pnl_today"]["value"]) for s in active_strategies
-    )
+    today_pnl_value = sum(float(s["pnl_today"]["value"]) for s in active_strategies)
     today_pnl_pct = (today_pnl_value / equity * 100) if equity else 0.0
+
     positions_count = positions_repo.count(resolved_user_id, environment)
-    active_positions_count = positions_count or sum(
-        s["positions_count"] for s in active_strategies
-    )
+    active_positions_count = positions_count or sum(s["positions_count"] for s in active_strategies)
     active_positions_new = 0
 
     total_pnl_value = last_equity - first_equity
@@ -201,7 +245,8 @@ async def get_dashboard(
             },
             "worker": {
                 "state": worker_state,
-                "last_heartbeat_at": parse_datetime(worker_heartbeat),
+                # ✅ string 고정 (TS: string)
+                "last_heartbeat_at": worker_heartbeat,
             },
             "data": {"state": "ok", "lag_seconds": 2},
         },
@@ -230,6 +275,7 @@ async def get_dashboard(
         },
         performance={
             "range": range,
+            # ✅ {t, equity} 보장
             "equity_curve": equity_curve,
             "summary": {"return_pct": return_pct, "max_drawdown_pct": max_drawdown_pct},
         },
@@ -237,13 +283,14 @@ async def get_dashboard(
             "state": bot_state,
             "last_run": {
                 "run_id": bot_last_run["run_id"],
-                "started_at": parse_datetime(bot_last_run["started_at"]),
-                "ended_at": parse_datetime(bot_last_run["ended_at"]),
+                # 프론트가 string 기대하므로 iso string으로 고정하는 게 가장 안전
+                "started_at": str(parse_datetime(bot_last_run["started_at"])),
+                "ended_at": str(parse_datetime(bot_last_run["ended_at"])),
                 "result": bot_last_run["result"],
                 "orders_created": bot_last_run["orders_created"],
                 "orders_failed": bot_last_run["orders_failed"],
             },
-            "next_run_at": parse_datetime(next_run_at),
+            "next_run_at": str(parse_datetime(next_run_at)),
         },
         active_strategies=active_strategies,
         recent_trades=trades,

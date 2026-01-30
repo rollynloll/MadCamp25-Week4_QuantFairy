@@ -5,7 +5,9 @@ from typing import List
 from dotenv import load_dotenv
 
 
-load_dotenv()
+# 로컬에서만 .env 로드 (Render는 대시보드 env 사용)
+if os.getenv("ENV", "").lower() not in {"prod", "production"}:
+    load_dotenv()
 
 
 @dataclass(frozen=True)
@@ -40,9 +42,7 @@ def get_settings() -> Settings:
         app_name=os.getenv("APP_NAME", "QuantFairy API"),
         alpaca_api_key=os.getenv("ALPACA_API_KEY"),
         alpaca_secret_key=os.getenv("ALPACA_SECRET_KEY"),
-        alpaca_base_url=os.getenv(
-            "ALPACA_BASE_URL", "https://paper-api.alpaca.markets"
-        ),
+        alpaca_base_url=os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets"),
         supabase_url=os.getenv("SUPABASE_URL"),
         supabase_service_role_key=os.getenv("SUPABASE_SERVICE_ROLE_KEY"),
         default_user_id=os.getenv("DEFAULT_USER_ID"),
@@ -51,6 +51,7 @@ def get_settings() -> Settings:
             "CORS_ORIGINS",
             [
                 "https://quant.seungwoon.com",
+                "https://api.quant.seungwoon.com",
                 "http://localhost:5173",
                 "http://localhost:3000",
             ],
