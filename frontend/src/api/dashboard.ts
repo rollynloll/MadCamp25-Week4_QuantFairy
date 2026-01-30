@@ -1,5 +1,6 @@
-import type { DashboardResponse, ModeEnvironment, Range } from "@/types/dashboard";
+import type { BotState, DashboardResponse, ModeEnvironment, Range } from "@/types/dashboard";
 
+// 대시보드 데이터 저장
 export async function getDashboard(range: Range = "1M"): Promise<DashboardResponse> {
   const res = await fetch(`/api/v1/dashboard?range=${encodeURIComponent(range)}`, {
     headers: {
@@ -8,7 +9,6 @@ export async function getDashboard(range: Range = "1M"): Promise<DashboardRespon
   });
 
   if (!res.ok) {
-    // 공통 에러 포맷 처리
     const body = await res.json().catch(() => null);
     const message =
       body?.error?.message ?? `Failed to load dashboard (${res.status})`;
@@ -18,6 +18,7 @@ export async function getDashboard(range: Range = "1M"): Promise<DashboardRespon
   return res.json();
 }
 
+// paper / live 모드 갱신
 export async function setTradingMode(environment: ModeEnvironment) {
   const res = await fetch("/api/v1/trading/mode", {
     method: "POST",
@@ -36,6 +37,7 @@ export async function setTradingMode(environment: ModeEnvironment) {
   return res.json() as Promise<{ environment: ModeEnvironment }>;
 }
 
+// kill-switch enabled 갱신
 export async function setKillSwitch(enabled: boolean, reason: string) {
   const res = await fetch("/api/v1/trading/kill-switch", {
     method: "POST",
@@ -52,3 +54,25 @@ export async function setKillSwitch(enabled: boolean, reason: string) {
 
   return res.json() as Promise<{ enabled: boolean }>;
 }
+
+// bot start
+export async function startBot() {
+  const res = await fetch("/api/v1/bot/start", { method: "POST" });
+  if (!res.ok) throw new Error("Failed to start bot");
+  return res.json() as Promise<{ state: BotState }>;
+}
+
+// bot stop
+export async function stopBot() {
+  const res = await fetch("/api/v1/bot/stop", { method: "POST" });
+  if (!res.ok) throw new Error("Failed to stop bot");
+  return res.json() as Promise<{ state: BotState }>;
+}
+
+// bot run-now
+export async function runBotNow() {
+  const res = await fetch("/api/v1/bot/run-now", { method: "POST" });
+  if (!res.ok) throw new Error("Failed to run bot");
+  return res.json() as Promise<{ run_id: string; state: "queued" }>;
+}
+

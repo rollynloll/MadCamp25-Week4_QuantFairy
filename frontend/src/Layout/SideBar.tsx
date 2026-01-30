@@ -6,6 +6,7 @@ import {
   LineChart,
   TrendingUp,
 } from "lucide-react";
+import { useBotControl } from "@/hooks/useBotcontrol";
 
 interface NavItem {
   path: string;
@@ -22,6 +23,8 @@ const navItems: NavItem[] = [
 ];
 
 export default function SideBar() {
+  const { state: botState, loading: botLoading, start, stop, runNow } = useBotControl("stopped");
+
   return (
     <aside className="w-64 bg-[#0d1117] border-r border-gray-800 flex flex-col">
       <div className="h-16 flex items-center px-6 border-b border-gray-800">
@@ -61,9 +64,12 @@ export default function SideBar() {
       </nav>
 
       <div className="p-6 border-t border-gray-800">
-        <div className="text-xs text-gray-500">
-          <div>API: Connected</div>
-          <div className="mt-1">v2.4.1</div>
+        <div className="flex flex-col gap-3 text-xs text-gray-500">
+
+          <button onClick={start} disabled={botLoading}>Start</button>
+          <button onClick={stop} disabled={botLoading}>Stop</button>
+          <button onClick={runNow} disabled={botLoading}>Run Now</button>
+
         </div>
       </div>
     </aside>

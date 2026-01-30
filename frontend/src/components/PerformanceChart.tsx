@@ -5,7 +5,6 @@ type CurvePoint = {
   t: string;
   equity: number;
 };
-
 interface Props {
   data: CurvePoint[];
   range: Range;
@@ -42,7 +41,7 @@ export default function PerformanceChart({ data, range, onRangeChange }: Props) 
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-          <XAxis dataKey="date" stroke="#6b7280" style={{ fontSize: 12 }} />
+          <XAxis dataKey="t" stroke="#6b7280" style={{ fontSize: 12 }} />
           <YAxis stroke="#6b7280" style={{ fontSize: 12 }} />
           <Tooltip
             contentStyle={{
@@ -52,7 +51,7 @@ export default function PerformanceChart({ data, range, onRangeChange }: Props) 
               fontSize: 12,
             }}
           />
-          <Area type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorValue)" />
+          <Area type="monotone" dataKey="equity" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorValue)" />
         </AreaChart>
       </ResponsiveContainer>
     </div>

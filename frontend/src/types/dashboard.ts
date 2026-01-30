@@ -6,12 +6,17 @@ export type BrokerState = "connected" | "degraded" | "down";
 export type WorkerState = "running" | "stopped" | "error";
 export type DataState = "ok" | "lagging" | "down";
 
-export type BotState = "running" | "stopped" | "error";
+export type BotState = "running" | "stopped" | "error" | "queued";
 export type BotRunResult = "success" | "failed" | "partial";
 
 export type StrategyState = "running" | "paused" | "idle" | "error";
 export type AlertSeverity = "info" | "warning" | "critical";
 export type TradeSide = "buy" | "sell";
+
+export interface BotRunNowResponse {
+  run_id: string;
+  state: "queued";
+}
 
 export interface DashboardResponse {
   mode: {
