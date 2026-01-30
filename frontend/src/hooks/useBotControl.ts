@@ -44,5 +44,5 @@ export function useBotControl(initial: BotState) {
   };
 
 
-  return { state, loading, start, stop };
+  return { state, loading, start, stop, runNow };
 }

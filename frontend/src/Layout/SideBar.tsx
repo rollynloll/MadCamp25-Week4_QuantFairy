@@ -6,7 +6,7 @@ import {
   LineChart,
   TrendingUp,
 } from "lucide-react";
-import { useBotControl } from "@/hooks/useBotcontrol";
+import { useBotControl } from "@/hooks/useBotControl";
 
 interface NavItem {
   path: string;
