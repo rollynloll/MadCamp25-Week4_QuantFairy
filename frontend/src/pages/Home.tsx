@@ -32,37 +32,31 @@ export default function Home() {
       <div className="grid grid-cols-4 gap-4">
         <MetricCard
           title="Equity"
-          value={money(data.kpi.today_pnl.value)}
-          change={pct(data.kpi.today_pnl.pct)}
+          value={money(data.account.equity)}
+          change={`Updated ${new Date(data.account.updated_at).toLocaleTimeString()}`}
           isPositive={data.kpi.today_pnl.value >= 0}
           icon={<DollarSign className="w-5 h-5" />}
         />
         <MetricCard
           title="Cash"
-          value={money(data.kpi.total_pnl.value)}
-          change={pct(data.kpi.total_pnl.pct)}
-          isPositive={data.kpi.total_pnl.value >= 0}
-          icon={<Target className="w-5 h-5" />}
+          value={money(data.account.cash)}
+          change={`Buying Power ${money(data.account.buying_power)}`}
+          isPositive={data.account.cash >= 0}
+          icon={<DollarSign className="w-5 h-5" />}
         />
         <MetricCard
           title="Today P&L"
-          value={`${data.kpi.active_positions.count}`}
-          change={`${data.kpi.active_positions.new_today} new today`}
-          isPositive={data.kpi.active_positions.new_today > 0}
+          value={money(data.kpi.today_pnl.value)}
+          change={pct(data.kpi.today_pnl.pct)}
+          isPositive={data.kpi.today_pnl.value >= 0}
           icon={<Activity className="w-5 h-5" />}
         />
         <MetricCard
-          title={data.kpi.selected_metric.name}
-          value={
-            data.kpi.selected_metric.unit === "pct"
-              ? `${data.kpi.selected_metric.value}%`
-              : data.kpi.selected_metric.unit === "usd"
-              ? `$${data.kpi.selected_metric.value}`
-              : `${data.kpi.selected_metric.value}`
-          }
-          change={`${data.kpi.selected_metric.window}`}
-          isPositive={data.kpi.selected_metric.value >= 0}
-          icon={<Zap className="w-5 h-5" />}
+          title="Active Positions"
+          value={`${data.kpi.active_positions.count}`}
+          change={`${data.kpi.active_positions.new_today} new today`}
+          isPositive={data.kpi.active_positions.new_today > 0}
+          icon={<Target className="w-5 h-5" />}
         />
       </div>
 
