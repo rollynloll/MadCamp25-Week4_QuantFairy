@@ -1,18 +1,22 @@
 from __future__ import annotations
 
-from datetime import timedelta
 from typing import List, Literal
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Header, Query
 
 from app.alpaca.client import AlpacaClient
 from app.core.config import get_settings
 from app.core.time import now_kst, parse_datetime, plus_hours
+from app.core.user import resolve_user_id
 from app.schemas.dashboard import DashboardResponse
 from app.storage.alerts_repo import AlertsRepository
-from app.storage.settings_repo import SettingsRepository
+from app.storage.bot_runs_repo import BotRunsRepository
+from app.storage.portfolio_repo import PortfolioRepository
+from app.storage.positions_repo import PositionsRepository
 from app.storage.strategies_repo import StrategiesRepository
 from app.storage.trades_repo import TradesRepository
+from app.storage.user_accounts_repo import UserAccountsRepository
+from app.storage.user_settings_repo import UserSettingsRepository
 
 
 router = APIRouter()
@@ -32,32 +36,47 @@ def _range_days(range_value: str) -> int:
     }.get(range_value, 30)
 
 
-def _mock_equity_curve(range_value: str) -> List[dict]:
-    days = _range_days(range_value)
-    points = 10
-    base = 100000.0
-    now = now_kst()
-    step = max(days // points, 1)
-    curve = []
-    for i in range(points):
-        t = now - timedelta(days=step * (points - 1 - i))
-        equity = base * (1 + 0.002 * i)
-        curve.append({"t": t, "equity": equity})
-    return curve
+def _equity_curve_fallback(equity_value: float) -> List[dict]:
+    return [{"t": now_kst(), "equity": equity_value}]
+
+
+def _max_drawdown_pct(equity_curve: List[dict]) -> float:
+    if not equity_curve:
+        return 0.0
+    peak = equity_curve[0]["equity"]
+    max_drawdown = 0.0
+    for point in equity_curve:
+        equity = point["equity"]
+        if equity > peak:
+            peak = equity
+        if peak:
+            drawdown = (equity - peak) / peak * 100
+            if drawdown < max_drawdown:
+                max_drawdown = drawdown
+    return max_drawdown
 
 
 @router.get("/dashboard", response_model=DashboardResponse)
 async def get_dashboard(
-    range: RangeLiteral = Query(default="1M", description="Time range")
+    range: RangeLiteral = Query(default="1M", description="Time range"),
+    user_id: str | None = Query(default=None),
+    x_user_id: str | None = Header(default=None, alias="X-User-Id"),
 ):
     settings = get_settings()
-    settings_repo = SettingsRepository(settings)
+    resolved_user_id = resolve_user_id(settings, x_user_id or user_id)
+
+    settings_repo = UserSettingsRepository(settings)
     strategies_repo = StrategiesRepository(settings)
     trades_repo = TradesRepository(settings)
     alerts_repo = AlertsRepository(settings)
+    accounts_repo = UserAccountsRepository(settings)
+    portfolio_repo = PortfolioRepository(settings)
+    positions_repo = PositionsRepository(settings)
+    bot_runs_repo = BotRunsRepository(settings)
 
-    environment = settings_repo.get("environment", "paper")
-    kill_switch = bool(settings_repo.get("kill_switch", False))
+    user_settings = settings_repo.get_or_create(resolved_user_id)
+    environment = user_settings.get("environment", "paper")
+    kill_switch = bool(user_settings.get("kill_switch", False))
 
     alpaca = AlpacaClient(settings, environment)
     account_result = alpaca.get_account()
@@ -75,16 +94,17 @@ async def get_dashboard(
         "worker_last_heartbeat_at", now_kst().isoformat()
     )
 
-    bot_state = settings_repo.get("bot_state", "running")
-    bot_last_run = settings_repo.get("bot_last_run", None)
+    bot_state = user_settings.get("bot_state", "running")
+    next_run_at = user_settings.get("next_run_at") or plus_hours(1).isoformat()
     default_run = {
-        "run_id": "run_20260129_001",
+        "run_id": "run_init",
         "started_at": now_kst().isoformat(),
         "ended_at": now_kst().isoformat(),
         "result": "success",
-        "orders_created": 4,
+        "orders_created": 0,
         "orders_failed": 0,
     }
+    bot_last_run = bot_runs_repo.get_latest(resolved_user_id)
     if not isinstance(bot_last_run, dict):
         bot_last_run = default_run
     else:
@@ -92,13 +112,11 @@ async def get_dashboard(
             bot_last_run.setdefault(key, value)
     if bot_last_run.get("ended_at") is None:
         bot_last_run["ended_at"] = now_kst().isoformat()
-    next_run_at = settings_repo.get("next_run_at", None)
-    if not next_run_at:
-        next_run_at = plus_hours(1).isoformat()
 
     active_strategies = []
     allowed_states = {"running", "paused", "idle", "error"}
-    for strat in strategies_repo.list_active():
+    strategies_repo.ensure_seed(resolved_user_id)
+    for strat in strategies_repo.list_active(resolved_user_id):
         state = strat.get("state") if strat.get("state") in allowed_states else "idle"
         active_strategies.append(
             {
@@ -114,7 +132,7 @@ async def get_dashboard(
         )
 
     trades = []
-    for trade in trades_repo.list_recent():
+    for trade in trades_repo.list_recent(resolved_user_id, environment):
         filled_at = trade.get("filled_at") or now_kst().isoformat()
         trades.append(
             {
@@ -130,7 +148,7 @@ async def get_dashboard(
         )
 
     alerts = []
-    for alert in alerts_repo.list_recent():
+    for alert in alerts_repo.list_recent(resolved_user_id):
         link = alert.get("link") or {}
         alerts.append(
             {
@@ -144,18 +162,29 @@ async def get_dashboard(
             }
         )
 
-    equity_curve = _mock_equity_curve(range)
-    if account_result.account:
-        history = alpaca.get_portfolio_history(timeframe=range)
-        if history and getattr(history, "equity", None):
-            equity_curve = [
-                {"t": now_kst().isoformat(), "equity": float(value)}
-                for value in history.equity
-            ]
+    equity_curve = portfolio_repo.list_equity_curve(
+        resolved_user_id, environment, _range_days(range)
+    )
+    if not equity_curve and equity > 0:
+        equity_curve = _equity_curve_fallback(equity)
 
     first_equity = equity_curve[0]["equity"] if equity_curve else equity
     last_equity = equity_curve[-1]["equity"] if equity_curve else equity
     return_pct = ((last_equity - first_equity) / first_equity) * 100 if first_equity else 0.0
+    max_drawdown_pct = _max_drawdown_pct(equity_curve)
+
+    today_pnl_value = sum(
+        float(s["pnl_today"]["value"]) for s in active_strategies
+    )
+    today_pnl_pct = (today_pnl_value / equity * 100) if equity else 0.0
+    positions_count = positions_repo.count(resolved_user_id, environment)
+    active_positions_count = positions_count or sum(
+        s["positions_count"] for s in active_strategies
+    )
+    active_positions_new = 0
+
+    total_pnl_value = last_equity - first_equity
+    total_pnl_pct = return_pct
 
     today_pnl_value = 123.45
     today_pnl_pct = 0.12
@@ -186,14 +215,14 @@ async def get_dashboard(
         },
         kpi={
             "today_pnl": {"value": today_pnl_value, "pct": today_pnl_pct},
-            "total_pnl": {"value": 15600.0, "pct": 15.6},
+            "total_pnl": {"value": total_pnl_value, "pct": total_pnl_pct},
             "active_positions": {
                 "count": active_positions_count,
                 "new_today": active_positions_new,
             },
             "selected_metric": {
                 "name": "max_drawdown",
-                "value": -4.2,
+                "value": max_drawdown_pct,
                 "unit": "pct",
                 "window": range,
             },
@@ -201,7 +230,7 @@ async def get_dashboard(
         performance={
             "range": range,
             "equity_curve": equity_curve,
-            "summary": {"return_pct": return_pct, "max_drawdown_pct": -2.1},
+            "summary": {"return_pct": return_pct, "max_drawdown_pct": max_drawdown_pct},
         },
         bot={
             "state": bot_state,

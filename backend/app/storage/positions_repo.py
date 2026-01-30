@@ -1,30 +1,30 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
-
 from app.core.config import Settings
 from app.storage.supabase_client import get_supabase_client
 
 
-class AlertsRepository:
+class PositionsRepository:
     def __init__(self, settings: Settings) -> None:
         self.supabase = get_supabase_client(settings)
 
-    def list_recent(self, user_id: str, limit: int = 5) -> List[Dict[str, Any]]:
+    def count(self, user_id: str, environment: str) -> int:
         if self.supabase is None:
-            return []
+            return 0
         try:
             result = (
-                self.supabase.table("alerts")
-                .select("*")
+                self.supabase.table("positions")
+                .select("position_id", count="exact")
                 .eq("user_id", user_id)
-                .order("occurred_at", desc=True)
-                .limit(limit)
+                .eq("environment", environment)
                 .execute()
             )
+            count = getattr(result, "count", None)
+            if count is not None:
+                return int(count)
             data = getattr(result, "data", None)
             if data is not None:
-                return data
+                return len(data)
         except Exception:
-            return []
-        return []
+            return 0
+        return 0

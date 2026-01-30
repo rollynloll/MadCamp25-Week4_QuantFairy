@@ -7,12 +7,13 @@ from app.core.time import now_kst
 from app.storage.supabase_client import get_supabase_client
 
 
-_memory_strategies: Dict[str, Dict[str, Any]] = {}
+_memory_strategies: Dict[str, Dict[str, Dict[str, Any]]] = {}
 
 
 DEFAULT_STRATEGIES = [
     {
         "strategy_id": "strat_momentum_top10",
+        "template_id": "tmpl_momentum_top10",
         "name": "Momentum Breakout",
         "state": "running",
         "description": "Top-10 momentum breakout strategy",
@@ -24,6 +25,7 @@ DEFAULT_STRATEGIES = [
     },
     {
         "strategy_id": "strat_mean_reversion",
+        "template_id": "tmpl_mean_reversion",
         "name": "Mean Reversion Alpha",
         "state": "paused",
         "description": "Mean reversion on large cap universe",
@@ -41,56 +43,75 @@ class StrategiesRepository:
         self.settings = settings
         self.supabase = get_supabase_client(settings)
 
-    def _seed_memory(self) -> None:
-        if _memory_strategies:
+    def _seed_memory(self, user_id: str) -> None:
+        if user_id in _memory_strategies:
             return
         now = now_kst().isoformat()
+        _memory_strategies[user_id] = {}
         for strat in DEFAULT_STRATEGIES:
-            _memory_strategies[strat["strategy_id"]] = {
+            _memory_strategies[user_id][strat["strategy_id"]] = {
                 **strat,
+                "user_id": user_id,
                 "created_at": now,
                 "updated_at": now,
             }
 
-    def ensure_seed(self) -> None:
+    def ensure_seed(self, user_id: str) -> None:
         if self.supabase is None:
-            self._seed_memory()
+            self._seed_memory(user_id)
             return
         try:
-            result = self.supabase.table("strategies").select("strategy_id").execute()
+            result = (
+                self.supabase.table("user_strategies")
+                .select("strategy_id")
+                .eq("user_id", user_id)
+                .limit(1)
+                .execute()
+            )
             data = getattr(result, "data", None)
             if data:
                 return
             now = now_kst().isoformat()
             seed_rows = [
-                {**item, "created_at": now, "updated_at": now}
+                {
+                    **item,
+                    "user_id": user_id,
+                    "created_at": now,
+                    "updated_at": now,
+                }
                 for item in DEFAULT_STRATEGIES
             ]
-            self.supabase.table("strategies").insert(seed_rows).execute()
+            self.supabase.table("user_strategies").insert(seed_rows).execute()
         except Exception:
-            self._seed_memory()
+            self._seed_memory(user_id)
 
-    def list(self) -> List[Dict[str, Any]]:
+    def list(self, user_id: str) -> List[Dict[str, Any]]:
         if self.supabase is None:
-            self._seed_memory()
-            return list(_memory_strategies.values())
+            self._seed_memory(user_id)
+            return list(_memory_strategies[user_id].values())
         try:
-            result = self.supabase.table("strategies").select("*").execute()
+            result = (
+                self.supabase.table("user_strategies")
+                .select("*")
+                .eq("user_id", user_id)
+                .execute()
+            )
             data = getattr(result, "data", None)
             if data is not None:
                 return data
         except Exception:
-            self._seed_memory()
-        return list(_memory_strategies.values())
+            self._seed_memory(user_id)
+        return list(_memory_strategies[user_id].values())
 
-    def get(self, strategy_id: str) -> Dict[str, Any] | None:
+    def get(self, user_id: str, strategy_id: str) -> Dict[str, Any] | None:
         if self.supabase is None:
-            self._seed_memory()
-            return _memory_strategies.get(strategy_id)
+            self._seed_memory(user_id)
+            return _memory_strategies[user_id].get(strategy_id)
         try:
             result = (
-                self.supabase.table("strategies")
+                self.supabase.table("user_strategies")
                 .select("*")
+                .eq("user_id", user_id)
                 .eq("strategy_id", strategy_id)
                 .execute()
             )
@@ -98,14 +119,14 @@ class StrategiesRepository:
             if data:
                 return data[0]
         except Exception:
-            self._seed_memory()
-        return _memory_strategies.get(strategy_id)
+            self._seed_memory(user_id)
+        return _memory_strategies[user_id].get(strategy_id)
 
-    def update_state(self, strategy_id: str, state: str) -> Dict[str, Any] | None:
+    def update_state(self, user_id: str, strategy_id: str, state: str) -> Dict[str, Any] | None:
         now = now_kst().isoformat()
         if self.supabase is None:
-            self._seed_memory()
-            strat = _memory_strategies.get(strategy_id)
+            self._seed_memory(user_id)
+            strat = _memory_strategies[user_id].get(strategy_id)
             if not strat:
                 return None
             strat["state"] = state
@@ -113,8 +134,9 @@ class StrategiesRepository:
             return strat
         try:
             result = (
-                self.supabase.table("strategies")
+                self.supabase.table("user_strategies")
                 .update({"state": state, "updated_at": now})
+                .eq("user_id", user_id)
                 .eq("strategy_id", strategy_id)
                 .execute()
             )
@@ -122,14 +144,14 @@ class StrategiesRepository:
             if data:
                 return data[0]
         except Exception:
-            self._seed_memory()
-            strat = _memory_strategies.get(strategy_id)
+            self._seed_memory(user_id)
+            strat = _memory_strategies[user_id].get(strategy_id)
             if strat:
                 strat["state"] = state
                 strat["updated_at"] = now
                 return strat
         return None
 
-    def list_active(self) -> List[Dict[str, Any]]:
-        items = [item for item in self.list() if item.get("state") == "running"]
+    def list_active(self, user_id: str) -> List[Dict[str, Any]]:
+        items = [item for item in self.list(user_id) if item.get("state") == "running"]
         return items
