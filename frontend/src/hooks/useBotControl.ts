@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { BotState } from "@/types/dashboard";
-import { startBot, stopBot, runBotNow } from "@/api/dashboard";
+import { runBotNow, startBot, stopBot } from "@/api/dashboard";
 
 export function useBotControl(initial: BotState) {
   const [state, setState] = useState<BotState>(initial);
@@ -43,5 +43,6 @@ export function useBotControl(initial: BotState) {
     }
   };
 
-  return { state, loading, start, stop, runNow };
+
+  return { state, loading, start, stop };
 }
