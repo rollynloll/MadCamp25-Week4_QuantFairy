@@ -4,3 +4,4 @@ python-dotenv
 supabase
 alpaca-py
 pydantic>=2
+asyncpg

@@ -66,13 +66,9 @@ async def get_dashboard(
     if account_result.account:
         equity = account_result.account.equity
         cash = account_result.account.cash
-        buying_power = account_result.account.buying_power
-        currency = account_result.account.currency
     else:
         equity = 100000.0
         cash = 25000.0
-        buying_power = 75000.0
-        currency = "USD"
 
     worker_state = settings_repo.get("worker_state", "running")
     worker_heartbeat = settings_repo.get(
@@ -161,6 +157,11 @@ async def get_dashboard(
     last_equity = equity_curve[-1]["equity"] if equity_curve else equity
     return_pct = ((last_equity - first_equity) / first_equity) * 100 if first_equity else 0.0
 
+    today_pnl_value = 123.45
+    today_pnl_pct = 0.12
+    active_positions_count = sum(s["positions_count"] for s in active_strategies)
+    active_positions_new = 0
+
     return DashboardResponse(
         mode={"environment": environment, "kill_switch": kill_switch},
         status={
@@ -177,16 +178,18 @@ async def get_dashboard(
         account={
             "equity": float(equity),
             "cash": float(cash),
-            "buying_power": float(buying_power),
-            "currency": str(currency),
-            "updated_at": now_kst(),
+            "today_pnl": {"value": today_pnl_value, "pct": today_pnl_pct},
+            "active_positions": {
+                "count": active_positions_count,
+                "new_today": active_positions_new,
+            },
         },
         kpi={
-            "today_pnl": {"value": 123.45, "pct": 0.12},
+            "today_pnl": {"value": today_pnl_value, "pct": today_pnl_pct},
             "total_pnl": {"value": 15600.0, "pct": 15.6},
             "active_positions": {
-                "count": sum(s["positions_count"] for s in active_strategies),
-                "new_today": 0,
+                "count": active_positions_count,
+                "new_today": active_positions_new,
             },
             "selected_metric": {
                 "name": "max_drawdown",
