@@ -56,11 +56,22 @@ export default function ActiveStrategies({ data }: { data: ActiveStrategy[] }) {
               <span>{strategy.positions_count} positions</span>
               <span
                 className={
-                  strategy.pnl_today.value >= 0 ? "text-green-500" : "text-red-500"
+                  strategy.state === "running"
+                    ? "text-green-500"
+                    : strategy.state === "paused"
+                    ? "text-yellow-500"
+                    : strategy.state === "idle"
+                    ? "text-gray-400"
+                    : "text-red-500"
                 }
               >
-                {strategy.pnl_today.value >= 0 ? "+" : ""}
-                {strategy.pnl_today.pct}%
+                {strategy.state === "running"
+                  ? "Running"
+                  : strategy.state === "paused"
+                  ? "Paused"
+                  : strategy.state === "idle"
+                  ? "Idle"
+                  : "Error"}
               </span>
             </div>
           </div>

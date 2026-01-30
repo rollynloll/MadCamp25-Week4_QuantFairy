@@ -1,5 +1,8 @@
 import type { Range } from "@/types/dashboard";
+import { useState } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+
+type Metric = "equity" | "daily_pnl";
 
 type CurvePoint = {
   t: string;
@@ -12,13 +15,32 @@ interface Props {
 }
 
 export default function PerformanceChart({ data, range, onRangeChange }: Props) {
-
   const ranges: Range[] = ["1D", "1W", "1M", "3M", "1Y", "ALL"];
+
+  const [metric, setMetric] = useState<Metric>("equity");
+  const metricLabel = metric === "equity" ? "Equity" : "Daily P&L";
+  const metricKey = metric === "equity" ? "equity" : "daily_pnl";
   
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-lg font-semibold">Portfolio Performance</h2>
+
+        <div className="flex items-center gap-3 text-sm">
+          <button
+            onClick={() => setMetric("equity")}
+            className={metric === "equity" ? "text-blue-400" : "text-gray-400 hover:text-white"}
+          >
+            Equity
+          </button>
+          <button
+            onClick={() => setMetric("daily_pnl")}
+            className={metric === "daily_pnl" ? "text-blue-400" : "text-gray-400 hover:text-white"}
+          >
+            Daily P&L
+          </button>
+        </div>
+
         <div className="flex items-center gap-4 text-sm">
           {ranges.map((r) => (
             <button
@@ -51,7 +73,7 @@ export default function PerformanceChart({ data, range, onRangeChange }: Props) 
               fontSize: 12,
             }}
           />
-          <Area type="monotone" dataKey="equity" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorValue)" />
+          <Area type="monotone" dataKey={metricKey} stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorValue)" />
         </AreaChart>
       </ResponsiveContainer>
     </div>
