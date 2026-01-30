@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertCircle, Play, RotateCw, Square, Wifi } from "lucide-react";
+import { AlertCircle, Play, Square, Wifi } from "lucide-react";
 import { useKillSwitch } from "@/hooks/useKillSwitch";
 import type { BotState } from "@/types/dashboard";
 import { useBotControl } from "@/hooks/useBotControl";
@@ -18,7 +18,7 @@ export default function Header({ mode, onModeChange, botState }: HeaderProps) {
   );
 
   const { enabled, toggle } = useKillSwitch(false);
-  const { state: uiBotState, loading, stop, runNow } = useBotControl(botState);
+  const { state: uiBotState, loading, start, stop } = useBotControl(botState);
 
   const handleChange = async (next: "paper" | "live") => {
     if (next === "live") {
@@ -30,7 +30,7 @@ export default function Header({ mode, onModeChange, botState }: HeaderProps) {
 
   const handleBotClick = async () => {
     if (uiBotState === "running") return stop();
-    if (uiBotState === "stopped") return runNow();
+    if (uiBotState === "stopped") return start();
   }
 
   useEffect(() => {
@@ -123,38 +123,25 @@ export default function Header({ mode, onModeChange, botState }: HeaderProps) {
           disabled={loading || uiBotState === "queued" || uiBotState === "error"}
           className="flex items-center gap-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {uiBotState === "running" && (
+          {uiBotState === "running" ? (
+            <Square className="w-4 h-4 text-red-500" />
+          ) : (
             <Play className="w-4 h-4 text-green-500" />
           )}
-          {uiBotState === "queued" && (
-            <RotateCw className="w-4 h-4 text-blue-400" />
-          )}
-          {uiBotState === "stopped" && (
-            <Square className="w-4 h-4 text-red-500" />
-          )}
-          {uiBotState === "error" && (
-            <Square className="w-4 h-4 text-red-500" />
-          )}
+
           <span
             className={`${
               uiBotState === "running"
-                ? "text-green-400"
-                : uiBotState === "queued"
-                ? "text-blue-300"
-                : uiBotState === "stopped"
                 ? "text-red-400"
-                : "text-red-400"
+                : "text-green-400"
             }`}
           >
-            {uiBotState === "running"
-              ? "Running"
-              : uiBotState === "queued"
-              ? "Queued"
-              : uiBotState === "stopped"
-              ? "Stop"
-              : "Error"}
+            {uiBotState === "running" ? "Stop" : "Run"}
           </span>
         </button>
+        {uiBotState === "queued" && (
+          <span className="text-xs text-blue-300">Queued</span>
+        )}
 
         <div className="flex items-center gap-3 pl-6 border-l border-gray-800">
           <div className="text-right">
