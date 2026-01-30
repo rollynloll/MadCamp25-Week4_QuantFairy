@@ -18,7 +18,6 @@ export default function PerformanceChart({ data, range, onRangeChange }: Props) 
   const ranges: Range[] = ["1D", "1W", "1M", "3M", "1Y", "ALL"];
 
   const [metric, setMetric] = useState<Metric>("equity");
-  const metricLabel = metric === "equity" ? "Equity" : "Daily P&L";
   const metricKey = metric === "equity" ? "equity" : "daily_pnl";
   
   return (
