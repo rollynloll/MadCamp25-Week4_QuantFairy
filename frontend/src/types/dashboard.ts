@@ -26,9 +26,8 @@ export interface DashboardResponse {
   account: {
     equity: number;
     cash: number;
-    buying_power: number;
-    currency: string;
-    updated_at: string;
+    today_pnl: { value: number; pct: number };
+    active_positions: { count: number; new_today: number };
   };
   kpi: {
     today_pnl: { value: number; pct: number };
