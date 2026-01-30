@@ -1,40 +1,35 @@
+import type { Range } from "@/types/dashboard";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import type { PerformancePoint } from "@/types/dashboard";
-import { useMemo, useState } from "react";
 
+type CurvePoint = {
+  t: string;
+  equity: number;
+};
 
-type Range = "1D" | "1W" | "1M" | "3M" | "1Y" | "ALL";
+interface Props {
+  data: CurvePoint[];
+  range: Range;
+  onRangeChange: (range: Range) => void;
+}
 
-export default function PerformanceChart({ data }: { data: PerformancePoint[] }) {
+export default function PerformanceChart({ data, range, onRangeChange }: Props) {
 
-  const [range, setRange] = useState<Range>("1M");
-  const filtered = useMemo(() => {
-    if (range === "ALL") return data;
-
-    const limitMap: Record<Range, number> = {
-      "1D": 1,
-      "1W": 7,
-      "1M": 30,
-      "3M": 90,
-      "1Y": 365,
-      "ALL": data.length,
-    };
-
-    const limit = limitMap[range];
-    return data.slice(-limit);
-  }, [data, range]);
+  const ranges: Range[] = ["1D", "1W", "1M", "3M", "1Y", "ALL"];
   
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-lg font-semibold">Portfolio Performance</h2>
         <div className="flex items-center gap-4 text-sm">
-          <button className="text-gray-400 hover:text-white">1D</button>
-          <button className="text-gray-400 hover:text-white">1W</button>
-          <button className="text-blue-400">1M</button>
-          <button className="text-gray-400 hover:text-white">3M</button>
-          <button className="text-gray-400 hover:text-white">1Y</button>
-          <button className="text-gray-400 hover:text-white">ALL</button>
+          {ranges.map((r) => (
+            <button
+              key={r}
+              onClick={() => onRangeChange(r)}
+              className={r === range ? "text-blue-400" : "text-gray-400 hover:text-white"}
+            >
+              {r}
+            </button>
+          ))}
         </div>
       </div>
 
