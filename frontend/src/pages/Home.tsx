@@ -40,7 +40,7 @@ export default function Home() {
         <MetricCard
           title="Cash"
           value={money(data.account.cash)}
-          change={`Buying Power ${money(data.account.buying_power)}`}
+          change={`${money(data.account.cash)}`}
           isPositive={data.account.cash >= 0}
           icon={<DollarSign className="w-5 h-5" />}
         />
