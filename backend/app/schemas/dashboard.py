@@ -47,9 +47,8 @@ class AccountBlock(BaseModel):
 
     equity: float
     cash: float
-    buying_power: float
-    currency: str
-    updated_at: datetime
+    today_pnl: PnlBlock
+    active_positions: ActivePositionsBlock
 
 
 class PnlBlock(BaseModel):
