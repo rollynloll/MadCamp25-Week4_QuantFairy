@@ -7,11 +7,10 @@ const normalizePath = (path: string) => {
   return `/api/v1/${path}`;
 };
 
-type ParamValue = string | number | boolean | null | undefined;
 
 export const buildApiUrl = (
   path: string,
-  params?: Record<string, ParamValue>
+  params?: Record<string, any>
 ) => {
   const normalized = normalizePath(path);
   if (!API_BASE_URL) {
