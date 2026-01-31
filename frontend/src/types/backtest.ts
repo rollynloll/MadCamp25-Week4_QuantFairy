@@ -21,3 +21,99 @@ export interface BacktestConfigData {
   commission: string;
   slippage: string;
 }
+
+
+export interface BacktestJob {
+  backtest_id: string;
+  mode: "single" | "batch" | "ensemble";
+  status: "queued" | "running" | "done" | "failed" | "canceled";
+  spec: BacktestSpec;
+  strategies?: StrategyRef[];
+  benchmarks?: BenchmarkRef[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface BacktestSpec {
+  period_start: string;
+  period_end: string;
+  timeframe: string;
+  initial_cash: number;
+  fee_bps: number;
+  slippage_bps: number;
+  rebalance?: string;
+  universe?: { type: "PRESET" | "CUSTOM"; preset_id?: string; tickers?: string[] };
+  price_field?: "adj_close" | "close";
+  currency?: string;
+}
+
+export interface StrategyRef {
+  type: "public" | "my";
+  id: string;
+  params_override?: Record<string, unknown>;
+  label?: string;
+}
+
+export interface BenchmarkRef {
+  symbol: string;
+  label?: string;
+}
+
+export interface ApiMetrics {
+  total_return_pct?: number;
+  cagr_pct?: number;
+  volatility_pct?: number;
+  sharpe?: number;
+  sortino?: number;
+  max_drawdown_pct?: number;
+  calmar?: number;
+  alpha_pct?: number;
+  beta?: number;
+  tracking_error_pct?: number;
+  information_ratio?: number;
+  turnover_pct?: number;
+}
+
+export interface ApiEquityPoint {
+  date: string;
+  equity: number;
+}
+
+export interface ApiReturnPoint {
+  date: string;
+  ret: number;
+}
+
+export interface ApiDrawdownPoint {
+  date: string;
+  dd_pct: number;
+}
+
+export interface ApiResultItem {
+  label: string;
+  strategy_ref?: StrategyRef;
+  metrics: ApiMetrics;
+  equity_curve?: ApiEquityPoint[];
+  returns?: ApiReturnPoint[];
+  drawdown?: ApiDrawdownPoint[];
+}
+
+export interface BenchmarkItem {
+  symbol: string;
+  metrics?: ApiMetrics;
+  equity_curve?: ApiEquityPoint[];
+  returns?: ApiReturnPoint[];
+  drawdown?: ApiDrawdownPoint[];
+}
+
+export interface BacktestResultsResponse {
+  backtest_id: string;
+  status: "queued" | "running" | "done" | "failed" | "canceled";
+  mode: "single" | "batch" | "ensemble";
+  spec: BacktestSpec;
+  benchmarks?: BenchmarkItem[];
+  results?: ApiResultItem[];
+  ensemble_result?: ApiResultItem;
+  components?: ApiResultItem[];
+  comparison_table?: Record<string, unknown>[];
+}
