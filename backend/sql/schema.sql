@@ -22,6 +22,59 @@ create table if not exists strategy_templates (
   updated_at timestamptz not null default now()
 );
 
+-- Public Strategies API v1
+create table if not exists public_strategies (
+  public_strategy_id text primary key,
+  name text not null,
+  one_liner text,
+  category text,
+  tags jsonb not null default '[]'::jsonb,
+  risk_level text not null default 'mid',
+  version text not null default '1.0.0',
+  author_name text not null default '',
+  author_type text not null default 'official',
+  sample_metrics jsonb not null default '{}'::jsonb,
+  sample_trade_stats jsonb not null default '{}'::jsonb,
+  adds_count int not null default 0,
+  likes_count int not null default 0,
+  runs_count int not null default 0,
+  supported_assets jsonb not null default '[]'::jsonb,
+  supported_timeframes jsonb not null default '[]'::jsonb,
+  full_description text,
+  thesis text,
+  rules jsonb not null default '{}'::jsonb,
+  param_schema jsonb not null default '{}'::jsonb,
+  default_params jsonb not null default '{}'::jsonb,
+  recommended_presets jsonb not null default '[]'::jsonb,
+  requirements jsonb not null default '{}'::jsonb,
+  sample_backtest_spec jsonb not null default '{}'::jsonb,
+  sample_performance jsonb not null default '{}'::jsonb,
+  known_failure_modes jsonb not null default '[]'::jsonb,
+  risk_disclaimer text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_public_strategies_updated_at on public_strategies(updated_at);
+create index if not exists idx_public_strategies_adds_count on public_strategies(adds_count);
+create index if not exists idx_public_strategies_name on public_strategies(name);
+
+-- My Strategies API v1
+create table if not exists my_strategies (
+  my_strategy_id text primary key,
+  user_id uuid not null references app_users(id) on delete cascade,
+  source_public_strategy_id text not null references public_strategies(public_strategy_id) on delete restrict,
+  name text not null,
+  public_version_snapshot text not null,
+  params jsonb not null default '{}'::jsonb,
+  note text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_my_strategies_user_id on my_strategies(user_id);
+create index if not exists idx_my_strategies_source_id on my_strategies(source_public_strategy_id);
+
 -- User strategies (instances)
 create table if not exists user_strategies (
   strategy_id text primary key,

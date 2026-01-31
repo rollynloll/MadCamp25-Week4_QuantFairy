@@ -11,17 +11,29 @@ class APIError(Exception):
         code: str,
         message: str,
         detail: str | None = None,
+        details: list[dict[str, str]] | None = None,
         status_code: int = 400,
     ) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
         self.detail = detail
+        self.details = details
         self.status_code = status_code
 
 
-def api_error_response(code: str, message: str, detail: str | None) -> dict[str, Any]:
-    return {"error": {"code": code, "message": message, "detail": detail}}
+def api_error_response(
+    code: str,
+    message: str,
+    detail: str | None,
+    details: list[dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {"code": code, "message": message}
+    if details is not None:
+        payload["details"] = details
+    else:
+        payload["detail"] = detail
+    return {"error": payload}
 
 
 def add_exception_handlers(app) -> None:
@@ -29,7 +41,9 @@ def add_exception_handlers(app) -> None:
     async def _handle_api_error(request: Request, exc: APIError):  # noqa: ARG001
         return JSONResponse(
             status_code=exc.status_code,
-            content=api_error_response(exc.code, exc.message, exc.detail),
+            content=api_error_response(
+                exc.code, exc.message, exc.detail, exc.details
+            ),
         )
 
     @app.exception_handler(RequestValidationError)

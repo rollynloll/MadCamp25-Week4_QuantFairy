@@ -5,3 +5,4 @@ supabase
 alpaca-py
 pydantic>=2
 asyncpg
+jsonschema
