@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "@/api/base";
+import { buildApiUrl } from "@/api/base";
 import type { BacktestJob, BacktestResultsResponse } from "@/types/backtest";
 
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
@@ -39,14 +39,14 @@ async function handleJson<T>(res: Response): Promise<T> {
 }
 
 export async function getBacktestJob(backtestId: string) {
-  const res = await fetch(`${API_BASE_URL}/backtests/${backtestId}`, {
+  const res = await fetch(buildApiUrl(`/backtests/${backtestId}`), {
     headers: buildHeaders(),
   });
   return handleJson<{ job: BacktestJob }>(res);
 }
 
 export async function getBacktestResults(backtestId: string) {
-  const res = await fetch(`${API_BASE_URL}/backtests/${backtestId}/results`, {
+  const res = await fetch(buildApiUrl(`/backtests/${backtestId}/results`), {
     headers: buildHeaders(),
   });
   return handleJson<BacktestResultsResponse>(res);
@@ -74,26 +74,10 @@ export interface BacktestListResponse {
   next_cursor?: string | null;
 }
 
-function buildQuery(params: BacktestListQuery) {
-  const search = new URLSearchParams();
-  if (params.limit !== undefined) search.set("limit", String(params.limit));
-  if (params.cursor) search.set("cursor", params.cursor);
-  if (params.status) search.set("status", params.status);
-  if (params.mode) search.set("mode", params.mode);
-  if (params.sort) search.set("sort", params.sort);
-  if (params.order) search.set("order", params.order);
-  return search.toString();
-}
-
 export async function getBacktests(
   params: BacktestListQuery = {}
 ): Promise<BacktestListResponse> {
-  const query = buildQuery(params);
-  const url = query
-    ? `${API_BASE_URL}/backtests?${query}`
-    : `${API_BASE_URL}/backtests`;
-
-  const res = await fetch(url, {
+  const res = await fetch(buildApiUrl("/backtests", params), {
     headers: buildHeaders(),
   });
   return handleJson<BacktestListResponse>(res);
