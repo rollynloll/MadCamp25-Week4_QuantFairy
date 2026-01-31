@@ -4,9 +4,10 @@ import MetricItem from "@/components/strategies/MetricItem";
 
 interface StrategyCardProps {
   strategy: PublicStrategyListItem;
+  onSelect?: (strategy: PublicStrategyListItem) => void;
 }
 
-export default function StrategyCard({ strategy }: StrategyCardProps) {
+export default function StrategyCard({ strategy, onSelect }: StrategyCardProps) {
   const updatedAt = new Date(strategy.updated_at);
   const isNew =
     Date.now() - updatedAt.getTime() < 7 * 24 * 60 * 60 * 1000;
@@ -20,17 +21,28 @@ export default function StrategyCard({ strategy }: StrategyCardProps) {
   const pnlPct = strategy.sample_metrics.pnl_pct;
 
   return (
-    <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6 hover:border-gray-700 transition-colors">
-      <div className="flex items-start justify-between gap-6 mb-4">
+    <div
+      className="bg-[#0d1117] border border-gray-800 rounded-lg p-6 hover:border-gray-700 transition-colors cursor-pointer"
+      role="button"
+      tabIndex={0}
+      onClick={() => onSelect?.(strategy)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect?.(strategy);
+        }
+      }}
+    >
+      <div className="flex items-start justify-between gap-6 mb-2">
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-1">
             <h3 className="text-lg font-semibold">{strategy.name}</h3>
             <span className="px-2 py-0.5 bg-gray-800 text-gray-400 text-xs rounded">
               {strategy.category}
             </span>
-            <span className="px-2 py-0.5 bg-gray-800 text-gray-400 text-xs rounded">
+            {/* <span className="px-2 py-0.5 bg-gray-800 text-gray-400 text-xs rounded">
               Risk: {strategy.risk_level}
-            </span>
+            </span> */}
             {isNew && (
               <span className="px-2 py-0.5 bg-blue-600/20 text-blue-400 text-xs rounded">
                 NEW
@@ -38,7 +50,7 @@ export default function StrategyCard({ strategy }: StrategyCardProps) {
             )}
           </div>
 
-          <p className="text-sm text-gray-400 mb-2">{strategy.one_liner}</p>
+          {/* <p className="text-sm text-gray-400 mb-2">{strategy.one_liner}</p>
 
           <div className="flex flex-wrap gap-2">
             {strategy.tags.map((tag) => (
@@ -49,12 +61,7 @@ export default function StrategyCard({ strategy }: StrategyCardProps) {
                 {tag}
               </span>
             ))}
-          </div>
-        </div>
-
-        <div className="text-right text-xs text-gray-500">
-          <div>Adds {strategy.popularity.adds_count}</div>
-          <div>Updated {updatedLabel}</div>
+          </div> */}
         </div>
       </div>
 
@@ -66,7 +73,7 @@ export default function StrategyCard({ strategy }: StrategyCardProps) {
         </span>
       </div>
 
-      <div className="grid grid-cols-4 gap-6 pt-4 border-t border-gray-800">
+      <div className="grid grid-cols-5 gap-6 pt-4 border-t border-gray-800">
         <MetricItem
           label="P&L"
           value={`$${Math.abs(pnlAmount).toFixed(2)}`}
@@ -85,6 +92,11 @@ export default function StrategyCard({ strategy }: StrategyCardProps) {
         />
         <MetricItem
           label="Win Rate"
+          value={`${strategy.sample_metrics.win_rate_pct}%`}
+          isPositive={strategy.sample_metrics.win_rate_pct > 60}
+        />
+        <MetricItem
+          label="Status"
           value={`${strategy.sample_metrics.win_rate_pct}%`}
           isPositive={strategy.sample_metrics.win_rate_pct > 60}
         />

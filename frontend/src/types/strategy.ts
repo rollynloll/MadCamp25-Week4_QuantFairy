@@ -46,3 +46,37 @@ export interface PublicStrategyListResponse {
   items: PublicStrategyListItem[];
   next_cursor: string | null;
 }
+
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
+export interface PublicStrategyRecommendedPreset {
+  name: string;
+  description?: string;
+  params: Record<string, JsonValue>;
+}
+
+export interface PublicStrategyDetail extends PublicStrategyListItem {
+  full_description: string;
+  thesis?: string;
+  rules?: string[] | string;
+  param_schema: Record<string, unknown>;
+  default_params: Record<string, JsonValue>;
+  recommended_presets: PublicStrategyRecommendedPreset[];
+}
+
+export interface PublicStrategyValidationError {
+  path: string;
+  message: string;
+  code?: string;
+}
+
+export interface PublicStrategyValidationResponse {
+  valid: boolean;
+  errors: PublicStrategyValidationError[];
+}

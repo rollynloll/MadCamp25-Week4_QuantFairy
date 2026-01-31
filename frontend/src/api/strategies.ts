@@ -1,5 +1,10 @@
 import { API_BASE_URL } from "@/api/base";
-import type { PublicStrategyListResponse, RiskLevel } from "@/types/strategy";
+import type {
+  PublicStrategyDetail,
+  PublicStrategyListResponse,
+  PublicStrategyValidationResponse,
+  RiskLevel
+} from "@/types/strategy";
 
 export interface PublicStrategiesQuery {
   limit?: number;
@@ -41,6 +46,49 @@ export async function getPublicStrategies(
     const body = await res.json().catch(() => null);
     const message =
       body?.error?.message ?? `Failed to load strategies (${res.status})`;
+    throw new Error(message);
+  }
+
+  return res.json();
+}
+
+export async function getPublicStrategy(
+  publicStrategyId: string
+): Promise<PublicStrategyDetail> {
+  const res = await fetch(
+    `${API_BASE_URL}/public-strategies/${publicStrategyId}`,
+    {
+      headers: { "Content-Type": "application/json" }
+    }
+  );
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    const message =
+      body?.error?.message ?? `Failed to load strategy (${res.status})`;
+    throw new Error(message);
+  }
+
+  return res.json();
+}
+
+export async function validatePublicStrategyParams(
+  publicStrategyId: string,
+  params: Record<string, unknown>
+): Promise<PublicStrategyValidationResponse> {
+  const res = await fetch(
+    `${API_BASE_URL}/public-strategies/${publicStrategyId}/validate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ params })
+    }
+  );
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    const message =
+      body?.error?.message ?? `Failed to validate params (${res.status})`;
     throw new Error(message);
   }
 
