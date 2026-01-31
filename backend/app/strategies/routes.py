@@ -13,9 +13,11 @@ from app.core.auth import resolve_my_user_id
 from app.core.config import get_settings
 from app.core.errors import APIError
 from app.schemas.strategies_v1 import (
+    AddPublicStrategyRequest,
     CloneMyStrategyRequest,
     CreateMyStrategyRequest,
     MyStrategyDetailResponse,
+    MyStrategy,
     PublicStrategyDetail,
     PublicStrategyListItem,
     UpdateMyStrategyRequest,
@@ -219,6 +221,56 @@ async def get_public_strategy(public_strategy_id: str):
     if not row:
         raise APIError("NOT_FOUND", "Public strategy not found", status_code=404)
     return PublicStrategyDetail.model_validate(_format_public_detail(row))
+
+
+@router.post(
+    "/public-strategies/{public_strategy_id}/add",
+    response_model=MyStrategy,
+)
+async def add_public_strategy_to_my(
+    public_strategy_id: str,
+    payload: AddPublicStrategyRequest,
+    authorization: str | None = Header(default=None, alias="Authorization"),
+):
+    settings = get_settings()
+    user_id = resolve_my_user_id(settings, authorization)
+    public_repo = PublicStrategiesRepository(settings)
+    my_repo = MyStrategiesRepository(settings)
+    public_repo.ensure_seed()
+
+    public_row = public_repo.get(public_strategy_id)
+    if not public_row:
+        raise APIError("NOT_FOUND", "Public strategy not found", status_code=404)
+
+    schema = public_row.get("param_schema", {}) or {}
+    params = payload.params or public_row.get("default_params", {}) or {}
+    errors = _validate_params(schema, params)
+    if errors:
+        raise APIError(
+            "VALIDATION_ERROR",
+            "Invalid params",
+            details=errors,
+            status_code=422,
+        )
+
+    name = payload.name or f"{public_row.get('name', 'Strategy')} copy"
+    my_strategy_id = f"my_{uuid.uuid4().hex}"
+
+    row = my_repo.create(
+        user_id,
+        {
+            "strategy_id": my_strategy_id,
+            "name": name,
+            "source_public_strategy_id": public_strategy_id,
+            "public_version_snapshot": public_row.get("version", ""),
+            "entrypoint_snapshot": public_row.get("entrypoint"),
+            "code_version_snapshot": public_row.get("code_version"),
+            "params": params,
+            "note": payload.note,
+        },
+    )
+
+    return _format_my_strategy(row)
 
 
 @router.post("/public-strategies/{public_strategy_id}/validate", response_model=ValidateParamsResponse)

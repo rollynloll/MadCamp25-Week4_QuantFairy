@@ -150,6 +150,14 @@ class MyStrategy(BaseModel):
     updated_at: str
 
 
+class AddPublicStrategyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: Optional[str] = None
+    params: Optional[Dict[str, Any]] = None
+    note: Optional[str] = None
+
+
 class CreateMyStrategyRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
