@@ -1,21 +1,23 @@
-import { Clock } from "lucide-react";
+import { Clock, Minus, Plus } from "lucide-react";
 import type { PublicStrategyListItem } from "@/types/strategy";
 import MetricItem from "@/components/strategies/MetricItem";
 
 interface StrategyCardProps {
   strategy: PublicStrategyListItem;
   onSelect?: (strategy: PublicStrategyListItem) => void;
+  onAdd?: (strategy: PublicStrategyListItem) => void;
+  onRemove?: (strategy: PublicStrategyListItem) => void;
 }
 
-export default function StrategyCard({ strategy, onSelect }: StrategyCardProps) {
+export default function StrategyCard({
+  strategy,
+  onSelect,
+  onAdd,
+  onRemove
+}: StrategyCardProps) {
   const updatedAt = new Date(strategy.updated_at);
   const isNew =
     Date.now() - updatedAt.getTime() < 7 * 24 * 60 * 60 * 1000;
-  // const updatedLabel = updatedAt.toLocaleDateString("en-US", {
-  //   month: "short",
-  //   day: "numeric",
-  //   year: "numeric",
-  // });
 
   const pnlAmount = strategy.sample_metrics.pnl_amount;
   const pnlPct = strategy.sample_metrics.pnl_pct;
@@ -34,35 +36,41 @@ export default function StrategyCard({ strategy, onSelect }: StrategyCardProps) 
       }}
     >
       <div className="flex items-start justify-between gap-6 mb-2">
-        <div className="flex-1">
+        <div className="flex justify-between">
           <div className="flex items-center gap-3 mb-1">
             <h3 className="text-lg font-semibold">{strategy.name}</h3>
             <span className="px-2 py-0.5 bg-gray-800 text-gray-400 text-xs rounded">
               {strategy.category}
             </span>
-            {/* <span className="px-2 py-0.5 bg-gray-800 text-gray-400 text-xs rounded">
-              Risk: {strategy.risk_level}
-            </span> */}
             {isNew && (
               <span className="px-2 py-0.5 bg-blue-600/20 text-blue-400 text-xs rounded">
                 NEW
               </span>
             )}
           </div>
-
-          {/* <p className="text-sm text-gray-400 mb-2">{strategy.one_liner}</p>
-
-          <div className="flex flex-wrap gap-2">
-            {strategy.tags.map((tag) => (
-              <span
-                key={tag}
-                className="px-2 py-0.5 bg-gray-800 text-gray-400 text-xs rounded"
-              >
-                {tag}
-              </span>
-            ))}
-          </div> */}
         </div>
+        {onAdd && (
+          <button
+            onClick={(event) => {
+              event.stopPropagation();
+              onAdd(strategy);
+            }}
+            aria-label="Add strategy"
+          >
+            <Plus size={17} />
+          </button>
+        )}
+        {!onAdd && onRemove && (
+          <button
+            onClick={(event) => {
+              event.stopPropagation();
+              onRemove(strategy);
+            }}
+            aria-label="Remove strategy"
+          >
+            <Minus size={17} />
+          </button>
+        )}
       </div>
 
       <div className="flex items-center gap-6 text-sm text-gray-400 mb-4">

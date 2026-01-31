@@ -80,3 +80,19 @@ export interface PublicStrategyValidationResponse {
   valid: boolean;
   errors: PublicStrategyValidationError[];
 }
+
+export interface MyStrategy {
+  my_strategy_id: string;
+  name: string;
+  source_public_strategy_id: string;
+  public_version_snapshot: string;
+  params: Record<string, JsonValue>;
+  note?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MyStrategyListResponse {
+  items: MyStrategy[];
+  next_cursor?: string | null;
+}

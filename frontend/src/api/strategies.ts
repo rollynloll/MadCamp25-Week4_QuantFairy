@@ -3,7 +3,9 @@ import type {
   PublicStrategyDetail,
   PublicStrategyListResponse,
   PublicStrategyValidationResponse,
-  RiskLevel
+  RiskLevel,
+  MyStrategy,
+  MyStrategyListResponse
 } from "@/types/strategy";
 
 export interface PublicStrategiesQuery {
@@ -71,4 +73,60 @@ export async function validatePublicStrategyParams(
   }
 
   return res.json();
+}
+
+export async function addPublicStrategyToMy(
+  publicStrategyId: string,
+  body: {
+    name?: string;
+    params?: Record<string, unknown>;
+    note?: string;
+  } = {}
+): Promise<MyStrategy> {
+  const res = await fetch(
+    buildApiUrl(`/public-strategies/${publicStrategyId}/add`),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    }
+  );
+
+  if (!res.ok) {
+    const payload = await res.json().catch(() => null);
+    const message =
+      payload?.error?.message ?? `Failed to add strategy (${res.status})`;
+    throw new Error(message);
+  }
+
+  return res.json();
+}
+
+export async function getMyStrategies(): Promise<MyStrategyListResponse> {
+  const res = await fetch(buildApiUrl("/my-strategies"), {
+    headers: { "Content-Type": "application/json" }
+  });
+
+  if (!res.ok) {
+    const payload = await res.json().catch(() => null);
+    const message =
+      payload?.error?.message ?? `Failed to load my strategies (${res.status})`;
+    throw new Error(message);
+  }
+
+  return res.json();
+}
+
+export async function deleteMyStrategy(myStrategyId: string): Promise<void> {
+  const res = await fetch(buildApiUrl(`/my-strategies/${myStrategyId}`), {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" }
+  });
+
+  if (!res.ok) {
+    const payload = await res.json().catch(() => null);
+    const message =
+      payload?.error?.message ?? `Failed to delete strategy (${res.status})`;
+    throw new Error(message);
+  }
 }

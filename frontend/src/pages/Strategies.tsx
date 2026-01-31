@@ -1,9 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import StrategyCard from "@/components/strategies/StrategyCard";
 import StrategyDetailModal from "@/components/strategies/StrategyDetailModal";
-import { getPublicStrategy } from "@/api/strategies";
+import {
+  addPublicStrategyToMy,
+  deleteMyStrategy,
+  getMyStrategies,
+  getPublicStrategy
+} from "@/api/strategies";
 import { useStrategies } from "@/hooks/useStrategies";
-import type { PublicStrategyDetail, PublicStrategyListItem } from "@/types/strategy";
+import type {
+  MyStrategy,
+  PublicStrategyDetail,
+  PublicStrategyListItem
+} from "@/types/strategy";
 
 export default function Strategies() {
   const { data, loading, error } = useStrategies();
@@ -12,13 +21,90 @@ export default function Strategies() {
   const [detail, setDetail] = useState<PublicStrategyDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
-  const isPrivateStrategy = (strategy: PublicStrategyListItem) =>
-    strategy.author?.type === "user";
+  const [myStrategies, setMyStrategies] = useState<MyStrategy[]>([]);
+  const [myLoading, setMyLoading] = useState(false);
+  const [myError, setMyError] = useState<string | null>(null);
   const filteredData = useMemo(() => {
-    if (!data) return [];
-    if (scope === "public") return data;
-    return data.filter(isPrivateStrategy);
-  }, [data, scope]);
+    if (scope === "public") return data ?? [];
+    const byPublicId = new Map(
+      (data ?? []).map((item) => [item.public_strategy_id, item])
+    );
+    return myStrategies
+      .map((myItem) => byPublicId.get(myItem.source_public_strategy_id))
+      .filter(Boolean) as PublicStrategyListItem[];
+  }, [data, scope, myStrategies]);
+
+  const myStrategyIdByPublicId = useMemo(() => {
+    const map = new Map<string, string>();
+    myStrategies.forEach((item) => {
+      if (!map.has(item.source_public_strategy_id)) {
+        map.set(item.source_public_strategy_id, item.my_strategy_id);
+      }
+    });
+    return map;
+  }, [myStrategies]);
+
+  const handleAddToMy = (strategy: PublicStrategyListItem) => {
+    setMyError(null);
+    addPublicStrategyToMy(strategy.public_strategy_id)
+      .then((created) => {
+        setMyStrategies((prev) => {
+          if (prev.some((item) => item.my_strategy_id === created.my_strategy_id)) {
+            return prev;
+          }
+          return [created, ...prev];
+        });
+      })
+      .catch((err) => {
+        setMyError(err instanceof Error ? err.message : "Failed to add strategy");
+      });
+  };
+
+  const handleRemoveFromMy = (strategy: PublicStrategyListItem) => {
+    const myId = myStrategyIdByPublicId.get(strategy.public_strategy_id);
+    if (!myId) return;
+    setMyError(null);
+    deleteMyStrategy(myId)
+      .then(() => {
+        setMyStrategies((prev) =>
+          prev.filter((item) => item.my_strategy_id !== myId)
+        );
+      })
+      .catch((err) => {
+        setMyError(
+          err instanceof Error ? err.message : "Failed to remove strategy"
+        );
+      });
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+    setMyLoading(true);
+    setMyError(null);
+
+    getMyStrategies()
+      .then((result) => {
+        if (isMounted) {
+          setMyStrategies(result.items);
+        }
+      })
+      .catch((err) => {
+        if (isMounted) {
+          setMyError(
+            err instanceof Error ? err.message : "Failed to load my strategies"
+          );
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setMyLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!selected) {
@@ -117,7 +203,11 @@ export default function Strategies() {
         </div>
       </div>
 
-      {filteredData.length === 0 ? (
+      {scope === "private" && myLoading ? (
+        <div className="text-sm text-gray-400">Loading my strategies...</div>
+      ) : scope === "private" && myError ? (
+        <div className="text-sm text-red-400">{myError}</div>
+      ) : filteredData.length === 0 ? (
         <div className="rounded-lg border border-gray-800 bg-[#0d1117] p-6 text-sm text-gray-400">
           {scope === "private"
             ? "No private strategies found."
@@ -130,6 +220,8 @@ export default function Strategies() {
               key={strategy.public_strategy_id}
               strategy={strategy}
               onSelect={(item) => setSelected(item)}
+              onAdd={scope === "public" ? handleAddToMy : undefined}
+              onRemove={scope === "private" ? handleRemoveFromMy : undefined}
             />
           ))}
         </div>
@@ -146,5 +238,3 @@ export default function Strategies() {
     </div>
   );
 }
-
-
