@@ -242,6 +242,10 @@ async def add_public_strategy_to_my(
     if not public_row:
         raise APIError("NOT_FOUND", "Public strategy not found", status_code=404)
 
+    existing = my_repo.get_by_source(user_id, public_strategy_id)
+    if existing:
+        raise APIError("CONFLICT", "Strategy already added", status_code=409)
+
     schema = public_row.get("param_schema", {}) or {}
     params = payload.params or public_row.get("default_params", {}) or {}
     errors = _validate_params(schema, params)
@@ -254,7 +258,7 @@ async def add_public_strategy_to_my(
         )
 
     name = payload.name or f"{public_row.get('name', 'Strategy')} copy"
-    my_strategy_id = f"my_{uuid.uuid4().hex}"
+    my_strategy_id = f"my_{public_strategy_id}"
 
     row = my_repo.create(
         user_id,
@@ -267,6 +271,7 @@ async def add_public_strategy_to_my(
             "code_version_snapshot": public_row.get("code_version"),
             "params": params,
             "note": payload.note,
+            "state": "idle",
         },
     )
 
