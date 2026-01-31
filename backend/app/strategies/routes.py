@@ -94,7 +94,7 @@ def _format_public_detail(row: dict) -> dict:
 
 def _format_my_strategy(row: dict) -> dict:
     return {
-        "my_strategy_id": row["my_strategy_id"],
+        "my_strategy_id": row["strategy_id"],
         "name": row.get("name", ""),
         "source_public_strategy_id": row.get("source_public_strategy_id", ""),
         "public_version_snapshot": row.get("public_version_snapshot", ""),
@@ -218,10 +218,12 @@ async def create_my_strategy(
     row = my_repo.create(
         user_id,
         {
-            "my_strategy_id": my_strategy_id,
+            "strategy_id": my_strategy_id,
             "name": name,
             "source_public_strategy_id": payload.source_public_strategy_id,
             "public_version_snapshot": public_row.get("version", ""),
+            "entrypoint_snapshot": public_row.get("entrypoint"),
+            "code_version_snapshot": public_row.get("code_version"),
             "params": payload.params,
             "note": payload.note,
         },
@@ -378,10 +380,12 @@ async def clone_my_strategy(
     row = my_repo.create(
         user_id,
         {
-            "my_strategy_id": new_id,
+            "strategy_id": new_id,
             "name": payload.name,
             "source_public_strategy_id": current.get("source_public_strategy_id"),
             "public_version_snapshot": current.get("public_version_snapshot"),
+            "entrypoint_snapshot": current.get("entrypoint_snapshot"),
+            "code_version_snapshot": current.get("code_version_snapshot"),
             "params": params,
             "note": current.get("note"),
         },
@@ -410,6 +414,8 @@ async def upgrade_my_strategy(
 
     updates: dict[str, Any] = {
         "public_version_snapshot": public_row.get("version", current.get("public_version_snapshot")),
+        "entrypoint_snapshot": public_row.get("entrypoint", current.get("entrypoint_snapshot")),
+        "code_version_snapshot": public_row.get("code_version", current.get("code_version_snapshot")),
     }
 
     updated = my_repo.update(user_id, my_strategy_id, updates)

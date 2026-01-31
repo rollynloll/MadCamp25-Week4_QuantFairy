@@ -23,7 +23,7 @@ class MyStrategiesRepository:
         if self.supabase is None:
             return []
         query = (
-            self.supabase.table("my_strategies")
+            self.supabase.table("user_strategies")
             .select("*")
             .eq("user_id", user_id)
         )
@@ -40,24 +40,27 @@ class MyStrategiesRepository:
 
         query = query.order(sort, desc=(order == "desc")).limit(limit)
         result = query.execute()
-        data = getattr(result, "data", None)
-        return data or []
+        data = getattr(result, "data", None) or []
+        return [row for row in data if row.get("source_public_strategy_id")]
 
     def get(self, user_id: str, my_strategy_id: str) -> Optional[Dict[str, Any]]:
         if self.supabase is None:
             return None
         try:
             result = (
-                self.supabase.table("my_strategies")
+                self.supabase.table("user_strategies")
                 .select("*")
                 .eq("user_id", user_id)
-                .eq("my_strategy_id", my_strategy_id)
+                .eq("strategy_id", my_strategy_id)
                 .limit(1)
                 .execute()
             )
             data = getattr(result, "data", None)
             if data:
-                return data[0]
+                row = data[0]
+                if not row.get("source_public_strategy_id"):
+                    return None
+                return row
         except Exception:
             return None
         return None
@@ -71,7 +74,7 @@ class MyStrategiesRepository:
         }
         if self.supabase is None:
             return row
-        self.supabase.table("my_strategies").insert(row).execute()
+        self.supabase.table("user_strategies").insert(row).execute()
         return row
 
     def update(self, user_id: str, my_strategy_id: str, payload: Dict[str, Any]) -> Dict[str, Any] | None:
@@ -79,10 +82,10 @@ class MyStrategiesRepository:
         if self.supabase is None:
             return None
         result = (
-            self.supabase.table("my_strategies")
+            self.supabase.table("user_strategies")
             .update(payload)
             .eq("user_id", user_id)
-            .eq("my_strategy_id", my_strategy_id)
+            .eq("strategy_id", my_strategy_id)
             .execute()
         )
         data = getattr(result, "data", None)
@@ -93,6 +96,6 @@ class MyStrategiesRepository:
     def delete(self, user_id: str, my_strategy_id: str) -> None:
         if self.supabase is None:
             return
-        self.supabase.table("my_strategies").delete().eq("user_id", user_id).eq(
-            "my_strategy_id", my_strategy_id
+        self.supabase.table("user_strategies").delete().eq("user_id", user_id).eq(
+            "strategy_id", my_strategy_id
         ).execute()
