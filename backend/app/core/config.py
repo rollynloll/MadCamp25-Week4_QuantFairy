@@ -19,6 +19,7 @@ class Settings:
     supabase_url: str | None
     supabase_service_role_key: str | None
     default_user_id: str | None
+    api_token: str | None
     allow_live_trading: bool
     cors_origins: List[str]
 
@@ -46,6 +47,7 @@ def get_settings() -> Settings:
         supabase_url=os.getenv("SUPABASE_URL"),
         supabase_service_role_key=os.getenv("SUPABASE_SERVICE_ROLE_KEY"),
         default_user_id=os.getenv("DEFAULT_USER_ID"),
+        api_token=os.getenv("API_TOKEN"),
         allow_live_trading=_get_bool("ALLOW_LIVE_TRADING", False),
         cors_origins=_get_list(
             "CORS_ORIGINS",
