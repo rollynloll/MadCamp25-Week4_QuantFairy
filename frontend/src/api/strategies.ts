@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "@/api/base";
+import { buildApiUrl } from "@/api/base";
 import type {
   PublicStrategyDetail,
   PublicStrategyListResponse,
@@ -17,26 +17,10 @@ export interface PublicStrategiesQuery {
   order?: "asc" | "desc";
 }
 
-function buildQuery(params: PublicStrategiesQuery) {
-  const search = new URLSearchParams();
-  if (params.limit !== undefined) search.set("limit", String(params.limit));
-  if (params.cursor) search.set("cursor", params.cursor);
-  if (params.q) search.set("q", params.q);
-  if (params.tag) search.set("tag", params.tag);
-  if (params.category) search.set("category", params.category);
-  if (params.risk_level) search.set("risk_level", params.risk_level);
-  if (params.sort) search.set("sort", params.sort);
-  if (params.order) search.set("order", params.order);
-  return search.toString();
-}
-
 export async function getPublicStrategies(
   params: PublicStrategiesQuery = {}
 ): Promise<PublicStrategyListResponse> {
-  const query = buildQuery(params);
-  const url = query
-    ? `${API_BASE_URL}/public-strategies?${query}`
-    : `${API_BASE_URL}/public-strategies`;
+  const url = buildApiUrl("/public-strategies", params);
 
   const res = await fetch(url, {
     headers: { "Content-Type": "application/json" },
@@ -55,12 +39,9 @@ export async function getPublicStrategies(
 export async function getPublicStrategy(
   publicStrategyId: string
 ): Promise<PublicStrategyDetail> {
-  const res = await fetch(
-    `${API_BASE_URL}/public-strategies/${publicStrategyId}`,
-    {
-      headers: { "Content-Type": "application/json" }
-    }
-  );
+  const res = await fetch(buildApiUrl(`/public-strategies/${publicStrategyId}`), {
+    headers: { "Content-Type": "application/json" }
+  });
 
   if (!res.ok) {
     const body = await res.json().catch(() => null);
@@ -76,14 +57,11 @@ export async function validatePublicStrategyParams(
   publicStrategyId: string,
   params: Record<string, unknown>
 ): Promise<PublicStrategyValidationResponse> {
-  const res = await fetch(
-    `${API_BASE_URL}/public-strategies/${publicStrategyId}/validate`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ params })
-    }
-  );
+  const res = await fetch(buildApiUrl(`/public-strategies/${publicStrategyId}/validate`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ params })
+  });
 
   if (!res.ok) {
     const body = await res.json().catch(() => null);
