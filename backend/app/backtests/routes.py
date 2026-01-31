@@ -118,7 +118,6 @@ def _validate_spec(payload: BacktestCreateRequest) -> List[Dict[str, str]]:
     if mode == "ensemble":
         if not payload.ensemble or not payload.ensemble.weights:
             errors.append({"field": "ensemble.weights", "reason": "required"})
-
     if payload.benchmarks:
         supported = {item["symbol"] for item in BENCHMARKS}
         for idx, bench in enumerate(payload.benchmarks):

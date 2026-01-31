@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple
 
-from app.services.data_provider import load_price_series, trading_days
+from app.services.data_provider import load_price_series, parse_date, trading_days
 from app.services.metrics import compute_drawdown, compute_metrics, compute_returns
 
 
@@ -108,10 +108,7 @@ def _simulate_portfolio(
         if _is_rebalance_day(idx, rebalance):
             new_weights = weight_fn(idx, date)
             new_weights = _normalize_weights(new_weights)
-            turnover = sum(
-                abs(new_weights.get(k, 0.0) - weights.get(k, 0.0))
-                for k in set(new_weights) | set(weights)
-            )
+            turnover = sum(abs(new_weights.get(k, 0.0) - weights.get(k, 0.0)) for k in set(new_weights) | set(weights))
             cost = turnover * (fee_bps + slippage_bps) / 10000
             equity *= 1 - cost
             weights = new_weights
@@ -119,6 +116,7 @@ def _simulate_portfolio(
         else:
             turnovers.append(0.0)
 
+        # compute daily return
         daily_ret = 0.0
         for ticker, w in weights.items():
             series = prices.get(ticker, {})
@@ -216,6 +214,8 @@ def run_ensemble_backtest(
             "metrics": compute_metrics(empty_curve, benchmark_curve=benchmark_curve),
             "positions_summary": {"avg_positions": 0, "max_positions": 0},
         }
+
+    strategy_weight_maps: Dict[str, Dict[str, float]] = {}
 
     def make_weight_fn(ctx: StrategyContext):
         lookback = int(ctx.params.get("lookback", 60))

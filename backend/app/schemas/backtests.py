@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ErrorDetail(BaseModel):
@@ -92,6 +92,13 @@ class Metrics(BaseModel):
     tracking_error_pct: float
     information_ratio: float
     turnover_pct: float
+
+
+class SeriesPoint(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    date: str
+    value: float
 
 
 class BacktestResultItem(BaseModel):
