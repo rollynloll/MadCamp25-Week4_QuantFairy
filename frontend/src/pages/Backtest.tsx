@@ -5,21 +5,36 @@ import BacktestConfig from "@/components/backtest/BacktestConfig";
 import BacktestMetrics from "@/components/backtest/BacktestMetrics";
 import EquityCurveChart from "@/components/backtest/EquityCurveChart";
 import MonthlyReturnsChart from "@/components/backtest/MonthlyReturnsChart";
-import type { ApiEquityPoint, ApiReturnPoint, BacktestConfigData, BacktestJob, BacktestMetric, BacktestResultsResponse, EquityPoint, MonthlyReturn } from "@/types/backtest";
-import { getBacktestJob, getBacktestResults, getBacktests } from "@/api/backtests";
-
+import type {
+  ApiEquityPoint,
+  ApiReturnPoint,
+  BacktestJob,
+  BacktestMetric,
+  BacktestResultsResponse,
+  EquityPoint,
+  MonthlyReturn
+} from "@/types/backtest";
+import type { MyStrategy } from "@/types/strategy";
+import { createBacktest, getBacktestJob, getBacktestResults, getBacktests } from "@/api/backtests";
+import { getMyStrategies } from "@/api/strategies";
 
 const POLL_MS = 2000;
+const DEFAULT_CONFIG = {
+  initial_capital: 100000,
+  commission: 0.001,
+  slippage: 0.0005
+};
+const DEFAULT_PERIOD = {
+  start: "2024-01-01",
+  end: "2024-12-31"
+};
+const DEFAULT_UNIVERSE = { type: "PRESET" as const, preset_id: "US_CORE_20" };
+const DEFAULT_BENCHMARKS = [{ symbol: "CASH" }];
 
 function formatPct(value?: number, digits = 1) {
   if (value === undefined || value === null || Number.isNaN(value)) return "-";
   const sign = value > 0 ? "+" : "";
   return `${sign}${value.toFixed(digits)}%`;
-}
-
-function formatNumber(value?: number) {
-  if (value === undefined || value === null || Number.isNaN(value)) return "-";
-  return value.toLocaleString();
 }
 
 function pickPrimaryResult(payload: BacktestResultsResponse) {
@@ -64,15 +79,6 @@ function buildMetrics(payload: BacktestResultsResponse): BacktestMetric[] {
   ];
 }
 
-function buildConfig(job?: BacktestJob): BacktestConfigData {
-  const spec = job?.spec;
-  const strategy = job?.strategies?.[0]?.id ?? job?.strategies?.[0]?.label ?? "-";
-  const initialCapital = spec?.initial_cash ? `$${formatNumber(spec.initial_cash)}` : "-";
-  const commission = spec?.fee_bps !== undefined ? `${spec.fee_bps} bps` : "-";
-  const slippage = spec?.slippage_bps !== undefined ? `${spec.slippage_bps} bps` : "-";
-  return { strategy, initialCapital, commission, slippage };
-}
-
 export default function Backtest() {
   const [searchParams] = useSearchParams();
   const backtestIdParam = searchParams.get("id");
@@ -83,6 +89,47 @@ export default function Backtest() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isEmpty, setIsEmpty] = useState(false);
+  const [myStrategies, setMyStrategies] = useState<MyStrategy[]>([]);
+  const [selectedStrategyId, setSelectedStrategyId] = useState<string>("");
+  const [initialCapitalInput, setInitialCapitalInput] = useState(
+    String(DEFAULT_CONFIG.initial_capital)
+  );
+  const [commissionInput, setCommissionInput] = useState(
+    String(DEFAULT_CONFIG.commission)
+  );
+  const [slippageInput, setSlippageInput] = useState(String(DEFAULT_CONFIG.slippage));
+  const [hasEditedConfig, setHasEditedConfig] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [periodStart, setPeriodStart] = useState(DEFAULT_PERIOD.start);
+  const [periodEnd, setPeriodEnd] = useState(DEFAULT_PERIOD.end);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadMyStrategies = async () => {
+      try {
+        const res = await getMyStrategies();
+        if (!cancelled) {
+          setMyStrategies(res.items ?? []);
+        }
+      } catch {
+        if (!cancelled) {
+          setMyStrategies([]);
+        }
+      }
+    };
+
+    loadMyStrategies();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (selectedStrategyId || myStrategies.length === 0) return;
+    setSelectedStrategyId(myStrategies[0].my_strategy_id);
+  }, [myStrategies, selectedStrategyId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -163,26 +210,119 @@ export default function Backtest() {
     };
   }, [resolvedId]);
 
-  if (loading && !results && !isEmpty) {
+  useEffect(() => {
+    if (!job || hasEditedConfig) return;
+    setInitialCapitalInput(String(job.spec?.initial_cash ?? DEFAULT_CONFIG.initial_capital));
+    setCommissionInput(String(job.spec?.fee_bps ?? DEFAULT_CONFIG.commission));
+    setSlippageInput(String(job.spec?.slippage_bps ?? DEFAULT_CONFIG.slippage));
+    if (job.spec?.period_start) {
+      setPeriodStart(job.spec.period_start);
+    }
+    if (job.spec?.period_end) {
+      setPeriodEnd(job.spec.period_end);
+    }
+    const jobStrategyId = job.strategies?.find((s) => s.type === "my")?.id;
+    if (jobStrategyId) {
+      setSelectedStrategyId(jobStrategyId);
+    }
+  }, [job, hasEditedConfig]);
+
+  if (loading && !results && !isEmpty && !job) {
     return (
       <div className="space-y-6">
-        <BacktestHeader />
+        <BacktestHeader
+          rangeLabel={`${DEFAULT_PERIOD.start} to ${DEFAULT_PERIOD.end}`}
+          startDate={periodStart}
+          endDate={periodEnd}
+          onStartDateChange={(value) => setPeriodStart(value)}
+          onEndDateChange={(value) => setPeriodEnd(value)}
+          rangeDisabled
+        />
         <div className="text-sm text-gray-400">Loading backtest...</div>
       </div>
     );
   }
 
-  if (error) {
+  if (error && !job && !results) {
     return (
       <div className="space-y-6">
-        <BacktestHeader />
+        <BacktestHeader
+          rangeLabel={`${DEFAULT_PERIOD.start} to ${DEFAULT_PERIOD.end}`}
+          startDate={periodStart}
+          endDate={periodEnd}
+          onStartDateChange={(value) => setPeriodStart(value)}
+          onEndDateChange={(value) => setPeriodEnd(value)}
+          rangeDisabled
+        />
         <div className="text-sm text-red-400">{error}</div>
       </div>
     );
   }
 
   const metrics = results ? buildMetrics(results) : [];
-  const config = buildConfig(job ?? undefined);
+  const strategyOptions = myStrategies.map((strategy) => ({
+    value: strategy.my_strategy_id,
+    label: strategy.name
+  }));
+  const isRunning = job?.status === "queued" || job?.status === "running";
+  const progressLabel =
+    job?.progress !== undefined && job?.progress !== null
+      ? `${job.progress}%`
+      : "";
+  const jobError = job?.error;
+
+  const parseNumberInput = (value: string, fallback: number) => {
+    const cleaned = value.replace(/[^0-9.-]/g, "");
+    const parsed = Number(cleaned);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
+  const handleRunBacktest = async () => {
+    if (!selectedStrategyId) {
+      setError("전략을 선택해주세요.");
+      return;
+    }
+    if (periodStart && periodEnd && periodStart > periodEnd) {
+      setError("기간을 확인해주세요.");
+      return;
+    }
+
+    setError(null);
+    setIsEmpty(false);
+    setResults(null);
+    setJob(null);
+    setLoading(true);
+    setIsSubmitting(true);
+
+    try {
+      const payload = {
+        mode: "single" as const,
+        spec: {
+          period_start: periodStart,
+          period_end: periodEnd,
+          timeframe: "1D" as const,
+          initial_cash: parseNumberInput(initialCapitalInput, DEFAULT_CONFIG.initial_capital),
+          fee_bps: parseNumberInput(commissionInput, DEFAULT_CONFIG.commission),
+          slippage_bps: parseNumberInput(slippageInput, DEFAULT_CONFIG.slippage),
+          rebalance: "monthly" as const,
+          universe: DEFAULT_UNIVERSE,
+          price_field: "adj_close" as const,
+          currency: "USD" as const
+        },
+        strategies: [{ type: "my" as const, id: selectedStrategyId }],
+        benchmarks: DEFAULT_BENCHMARKS
+      };
+
+      const created = await createBacktest(payload);
+      setResolvedId(created.backtest_id);
+      setJob(created);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start backtest");
+    } finally {
+      setIsSubmitting(false);
+      setLoading(false);
+    }
+  };
 
   const primaryResult = results ? pickPrimaryResult(results) : undefined;
   const benchmark = results?.benchmarks?.[0];
@@ -196,8 +336,71 @@ export default function Backtest() {
 
   return (
     <div className="space-y-6">
-      <BacktestHeader />
-      <BacktestConfig config={config} />
+      <BacktestHeader
+        rangeLabel={`${DEFAULT_PERIOD.start} to ${DEFAULT_PERIOD.end}`}
+        startDate={periodStart}
+        endDate={periodEnd}
+        onStartDateChange={(value) => {
+          setHasEditedConfig(true);
+          setPeriodStart(value);
+        }}
+        onEndDateChange={(value) => {
+          setHasEditedConfig(true);
+          setPeriodEnd(value);
+        }}
+        rangeDisabled={isSubmitting || isRunning}
+        onRun={handleRunBacktest}
+        runDisabled={isSubmitting || isRunning || !selectedStrategyId}
+      />
+      {error && (
+        <div className="text-sm text-red-400">{error}</div>
+      )}
+      {isRunning && (
+        <div className="text-sm text-gray-400">
+          Backtest {job?.status} {progressLabel && `· ${progressLabel}`}
+        </div>
+      )}
+      {job?.status === "failed" && (
+        <div className="text-sm text-red-400 space-y-1">
+          <div>
+            Backtest failed{jobError?.message ? `: ${jobError.message}` : "."}
+          </div>
+          {jobError?.detail && (
+            <div className="text-xs text-red-300">{jobError.detail}</div>
+          )}
+          {jobError?.details?.length ? (
+            <div className="text-xs text-red-300">
+              {jobError.details.map((d) => `${d.field}: ${d.reason}`).join(" · ")}
+            </div>
+          ) : null}
+        </div>
+      )}
+      {job?.status === "canceled" && (
+        <div className="text-sm text-gray-400">Backtest canceled.</div>
+      )}
+      <BacktestConfig
+        strategies={strategyOptions}
+        selectedStrategyId={selectedStrategyId}
+        onStrategyChange={(value) => {
+          setHasEditedConfig(true);
+          setSelectedStrategyId(value);
+        }}
+        initialCapital={initialCapitalInput}
+        onInitialCapitalChange={(value) => {
+          setHasEditedConfig(true);
+          setInitialCapitalInput(value);
+        }}
+        commission={commissionInput}
+        onCommissionChange={(value) => {
+          setHasEditedConfig(true);
+          setCommissionInput(value);
+        }}
+        slippage={slippageInput}
+        onSlippageChange={(value) => {
+          setHasEditedConfig(true);
+          setSlippageInput(value);
+        }}
+      />
       <BacktestMetrics metrics={metrics} />
       <EquityCurveChart data={equityCurve} />
       <MonthlyReturnsChart data={monthlyReturns} />

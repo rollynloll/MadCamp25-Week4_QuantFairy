@@ -1,4 +1,4 @@
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import type { MonthlyReturn } from "@/types/backtest";
 
 export default function MonthlyReturnsChart({ data }: { data: MonthlyReturn[] }) {
@@ -18,7 +18,11 @@ export default function MonthlyReturnsChart({ data }: { data: MonthlyReturn[] })
               fontSize: 12,
             }}
           />
-          <Bar dataKey="return" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="return" radius={[4, 4, 0, 0]}>
+            {data.map((entry, index) => (
+              <Cell key={`cell-${index}`} fill={entry.return >= 0 ? "#ef4444" : "#3b82f6"} />
+            ))}
+          </Bar>
         </BarChart>
       </ResponsiveContainer>
     </div>

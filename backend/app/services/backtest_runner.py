@@ -59,7 +59,7 @@ def build_price_frame(price_series: Dict[str, Dict[str, float]]) -> pd.DataFrame
         for date, price in series.items():
             rows.append({"date": date, "symbol": symbol, "adj_close": price})
     if not rows:
-        return pd.DataFrame(columns=["adj_close"]).set_index(["date", "symbol"])
+        return pd.DataFrame(columns=["date", "symbol", "adj_close"]).set_index(["date", "symbol"])
     df = pd.DataFrame(rows)
     df["date"] = pd.to_datetime(df["date"])
     df = df.set_index(["date", "symbol"]).sort_index()
@@ -107,7 +107,29 @@ def run_backtest(
 
     symbols = list({*universe, *( [benchmark_symbol] if benchmark_symbol else [] )})
     price_series = load_price_series(symbols, start_date, end_date, "adj_close")
+    if not price_series or all(not series for series in price_series.values()):
+        raise APIError(
+            "DATA_NOT_FOUND",
+            "No market prices found",
+            detail=f"{start_date} to {end_date}",
+            status_code=404,
+        )
+    target_symbol = params.get("symbol")
+    if target_symbol and not price_series.get(str(target_symbol).upper(), {}):
+        raise APIError(
+            "DATA_NOT_FOUND",
+            f"No prices for symbol {target_symbol}",
+            detail=f"{start_date} to {end_date}",
+            status_code=404,
+        )
     prices_df = build_price_frame(price_series)
+    if prices_df.empty:
+        raise APIError(
+            "DATA_NOT_FOUND",
+            "No market prices found",
+            detail=f"{start_date} to {end_date}",
+            status_code=404,
+        )
 
     strategy = get_strategy(entrypoint)
     ctx = StrategyContext(
