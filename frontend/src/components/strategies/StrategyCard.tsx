@@ -11,11 +11,11 @@ export default function StrategyCard({ strategy, onSelect }: StrategyCardProps) 
   const updatedAt = new Date(strategy.updated_at);
   const isNew =
     Date.now() - updatedAt.getTime() < 7 * 24 * 60 * 60 * 1000;
-  const updatedLabel = updatedAt.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  // const updatedLabel = updatedAt.toLocaleDateString("en-US", {
+  //   month: "short",
+  //   day: "numeric",
+  //   year: "numeric",
+  // });
 
   const pnlAmount = strategy.sample_metrics.pnl_amount;
   const pnlPct = strategy.sample_metrics.pnl_pct;
