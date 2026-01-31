@@ -32,7 +32,10 @@ export default function Strategies() {
 
       <div className="space-y-4">
         {data.map((strategy) => (
-          <StrategyCard key={strategy.id} strategy={strategy} />
+          <StrategyCard
+            key={strategy.public_strategy_id}
+            strategy={strategy}
+          />
         ))}
       </div>
     </div>

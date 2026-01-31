@@ -1,88 +1,92 @@
-import { Pause, Play, Settings, Clock } from "lucide-react";
-import type { Strategy } from "@/types/strategy";
+import { Clock } from "lucide-react";
+import type { PublicStrategyListItem } from "@/types/strategy";
 import MetricItem from "@/components/strategies/MetricItem";
 
 interface StrategyCardProps {
-  strategy: Strategy;
+  strategy: PublicStrategyListItem;
 }
 
 export default function StrategyCard({ strategy }: StrategyCardProps) {
+  const updatedAt = new Date(strategy.updated_at);
+  const isNew =
+    Date.now() - updatedAt.getTime() < 7 * 24 * 60 * 60 * 1000;
+  const updatedLabel = updatedAt.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+
+  const pnlAmount = strategy.sample_metrics.pnl_amount;
+  const pnlPct = strategy.sample_metrics.pnl_pct;
+
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6 hover:border-gray-700 transition-colors">
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-start gap-4 flex-1">
-          <div className="pt-1">
-            <div
-              className={`w-3 h-3 rounded-full ${
-                strategy.status === "running"
-                  ? "bg-green-500 animate-pulse"
-                  : strategy.status === "paused"
-                  ? "bg-yellow-500"
-                  : "bg-gray-600"
-              }`}
-            />
+      <div className="flex items-start justify-between gap-6 mb-4">
+        <div className="flex-1">
+          <div className="flex items-center gap-3 mb-1">
+            <h3 className="text-lg font-semibold">{strategy.name}</h3>
+            <span className="px-2 py-0.5 bg-gray-800 text-gray-400 text-xs rounded">
+              {strategy.category}
+            </span>
+            <span className="px-2 py-0.5 bg-gray-800 text-gray-400 text-xs rounded">
+              Risk: {strategy.risk_level}
+            </span>
+            {isNew && (
+              <span className="px-2 py-0.5 bg-blue-600/20 text-blue-400 text-xs rounded">
+                NEW
+              </span>
+            )}
           </div>
 
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-1">
-              <h3 className="text-lg font-semibold">{strategy.name}</h3>
-              <span className="px-2 py-0.5 bg-gray-800 text-gray-400 text-xs rounded">
-                {strategy.type}
+          <p className="text-sm text-gray-400 mb-2">{strategy.one_liner}</p>
+
+          <div className="flex flex-wrap gap-2">
+            {strategy.tags.map((tag) => (
+              <span
+                key={tag}
+                className="px-2 py-0.5 bg-gray-800 text-gray-400 text-xs rounded"
+              >
+                {tag}
               </span>
-            </div>
-            <div className="flex items-center gap-6 text-sm text-gray-400">
-              <span>{strategy.trades} trades</span>
-              <span>Win rate: {strategy.winRate}%</span>
-              <span className="flex items-center gap-1">
-                <Clock className="w-3 h-3" />
-                Avg hold: {strategy.avgHoldTime}
-              </span>
-            </div>
+            ))}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {strategy.status === "running" ? (
-            <button className="p-2 hover:bg-gray-800 rounded transition-colors">
-              <Pause className="w-4 h-4" />
-            </button>
-          ) : (
-            <button className="p-2 hover:bg-gray-800 rounded transition-colors">
-              <Play className="w-4 h-4" />
-            </button>
-          )}
-          <button className="p-2 hover:bg-gray-800 rounded transition-colors">
-            <Settings className="w-4 h-4" />
-          </button>
+        <div className="text-right text-xs text-gray-500">
+          <div>Adds {strategy.popularity.adds_count}</div>
+          <div>Updated {updatedLabel}</div>
         </div>
       </div>
 
-      <div className="grid grid-cols-5 gap-6 pt-4 border-t border-gray-800">
+      <div className="flex items-center gap-6 text-sm text-gray-400 mb-4">
+        <span>{strategy.sample_trade_stats.trades_count} trades</span>
+        <span className="flex items-center gap-1">
+          <Clock className="w-3 h-3" />
+          Avg hold: {strategy.sample_trade_stats.avg_hold_hours}h
+        </span>
+      </div>
+
+      <div className="grid grid-cols-4 gap-6 pt-4 border-t border-gray-800">
         <MetricItem
           label="P&L"
-          value={`$${Math.abs(strategy.pnl).toFixed(2)}`}
-          subValue={`${strategy.pnlPct >= 0 ? "+" : ""}${strategy.pnlPct}%`}
-          isPositive={strategy.pnl >= 0}
+          value={`$${Math.abs(pnlAmount).toFixed(2)}`}
+          subValue={`${pnlPct >= 0 ? "+" : ""}${pnlPct}%`}
+          isPositive={pnlAmount >= 0}
         />
         <MetricItem
-          label="Sharpe Ratio"
-          value={strategy.sharpe.toFixed(2)}
-          isPositive={strategy.sharpe > 1.5}
+          label="Sharpe"
+          value={strategy.sample_metrics.sharpe.toFixed(2)}
+          isPositive={strategy.sample_metrics.sharpe > 1.5}
         />
         <MetricItem
-          label="Max Drawdown"
-          value={`${strategy.maxDrawdown}%`}
+          label="Max DD"
+          value={`${strategy.sample_metrics.max_drawdown_pct}%`}
           isPositive={false}
         />
         <MetricItem
           label="Win Rate"
-          value={`${strategy.winRate}%`}
-          isPositive={strategy.winRate > 60}
-        />
-        <MetricItem
-          label="Status"
-          value={`${strategy.status.charAt(0).toUpperCase()}${strategy.status.slice(1)}`}
-          isPositive={strategy.status === "running"}
+          value={`${strategy.sample_metrics.win_rate_pct}%`}
+          isPositive={strategy.sample_metrics.win_rate_pct > 60}
         />
       </div>
     </div>
