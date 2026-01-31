@@ -6,7 +6,7 @@ import BacktestMetrics from "@/components/backtest/BacktestMetrics";
 import EquityCurveChart from "@/components/backtest/EquityCurveChart";
 import MonthlyReturnsChart from "@/components/backtest/MonthlyReturnsChart";
 import type { ApiEquityPoint, ApiReturnPoint, BacktestConfigData, BacktestJob, BacktestMetric, BacktestResultsResponse, EquityPoint, MonthlyReturn } from "@/types/backtest";
-import { getBacktestJob, getBacktestResults, getBacktests, hasAuthToken } from "@/api/backtests";
+import { getBacktestJob, getBacktestResults, getBacktests } from "@/api/backtests";
 
 
 const POLL_MS = 2000;
@@ -82,10 +82,12 @@ export default function Backtest() {
   const [results, setResults] = useState<BacktestResultsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isEmpty, setIsEmpty] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setError(null);
+    setIsEmpty(false);
     setResolvedId(null);
     setJob(null);
     setResults(null);
@@ -97,17 +99,12 @@ export default function Backtest() {
 
     const resolveLatest = async () => {
       try {
-        if (!hasAuthToken()) {
-          setError("Missing auth token. Provide ?id=... or login to view backtests.");
-          setLoading(false);
-          return;
-        }
         setLoading(true);
         const list = await getBacktests({ limit: 1, sort: "created_at", order: "desc" });
         if (cancelled) return;
         const latestId = list.items[0]?.backtest_id ?? null;
         if (!latestId) {
-          setError("No backtests yet.");
+          setIsEmpty(true);
           setLoading(false);
           return;
         }
@@ -138,9 +135,9 @@ export default function Backtest() {
         setLoading(true);
         const jobRes = await getBacktestJob(resolvedId);
         if (cancelled) return;
-        setJob(jobRes.job);
+        setJob(jobRes);
 
-        if (jobRes.job.status === "done") {
+        if (jobRes.status === "done") {
           const resultsRes = await getBacktestResults(resolvedId);
           if (cancelled) return;
           setResults(resultsRes);
@@ -166,7 +163,7 @@ export default function Backtest() {
     };
   }, [resolvedId]);
 
-  if (loading && !results) {
+  if (loading && !results && !isEmpty) {
     return (
       <div className="space-y-6">
         <BacktestHeader />

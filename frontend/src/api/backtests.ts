@@ -42,7 +42,7 @@ export async function getBacktestJob(backtestId: string) {
   const res = await fetch(buildApiUrl(`/backtests/${backtestId}`), {
     headers: buildHeaders(),
   });
-  return handleJson<{ job: BacktestJob }>(res);
+  return handleJson<BacktestJob>(res);
 }
 
 export async function getBacktestResults(backtestId: string) {
