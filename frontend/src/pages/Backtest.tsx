@@ -6,7 +6,7 @@ import BacktestMetrics from "@/components/backtest/BacktestMetrics";
 import EquityCurveChart from "@/components/backtest/EquityCurveChart";
 import MonthlyReturnsChart from "@/components/backtest/MonthlyReturnsChart";
 import type { ApiEquityPoint, ApiReturnPoint, BacktestConfigData, BacktestJob, BacktestMetric, BacktestResultsResponse, EquityPoint, MonthlyReturn } from "@/types/backtest";
-import { getBacktestJob, getBacktestResults, getBacktests, hasAuthToken } from "@/api/backtests";
+import { getBacktestJob, getBacktestResults, getBacktests } from "@/api/backtests";
 
 
 const POLL_MS = 2000;
@@ -99,11 +99,6 @@ export default function Backtest() {
 
     const resolveLatest = async () => {
       try {
-        // if (!hasAuthToken()) {
-        //   setError("Missing auth token. Provide ?id=... or login to view backtests.");
-        //   setLoading(false);
-        //   return;
-        // }
         setLoading(true);
         const list = await getBacktests({ limit: 1, sort: "created_at", order: "desc" });
         if (cancelled) return;
