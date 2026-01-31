@@ -77,6 +77,7 @@ export default function Strategies() {
       });
   };
 
+  
   useEffect(() => {
     let isMounted = true;
     setMyLoading(true);
