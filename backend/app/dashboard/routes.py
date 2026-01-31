@@ -65,7 +65,9 @@ async def get_dashboard(
 ):
     settings = get_settings()
     resolved_user_id = resolve_user_id(settings, x_user_id or user_id)
+
     logger.info("GET /api/v1/dashboard range=%s user_id=%s", range, resolved_user_id)
+    print("PRINT: hello world ", resolved_user_id)
 
     settings_repo = UserSettingsRepository(settings)
     strategies_repo = StrategiesRepository(settings)
