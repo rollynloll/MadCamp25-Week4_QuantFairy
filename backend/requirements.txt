@@ -6,3 +6,5 @@ alpaca-py
 pydantic>=2
 asyncpg
 jsonschema
+yfinance
+pandas

@@ -19,10 +19,13 @@ from app.schemas.backtests import (
     BacktestResultsResponse,
     BacktestValidateResponse,
 )
+from app.schemas.backtests_run import BacktestRunRequest, BacktestRunResponse
 from app.services.backtest_engine import StrategyContext, run_ensemble_backtest, run_single_backtest
+from app.services.backtest_runner import run_backtest, validate_params
 from app.services.data_provider import load_price_series, parse_date, trading_days
 from app.services.metrics import compute_drawdown, compute_metrics, compute_returns
 from app.storage.backtests_store import STORE
+from app.storage.backtest_runs_repo import BacktestRunsRepository
 from app.storage.my_strategies_repo import MyStrategiesRepository
 from app.storage.public_strategies_repo import PublicStrategiesRepository
 from app.universes.presets import UNIVERSE_PRESETS
@@ -59,9 +62,12 @@ def _resolve_universe_tickers(spec) -> List[str]:
     if spec.universe.type == "PRESET":
         preset = UNIVERSE_PRESETS.get(spec.universe.preset_id or "")
         if not preset:
-            raise APIError("VALIDATION_ERROR", "Invalid preset_id", details=[
-                {"field": "spec.universe.preset_id", "reason": "unknown preset"},
-            ], status_code=422)
+            raise APIError(
+                "VALIDATION_ERROR",
+                "Invalid preset_id",
+                details=[{"field": "spec.universe.preset_id", "reason": "unknown preset"}],
+                status_code=422,
+            )
         return preset["tickers"]
     tickers = spec.universe.tickers or []
     return [t.strip().upper() for t in tickers if t and t.strip()]
@@ -122,6 +128,7 @@ def _validate_spec(payload: BacktestCreateRequest) -> List[Dict[str, str]]:
                         "reason": "unsupported benchmark",
                     }
                 )
+
     return errors
 
 
@@ -197,14 +204,13 @@ def _resolve_strategy_contexts(
 
 
 def _build_benchmark_curve(symbol: str, spec: dict) -> List[Dict[str, float]]:
-    start = parse_date(spec["period_start"])
-    end = parse_date(spec["period_end"])
     if symbol.upper() == "CASH":
         curve = []
-        for d in trading_days(start, end):
+        for d in trading_days(parse_date(spec["period_start"]), parse_date(spec["period_end"])):
             curve.append({"date": d.isoformat(), "equity": spec["initial_cash"]})
         return curve
-    prices = load_price_series([symbol], spec["period_start"], spec["period_end"])
+
+    prices = load_price_series([symbol], spec["period_start"], spec["period_end"], spec.get("price_field", "adj_close"))
     series = prices.get(symbol, {})
     if not series:
         return []
@@ -376,8 +382,7 @@ async def create_backtest(
     STORE.create_job(job)
     STORE.set_results(job["backtest_id"], results_payload)
 
-    job_response = {k: v for k, v in job.items() if k != "user_id"}
-    return job_response
+    return {k: v for k, v in job.items() if k != "user_id"}
 
 
 @router.get("/backtests", response_model=BacktestListResponse)
@@ -489,3 +494,106 @@ async def delete_backtest(
         raise APIError("CONFLICT", "Backtest cannot be deleted", status_code=409)
     STORE.delete(backtest_id)
     return None
+
+
+@router.post("/backtests/run", response_model=BacktestRunResponse)
+async def run_backtest_endpoint(
+    payload: BacktestRunRequest,
+    authorization: str | None = Header(default=None, alias="Authorization"),
+):
+    settings = get_settings()
+    user_id = resolve_my_user_id(settings, authorization)
+    my_repo = MyStrategiesRepository(settings)
+    public_repo = PublicStrategiesRepository(settings)
+
+    my_row = my_repo.get(user_id, payload.my_strategy_id)
+    if not my_row:
+        raise APIError("NOT_FOUND", "My strategy not found", status_code=404)
+
+    public_id = my_row.get("source_public_strategy_id")
+    if not public_id:
+        raise APIError("VALIDATION_ERROR", "Missing public strategy reference", status_code=422)
+
+    public_row = public_repo.get(public_id)
+    if not public_row:
+        raise APIError("NOT_FOUND", "Public strategy not found", status_code=404)
+
+    defaults = public_row.get("default_params", {}) or {}
+    params = {**defaults, **(my_row.get("params") or {})}
+    validate_params(public_row.get("param_schema", {}) or {}, params)
+
+    entrypoint = my_row.get("entrypoint_snapshot") or public_row.get("entrypoint")
+    if not entrypoint:
+        raise APIError("VALIDATION_ERROR", "Missing entrypoint", status_code=422)
+
+    code_version = my_row.get("code_version_snapshot") or public_row.get("code_version") or "unknown"
+
+    result = run_backtest(
+        my_strategy_id=payload.my_strategy_id,
+        user_id=user_id,
+        params=params,
+        entrypoint=entrypoint,
+        code_version=code_version,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        benchmark_symbol=payload.benchmark_symbol,
+        initial_cash=payload.initial_cash,
+        fee_bps=payload.fee_bps,
+        slippage_bps=payload.slippage_bps,
+    )
+
+    run_id = f"run_{uuid.uuid4().hex}"
+    BacktestRunsRepository(settings).create(
+        {
+            "run_id": run_id,
+            "user_id": user_id,
+            "my_strategy_id": payload.my_strategy_id,
+            "public_strategy_id": public_id,
+            "entrypoint": entrypoint,
+            "code_version": code_version,
+            "public_version_snapshot": my_row.get("public_version_snapshot"),
+            "params": params,
+            "start_date": payload.start_date,
+            "end_date": payload.end_date,
+            "benchmark_symbol": payload.benchmark_symbol,
+            "initial_cash": payload.initial_cash,
+            "fee_bps": payload.fee_bps,
+            "slippage_bps": payload.slippage_bps,
+            "status": "done",
+            "metrics": result.metrics,
+            "equity_curve": result.equity_curve,
+            "trade_stats": result.trade_stats,
+            "benchmark": result.benchmark,
+        }
+    )
+
+    return BacktestRunResponse(
+        run_id=run_id,
+        my_strategy_id=payload.my_strategy_id,
+        metrics=result.metrics,
+        equity_curve=result.equity_curve,
+        trade_stats=result.trade_stats,
+        benchmark=result.benchmark,
+    )
+
+
+@router.get("/backtests/run/{run_id}", response_model=BacktestRunResponse)
+async def get_backtest_run(
+    run_id: str,
+    authorization: str | None = Header(default=None, alias="Authorization"),
+):
+    settings = get_settings()
+    user_id = resolve_my_user_id(settings, authorization)
+    repo = BacktestRunsRepository(settings)
+    row = repo.get(user_id, run_id)
+    if not row:
+        raise APIError("NOT_FOUND", "Backtest run not found", status_code=404)
+
+    return BacktestRunResponse(
+        run_id=row.get("run_id"),
+        my_strategy_id=row.get("my_strategy_id", ""),
+        metrics=row.get("metrics", {}) or {},
+        equity_curve=row.get("equity_curve", []) or [],
+        trade_stats=row.get("trade_stats", {}) or {},
+        benchmark=row.get("benchmark"),
+    )

@@ -138,7 +138,12 @@ def run_single_backtest(
     universe: List[str],
     benchmark_curve: List[Dict[str, float]] | None = None,
 ) -> Dict[str, Any]:
-    prices = load_price_series(universe, spec["period_start"], spec["period_end"])
+    prices = load_price_series(
+        universe,
+        spec["period_start"],
+        spec["period_end"],
+        spec.get("price_field", "adj_close"),
+    )
     dates = list(next(iter(prices.values())).keys()) if prices else []
     if not dates:
         empty_curve: List[Dict[str, float]] = []
@@ -193,7 +198,12 @@ def run_ensemble_backtest(
     ensemble: Dict[str, Any],
     benchmark_curve: List[Dict[str, float]] | None = None,
 ) -> Dict[str, Any]:
-    prices = load_price_series(universe, spec["period_start"], spec["period_end"])
+    prices = load_price_series(
+        universe,
+        spec["period_start"],
+        spec["period_end"],
+        spec.get("price_field", "adj_close"),
+    )
     dates = list(next(iter(prices.values())).keys()) if prices else []
     if not dates:
         empty_curve: List[Dict[str, float]] = []

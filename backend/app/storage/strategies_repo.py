@@ -13,11 +13,14 @@ _memory_strategies: Dict[str, Dict[str, Dict[str, Any]]] = {}
 DEFAULT_STRATEGIES = [
     {
         "strategy_id": "strat_momentum_top10",
-        "template_id": "tmpl_momentum_top10",
+        "source_public_strategy_id": "momentum_top10_12m_v1",
+        "public_version_snapshot": "1.0.0",
+        "entrypoint_snapshot": "strategies.momentum_topn_v1:MomentumTopNStrategy",
+        "code_version_snapshot": "seed",
         "name": "Momentum Breakout",
         "state": "running",
         "description": "Top-10 momentum breakout strategy",
-        "params": {"rebalance": "weekly", "universe": 10},
+        "params": {"lookback_days": 252, "top_n": 10, "rebalance": "monthly"},
         "risk_limits": {"max_position_pct": 20},
         "positions_count": 2,
         "pnl_today_value": 1240.2,
@@ -25,7 +28,10 @@ DEFAULT_STRATEGIES = [
     },
     {
         "strategy_id": "strat_mean_reversion",
-        "template_id": "tmpl_mean_reversion",
+        "source_public_strategy_id": None,
+        "public_version_snapshot": None,
+        "entrypoint_snapshot": None,
+        "code_version_snapshot": None,
         "name": "Mean Reversion Alpha",
         "state": "paused",
         "description": "Mean reversion on large cap universe",

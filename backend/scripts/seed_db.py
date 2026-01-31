@@ -93,6 +93,7 @@ async def main() -> None:
         if reset:
             for table in (
                 "bot_runs",
+                "backtest_runs",
                 "orders",
                 "alerts",
                 "trades",
@@ -120,37 +121,207 @@ async def main() -> None:
             ["display_name", "email", "updated_at"],
         )
 
-        await upsert(
-            conn,
-            "strategy_templates",
+        public_seeds = [
             {
-                "template_id": "tmpl_momentum_top10",
-                "name": "Momentum Breakout",
-                "description": "Top-10 momentum breakout strategy",
-                "params_schema": {"rebalance": "weekly", "universe": "int"},
-                "risk_schema": {"max_position_pct": "number"},
-                "is_active": True,
+                "public_strategy_id": "momentum_top10_12m_v1",
+                "name": "Momentum Top-10 (12M)",
+                "one_liner": "Top-N by 12M return, monthly rebalance",
+                "category": "momentum",
+                "tags": ["momentum", "cross-sectional"],
+                "risk_level": "mid",
+                "version": "1.0.0",
+                "author_name": "QuantFairy",
+                "author_type": "official",
+                "rules": {
+                    "signal_definition": "Rank by 12M return",
+                    "entry_rules": "Buy top-N",
+                    "exit_rules": "Sell at rebalance",
+                    "rebalance_rule": "Monthly",
+                    "position_sizing": "Equal weight",
+                },
+                "requirements": {
+                    "universe": {"min_symbols": 20, "max_symbols": 500, "supports_custom_tickers": True},
+                    "data": {"required_fields": ["adj_close"], "warmup_lookback_days": 252},
+                },
+                "param_schema": {
+                    "type": "object",
+                    "properties": {
+                        "lookback_days": {"type": "integer", "minimum": 60, "maximum": 504, "default": 252},
+                        "top_n": {"type": "integer", "minimum": 5, "maximum": 50, "default": 10},
+                        "rebalance": {"type": "string", "enum": ["monthly"], "default": "monthly"},
+                    },
+                    "required": ["lookback_days", "top_n"],
+                },
+                "default_params": {"lookback_days": 252, "top_n": 10, "rebalance": "monthly"},
+                "supported_assets": ["US_Equity"],
+                "supported_timeframes": ["1D"],
+                "known_failure_modes": ["Sideways markets", "Regime shifts"],
+                "risk_disclaimer": "Backtests are illustrative and not investment advice.",
+                "sample_backtest_spec": {
+                    "period_start": "2010-01-01",
+                    "period_end": "2024-12-31",
+                    "timeframe": "1D",
+                    "universe_used": "US_CORE_20",
+                    "initial_cash": 100000,
+                    "fee_bps": 1,
+                    "slippage_bps": 2,
+                },
+                "entrypoint": "strategies.momentum_topn_v1:MomentumTopNStrategy",
+                "code_version": "seed",
+                "sample_metrics": {
+                    "pnl_amount": 15600.0,
+                    "pnl_pct": 15.6,
+                    "sharpe": 1.4,
+                    "max_drawdown_pct": -4.2,
+                    "win_rate_pct": 58.2,
+                },
+                "sample_trade_stats": {"trades_count": 120, "avg_hold_hours": 36},
                 "updated_at": iso(now_kst()),
             },
-            ["template_id"],
-            ["name", "description", "params_schema", "risk_schema", "is_active", "updated_at"],
-        )
+            {
+                "public_strategy_id": "trend_sma200_v1",
+                "name": "Trend SMA200",
+                "one_liner": "Risk-on above 200D SMA, else cash",
+                "category": "trend",
+                "tags": ["trend", "sma"],
+                "risk_level": "low",
+                "version": "1.0.0",
+                "author_name": "QuantFairy",
+                "author_type": "official",
+                "rules": {
+                    "signal_definition": "Price above SMA200",
+                    "entry_rules": "Risk-on",
+                    "exit_rules": "Risk-off to cash",
+                    "rebalance_rule": "Daily",
+                    "position_sizing": "All-in",
+                },
+                "requirements": {
+                    "universe": {"min_symbols": 1, "max_symbols": 1, "supports_custom_tickers": False},
+                    "data": {"required_fields": ["adj_close"], "warmup_lookback_days": 200},
+                },
+                "param_schema": {
+                    "type": "object",
+                    "properties": {
+                        "benchmark_symbol": {"type": "string", "default": "SPY"},
+                        "sma_window": {"type": "integer", "minimum": 100, "maximum": 300, "default": 200},
+                    },
+                    "required": ["benchmark_symbol", "sma_window"],
+                },
+                "default_params": {"benchmark_symbol": "SPY", "sma_window": 200},
+                "supported_assets": ["US_Equity"],
+                "supported_timeframes": ["1D"],
+                "known_failure_modes": ["Whipsaws in choppy regimes"],
+                "risk_disclaimer": "Backtests are illustrative and not investment advice.",
+                "sample_backtest_spec": {
+                    "period_start": "2008-01-01",
+                    "period_end": "2024-12-31",
+                    "timeframe": "1D",
+                    "universe_used": "SPY",
+                    "initial_cash": 100000,
+                    "fee_bps": 1,
+                    "slippage_bps": 2,
+                },
+                "entrypoint": "strategies.trend_sma200_v1:TrendSMA200Strategy",
+                "code_version": "seed",
+                "sample_metrics": {
+                    "pnl_amount": 8200.0,
+                    "pnl_pct": 8.2,
+                    "sharpe": 0.9,
+                    "max_drawdown_pct": -8.8,
+                    "win_rate_pct": 52.1,
+                },
+                "sample_trade_stats": {"trades_count": 40, "avg_hold_hours": 240},
+                "updated_at": iso(now_kst()),
+            },
+            {
+                "public_strategy_id": "rsi_mean_reversion_v1",
+                "name": "RSI Mean Reversion",
+                "one_liner": "Buy RSI < 30, exit RSI > 50",
+                "category": "mean_reversion",
+                "tags": ["rsi", "mean_reversion"],
+                "risk_level": "mid",
+                "version": "1.0.0",
+                "author_name": "QuantFairy",
+                "author_type": "official",
+                "rules": {
+                    "signal_definition": "RSI threshold",
+                    "entry_rules": "RSI < 30 buy",
+                    "exit_rules": "RSI > 50 sell",
+                    "rebalance_rule": "Daily",
+                },
+                "requirements": {
+                    "universe": {"min_symbols": 1, "max_symbols": 1, "supports_custom_tickers": True},
+                    "data": {"required_fields": ["adj_close"], "warmup_lookback_days": 30},
+                },
+                "param_schema": {
+                    "type": "object",
+                    "properties": {
+                        "symbol": {"type": "string", "default": "SPY"},
+                        "rsi_window": {"type": "integer", "minimum": 7, "maximum": 30, "default": 14},
+                        "entry_rsi": {"type": "number", "minimum": 10, "maximum": 40, "default": 30},
+                        "exit_rsi": {"type": "number", "minimum": 40, "maximum": 70, "default": 50},
+                    },
+                    "required": ["symbol", "rsi_window", "entry_rsi", "exit_rsi"],
+                },
+                "default_params": {"symbol": "SPY", "rsi_window": 14, "entry_rsi": 30, "exit_rsi": 50},
+                "supported_assets": ["US_Equity"],
+                "supported_timeframes": ["1D"],
+                "known_failure_modes": ["Strong trend markets"],
+                "risk_disclaimer": "Backtests are illustrative and not investment advice.",
+                "sample_backtest_spec": {
+                    "period_start": "2015-01-01",
+                    "period_end": "2024-12-31",
+                    "timeframe": "1D",
+                    "universe_used": "SPY",
+                    "initial_cash": 100000,
+                    "fee_bps": 1,
+                    "slippage_bps": 2,
+                },
+                "entrypoint": "strategies.rsi_mean_reversion_v1:RSIMeanReversionStrategy",
+                "code_version": "seed",
+                "sample_metrics": {
+                    "pnl_amount": 6400.0,
+                    "pnl_pct": 6.4,
+                    "sharpe": 0.7,
+                    "max_drawdown_pct": -10.2,
+                    "win_rate_pct": 49.5,
+                },
+                "sample_trade_stats": {"trades_count": 60, "avg_hold_hours": 72},
+                "updated_at": iso(now_kst()),
+            },
+        ]
 
-        await upsert(
-            conn,
-            "strategy_templates",
-            {
-                "template_id": "tmpl_mean_reversion",
-                "name": "Mean Reversion Alpha",
-                "description": "Mean reversion on large cap universe",
-                "params_schema": {"lookback_days": "int"},
-                "risk_schema": {"max_loss_pct": "number"},
-                "is_active": True,
-                "updated_at": iso(now_kst()),
-            },
-            ["template_id"],
-            ["name", "description", "params_schema", "risk_schema", "is_active", "updated_at"],
-        )
+        for seed in public_seeds:
+            await upsert(
+                conn,
+                "public_strategies",
+                seed,
+                ["public_strategy_id"],
+                [
+                    "name",
+                    "one_liner",
+                    "category",
+                    "tags",
+                    "risk_level",
+                    "version",
+                    "author_name",
+                    "author_type",
+                    "rules",
+                    "requirements",
+                    "param_schema",
+                    "default_params",
+                    "supported_assets",
+                    "supported_timeframes",
+                    "known_failure_modes",
+                    "risk_disclaimer",
+                    "sample_backtest_spec",
+                    "sample_metrics",
+                    "sample_trade_stats",
+                    "entrypoint",
+                    "code_version",
+                    "updated_at",
+                ],
+            )
 
         await upsert(
             conn,
@@ -158,11 +329,14 @@ async def main() -> None:
             {
                 "strategy_id": "strat_momentum_top10",
                 "user_id": user_id,
-                "template_id": "tmpl_momentum_top10",
+                "source_public_strategy_id": "momentum_top10_12m_v1",
+                "public_version_snapshot": "1.0.0",
+                "entrypoint_snapshot": "strategies.momentum_topn_v1:MomentumTopNStrategy",
+                "code_version_snapshot": "seed",
                 "name": "Momentum Breakout",
                 "state": "running",
                 "description": "Top-10 momentum breakout strategy",
-                "params": {"rebalance": "weekly", "universe": 10},
+                "params": {"lookback_days": 252, "top_n": 10, "rebalance": "monthly"},
                 "risk_limits": {"max_position_pct": 20},
                 "positions_count": 2,
                 "pnl_today_value": 1240.2,
@@ -172,7 +346,10 @@ async def main() -> None:
             ["strategy_id"],
             [
                 "user_id",
-                "template_id",
+                "source_public_strategy_id",
+                "public_version_snapshot",
+                "entrypoint_snapshot",
+                "code_version_snapshot",
                 "name",
                 "state",
                 "description",
@@ -191,7 +368,10 @@ async def main() -> None:
             {
                 "strategy_id": "strat_mean_reversion",
                 "user_id": user_id,
-                "template_id": "tmpl_mean_reversion",
+                "source_public_strategy_id": None,
+                "public_version_snapshot": None,
+                "entrypoint_snapshot": None,
+                "code_version_snapshot": None,
                 "name": "Mean Reversion Alpha",
                 "state": "paused",
                 "description": "Mean reversion on large cap universe",
@@ -205,7 +385,10 @@ async def main() -> None:
             ["strategy_id"],
             [
                 "user_id",
-                "template_id",
+                "source_public_strategy_id",
+                "public_version_snapshot",
+                "entrypoint_snapshot",
+                "code_version_snapshot",
                 "name",
                 "state",
                 "description",
@@ -440,10 +623,21 @@ async def _ensure_app_users_schema(conn) -> None:
         alter table if exists alerts drop constraint if exists alerts_user_id_fkey;
         alter table if exists orders drop constraint if exists orders_user_id_fkey;
         alter table if exists bot_runs drop constraint if exists bot_runs_user_id_fkey;
+        alter table if exists backtest_runs drop constraint if exists backtest_runs_user_id_fkey;
 
         alter table if exists user_strategies
           add constraint user_strategies_user_id_fkey
           foreign key (user_id) references app_users(id) on delete cascade;
+        alter table if exists user_strategies
+          add column if not exists source_public_strategy_id text;
+        alter table if exists user_strategies
+          add column if not exists public_version_snapshot text;
+        alter table if exists user_strategies
+          add column if not exists entrypoint_snapshot text;
+        alter table if exists user_strategies
+          add column if not exists code_version_snapshot text;
+        alter table if exists user_strategies
+          add column if not exists note text;
         alter table if exists user_settings
           add constraint user_settings_user_id_fkey
           foreign key (user_id) references app_users(id) on delete cascade;
@@ -469,6 +663,9 @@ async def _ensure_app_users_schema(conn) -> None:
           foreign key (user_id) references app_users(id) on delete cascade;
         alter table if exists bot_runs
           add constraint bot_runs_user_id_fkey
+          foreign key (user_id) references app_users(id) on delete cascade;
+        alter table if exists backtest_runs
+          add constraint backtest_runs_user_id_fkey
           foreign key (user_id) references app_users(id) on delete cascade;
         """
     )
