@@ -8,6 +8,28 @@ import type {
   MyStrategyListResponse
 } from "@/types/strategy";
 
+const TOKEN_KEYS = ["token", "accessToken", "access_token", "authToken", "jwt"] as const;
+
+function readToken(): string | null {
+  const envToken = import.meta.env.VITE_API_TOKEN;
+  if (envToken) return envToken;
+
+  for (const key of TOKEN_KEYS) {
+    const fromLocal = localStorage.getItem(key);
+    if (fromLocal) return fromLocal;
+    const fromSession = sessionStorage.getItem(key);
+    if (fromSession) return fromSession;
+  }
+  return null;
+}
+
+function buildAuthHeaders(): HeadersInit {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const token = readToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
 export interface PublicStrategiesQuery {
   limit?: number;
   cursor?: string;
@@ -32,6 +54,21 @@ export async function getPublicStrategies(
     const body = await res.json().catch(() => null);
     const message =
       body?.error?.message ?? `Failed to load strategies (${res.status})`;
+    throw new Error(message);
+  }
+
+  return res.json();
+}
+
+export async function getMyStrategies(): Promise<MyStrategyListResponse> {
+  const res = await fetch(buildApiUrl("/my-strategies"), {
+    headers: buildAuthHeaders(),
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    const message =
+      body?.error?.message ?? `Failed to load my strategies (${res.status})`;
     throw new Error(message);
   }
 
