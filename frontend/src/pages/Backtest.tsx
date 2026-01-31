@@ -6,7 +6,7 @@ import BacktestMetrics from "@/components/backtest/BacktestMetrics";
 import EquityCurveChart from "@/components/backtest/EquityCurveChart";
 import MonthlyReturnsChart from "@/components/backtest/MonthlyReturnsChart";
 import type { ApiEquityPoint, ApiReturnPoint, BacktestConfigData, BacktestJob, BacktestMetric, BacktestResultsResponse, EquityPoint, MonthlyReturn } from "@/types/backtest";
-import { getBacktestJob, getBacktestResults } from "@/api/backtests";
+import { getBacktestJob, getBacktestResults, getBacktests } from "@/api/backtests";
 
 
 const POLL_MS = 2000;
@@ -75,7 +75,8 @@ function buildConfig(job?: BacktestJob): BacktestConfigData {
 
 export default function Backtest() {
   const [searchParams] = useSearchParams();
-  const backtestId = searchParams.get("id");
+  const backtestIdParam = searchParams.get("id");
+  const [resolvedId, setResolvedId] = useState<string | null>(null);
 
   const [job, setJob] = useState<BacktestJob | null>(null);
   const [results, setResults] = useState<BacktestResultsResponse | null>(null);
@@ -83,11 +84,46 @@ export default function Backtest() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!backtestId) {
-      setError("Missing backtest id. Add ?id=... to the URL.");
-      setLoading(false);
+    let cancelled = false;
+    setError(null);
+    setResolvedId(null);
+    setJob(null);
+    setResults(null);
+
+    if (backtestIdParam) {
+      setResolvedId(backtestIdParam);
       return;
     }
+
+    const resolveLatest = async () => {
+      try {
+        setLoading(true);
+        const list = await getBacktests({ limit: 1, sort: "created_at", order: "desc" });
+        if (cancelled) return;
+        const latestId = list.items[0]?.backtest_id ?? null;
+        if (!latestId) {
+          setError("No backtests yet.");
+          setLoading(false);
+          return;
+        }
+        setResolvedId(latestId);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load backtests");
+          setLoading(false);
+        }
+      }
+    };
+
+    resolveLatest();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [backtestIdParam]);
+
+  useEffect(() => {
+    if (!resolvedId) return;
 
     let cancelled = false;
     let timer: number | undefined;
@@ -95,12 +131,12 @@ export default function Backtest() {
     const poll = async () => {
       try {
         setLoading(true);
-        const jobRes = await getBacktestJob(backtestId);
+        const jobRes = await getBacktestJob(resolvedId);
         if (cancelled) return;
         setJob(jobRes.job);
 
         if (jobRes.job.status === "done") {
-          const resultsRes = await getBacktestResults(backtestId);
+          const resultsRes = await getBacktestResults(resolvedId);
           if (cancelled) return;
           setResults(resultsRes);
           setLoading(false);
@@ -123,7 +159,7 @@ export default function Backtest() {
       cancelled = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, [backtestId]);
+  }, [resolvedId]);
 
   if (loading && !results) {
     return (
