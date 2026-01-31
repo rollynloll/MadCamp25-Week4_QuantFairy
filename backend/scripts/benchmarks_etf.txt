@@ -1,0 +1,8 @@
+SPY
+QQQ
+IWM
+DIA
+VTI
+RSP
+TLT
+GLD

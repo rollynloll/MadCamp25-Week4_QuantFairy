@@ -22,11 +22,36 @@ export interface BacktestConfigData {
   slippage: string;
 }
 
+export interface BacktestCreateRequest {
+  mode: "single" | "batch" | "ensemble";
+  spec: BacktestSpec;
+  strategies: StrategyRef[];
+  benchmarks?: BenchmarkRef[];
+  ensemble?: {
+    mixing: "weighted_sum";
+    weights: Record<string, number>;
+    constraints?: {
+      normalize_weights?: boolean;
+      max_weight_per_symbol?: number | null;
+      max_positions?: number | null;
+      cash_buffer_pct?: number | null;
+      min_trade_weight?: number | null;
+    };
+  };
+}
+
 
 export interface BacktestJob {
   backtest_id: string;
   mode: "single" | "batch" | "ensemble";
   status: "queued" | "running" | "done" | "failed" | "canceled";
+  progress?: number;
+  error?: {
+    code: string;
+    message: string;
+    detail?: string;
+    details?: { field: string; reason: string }[];
+  };
   spec: BacktestSpec;
   strategies?: StrategyRef[];
   benchmarks?: BenchmarkRef[];

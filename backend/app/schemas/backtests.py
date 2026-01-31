@@ -12,6 +12,15 @@ class ErrorDetail(BaseModel):
     reason: str
 
 
+class JobError(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+    message: str
+    detail: Optional[str] = None
+    details: Optional[List[ErrorDetail]] = None
+
+
 class UniverseSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -119,6 +128,8 @@ class BacktestJob(BaseModel):
     backtest_id: str
     mode: Literal["single", "batch", "ensemble"]
     status: Literal["queued", "running", "done", "failed", "canceled"]
+    progress: Optional[int] = Field(default=None, ge=0, le=100)
+    error: Optional[JobError] = None
     spec: BacktestSpec
     strategies: List[StrategyRef]
     benchmarks: Optional[List[BenchmarkRef]] = None

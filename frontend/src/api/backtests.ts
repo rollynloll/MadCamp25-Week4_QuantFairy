@@ -1,5 +1,5 @@
 import { buildApiUrl } from "@/api/base";
-import type { BacktestJob, BacktestResultsResponse } from "@/types/backtest";
+import type { BacktestCreateRequest, BacktestJob, BacktestResultsResponse } from "@/types/backtest";
 
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
 
@@ -50,6 +50,15 @@ export async function getBacktestResults(backtestId: string) {
     headers: buildHeaders(),
   });
   return handleJson<BacktestResultsResponse>(res);
+}
+
+export async function createBacktest(payload: BacktestCreateRequest) {
+  const res = await fetch(buildApiUrl("/backtests"), {
+    method: "POST",
+    headers: buildHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return handleJson<BacktestJob>(res);
 }
 
 export interface BacktestListQuery {
