@@ -1,15 +1,17 @@
 import { useEffect, useState } from "react";
-import type { Strategy } from "@/types/strategy";
-import { getStrategies } from "@/api/strategies";
+import type { PublicStrategyListItem } from "@/types/strategy";
+import { getPublicStrategies } from "@/api/strategies";
 
 interface UseStrategiesResult {
-  data: Strategy[] | null;
+  data: PublicStrategyListItem[] | null;
+  nextCursor: string | null;
   loading: boolean;
   error: string | null;
 }
 
 export function useStrategies(): UseStrategiesResult {
-  const [data, setData] = useState<Strategy[] | null>(null);
+  const [data, setData] = useState<PublicStrategyListItem[] | null>(null);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -18,9 +20,10 @@ export function useStrategies(): UseStrategiesResult {
 
     const load = async () => {
       try {
-        const result = await getStrategies();
+        const result = await getPublicStrategies();
         if (isMounted) {
-          setData(result);
+          setData(result.items);
+          setNextCursor(result.next_cursor);
         }
       } catch (err) {
         if (isMounted) {
@@ -40,5 +43,5 @@ export function useStrategies(): UseStrategiesResult {
     };
   }, []);
 
-  return { data, loading, error };
+  return { data, nextCursor, loading, error };
 }
