@@ -15,11 +15,7 @@ import type {
 } from "@/types/strategy";
 
 export default function Strategies() {
-  const { data: publicData, loading: publicLoading, error: publicError } = useStrategies();
-  const [myData, setMyData] = useState<MyStrategy[] | null>(null);
-  const [myLoading, setMyLoading] = useState(false);
-  const [myError, setMyError] = useState<string | null>(null);
-  const [myLoaded, setMyLoaded] = useState(false);
+  const { data, loading, error } = useStrategies();
   const [scope, setScope] = useState<"public" | "private">("public");
   const [selected, setSelected] = useState<PublicStrategyListItem | null>(null);
   const [detail, setDetail] = useState<PublicStrategyDetail | null>(null);
@@ -111,31 +107,7 @@ export default function Strategies() {
   }, []);
 
   useEffect(() => {
-    if (isPublicScope) return;
-    if (myLoaded) return;
-    let isMounted = true;
-    setMyLoading(true);
-    setMyError(null);
-    getMyStrategies()
-      .then((result) => {
-        if (!isMounted) return;
-        setMyData(result.items ?? []);
-        setMyLoaded(true);
-      })
-      .catch((err) => {
-        if (!isMounted) return;
-        setMyError(err instanceof Error ? err.message : "Failed to load my strategies");
-      })
-      .finally(() => {
-        if (isMounted) setMyLoading(false);
-      });
-    return () => {
-      isMounted = false;
-    };
-  }, [isPublicScope, myLoaded]);
-
-  useEffect(() => {
-    if (!isPublicScope || !selected) {
+    if (!selected) {
       setDetail(null);
       setDetailError(null);
       setDetailLoading(false);
@@ -181,20 +153,14 @@ export default function Strategies() {
     };
   }, [selected]);
 
-  useEffect(() => {
-    if (!isPublicScope) {
-      setSelected(null);
-    }
-  }, [isPublicScope]);
-
-  if ((isPublicScope && publicLoading) || (!isPublicScope && myLoading)) {
+  if (loading) {
     return <div className="text-sm text-gray-400">Loading strategies...</div>;
   }
 
-  if ((isPublicScope && (publicError || !publicData)) || (!isPublicScope && myError)) {
+  if (error || !data) {
     return (
       <div className="text-sm text-red-400">
-        {isPublicScope ? publicError ?? "Failed to load strategies" : myError ?? "Failed to load my strategies"}
+        {error ?? "Failed to load strategies"}
       </div>
     );
   }
