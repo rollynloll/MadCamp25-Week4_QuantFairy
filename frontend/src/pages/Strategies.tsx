@@ -1,27 +1,93 @@
 import { useEffect, useMemo, useState } from "react";
 import StrategyCard from "@/components/strategies/StrategyCard";
 import StrategyDetailModal from "@/components/strategies/StrategyDetailModal";
-import { getPublicStrategy } from "@/api/strategies";
+import { getMyStrategies, getPublicStrategy } from "@/api/strategies";
 import { useStrategies } from "@/hooks/useStrategies";
-import type { PublicStrategyDetail, PublicStrategyListItem } from "@/types/strategy";
+import type { MyStrategy, PublicStrategyDetail, PublicStrategyListItem } from "@/types/strategy";
 
 export default function Strategies() {
-  const { data, loading, error } = useStrategies();
+  const { data: publicData, loading: publicLoading, error: publicError } = useStrategies();
+  const [myData, setMyData] = useState<MyStrategy[] | null>(null);
+  const [myLoading, setMyLoading] = useState(false);
+  const [myError, setMyError] = useState<string | null>(null);
+  const [myLoaded, setMyLoaded] = useState(false);
   const [scope, setScope] = useState<"public" | "private">("public");
   const [selected, setSelected] = useState<PublicStrategyListItem | null>(null);
   const [detail, setDetail] = useState<PublicStrategyDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
-  const isPrivateStrategy = (strategy: PublicStrategyListItem) =>
-    strategy.author?.type === "user";
+  const defaultSampleMetrics = useMemo(
+    () => ({
+      pnl_amount: 0,
+      pnl_pct: 0,
+      sharpe: 0,
+      max_drawdown_pct: 0,
+      win_rate_pct: 0
+    }),
+    []
+  );
+  const defaultTradeStats = useMemo(
+    () => ({ trades_count: 0, avg_hold_hours: 0 }),
+    []
+  );
+  const defaultPopularity = useMemo(
+    () => ({ adds_count: 0, likes_count: 0, runs_count: 0 }),
+    []
+  );
+  const isPublicScope = scope === "public";
+
+  const mappedMyStrategies = useMemo<PublicStrategyListItem[]>(() => {
+    if (!myData) return [];
+    return myData.map((item) => ({
+      public_strategy_id: item.my_strategy_id,
+      name: item.name,
+      one_liner: "",
+      category: "My Strategy",
+      tags: [],
+      risk_level: "mid",
+      version: item.public_version_snapshot || "1.0.0",
+      author: { name: "You", type: "user" },
+      sample_metrics: defaultSampleMetrics,
+      sample_trade_stats: defaultTradeStats,
+      popularity: defaultPopularity,
+      supported_assets: [],
+      supported_timeframes: [],
+      updated_at: item.updated_at,
+      created_at: item.created_at
+    }));
+  }, [myData, defaultSampleMetrics, defaultTradeStats, defaultPopularity]);
+
   const filteredData = useMemo(() => {
-    if (!data) return [];
-    if (scope === "public") return data;
-    return data.filter(isPrivateStrategy);
-  }, [data, scope]);
+    if (isPublicScope) return publicData ?? [];
+    return mappedMyStrategies;
+  }, [isPublicScope, publicData, mappedMyStrategies]);
 
   useEffect(() => {
-    if (!selected) {
+    if (isPublicScope) return;
+    if (myLoaded) return;
+    let isMounted = true;
+    setMyLoading(true);
+    setMyError(null);
+    getMyStrategies()
+      .then((result) => {
+        if (!isMounted) return;
+        setMyData(result.items ?? []);
+        setMyLoaded(true);
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        setMyError(err instanceof Error ? err.message : "Failed to load my strategies");
+      })
+      .finally(() => {
+        if (isMounted) setMyLoading(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [isPublicScope, myLoaded]);
+
+  useEffect(() => {
+    if (!isPublicScope || !selected) {
       setDetail(null);
       setDetailError(null);
       setDetailLoading(false);
@@ -67,14 +133,20 @@ export default function Strategies() {
     };
   }, [selected]);
 
-  if (loading) {
+  useEffect(() => {
+    if (!isPublicScope) {
+      setSelected(null);
+    }
+  }, [isPublicScope]);
+
+  if ((isPublicScope && publicLoading) || (!isPublicScope && myLoading)) {
     return <div className="text-sm text-gray-400">Loading strategies...</div>;
   }
 
-  if (error || !data) {
+  if ((isPublicScope && (publicError || !publicData)) || (!isPublicScope && myError)) {
     return (
       <div className="text-sm text-red-400">
-        {error ?? "Failed to load strategies"}
+        {isPublicScope ? publicError ?? "Failed to load strategies" : myError ?? "Failed to load my strategies"}
       </div>
     );
   }
@@ -129,7 +201,7 @@ export default function Strategies() {
             <StrategyCard
               key={strategy.public_strategy_id}
               strategy={strategy}
-              onSelect={(item) => setSelected(item)}
+              onSelect={isPublicScope ? (item) => setSelected(item) : undefined}
             />
           ))}
         </div>
@@ -146,5 +218,4 @@ export default function Strategies() {
     </div>
   );
 }
-
 
