@@ -30,6 +30,48 @@ from app.storage.public_strategies_repo import PublicStrategiesRepository
 router = APIRouter()
 logger = logging.getLogger("quantfairy.strategies")
 
+DEFAULT_SAMPLE_METRICS = {
+    "pnl_amount": 0.0,
+    "pnl_pct": 0.0,
+    "sharpe": 0.0,
+    "max_drawdown_pct": 0.0,
+    "win_rate_pct": 0.0,
+}
+
+DEFAULT_SAMPLE_TRADE_STATS = {
+    "trades_count": 0.0,
+    "avg_hold_hours": 0.0,
+}
+
+DEFAULT_POPULARITY = {
+    "adds_count": 0,
+    "likes_count": 0,
+    "runs_count": 0,
+}
+
+DEFAULT_RULES = {
+    "signal_definition": "",
+    "entry_rules": "",
+    "exit_rules": "",
+    "rebalance_rule": "",
+    "position_sizing": "",
+    "risk_management": "",
+}
+
+DEFAULT_REQUIREMENTS = {"universe": {}, "data": {}}
+
+DEFAULT_SAMPLE_BACKTEST_SPEC = {
+    "period_start": "",
+    "period_end": "",
+    "timeframe": "",
+    "universe_used": "",
+    "initial_cash": 0.0,
+    "fee_bps": 0.0,
+    "slippage_bps": 0.0,
+}
+
+DEFAULT_SAMPLE_PERFORMANCE = {"metrics": {}, "equity_curve": []}
+
 
 def _encode_cursor(value: str) -> str:
     raw = value.encode("utf-8")
@@ -46,6 +88,9 @@ def _decode_cursor(cursor: str | None) -> str | None:
 
 
 def _format_public_strategy(row: dict) -> dict:
+    sample_metrics = {**DEFAULT_SAMPLE_METRICS, **(row.get("sample_metrics") or {})}
+    sample_trade_stats = {**DEFAULT_SAMPLE_TRADE_STATS, **(row.get("sample_trade_stats") or {})}
+    popularity = {**DEFAULT_POPULARITY, **(row.get("popularity") or {})}
     return {
         "public_strategy_id": row["public_strategy_id"],
         "name": row.get("name", ""),
@@ -58,12 +103,12 @@ def _format_public_strategy(row: dict) -> dict:
             "name": row.get("author_name", ""),
             "type": row.get("author_type", "official"),
         },
-        "sample_metrics": row.get("sample_metrics", {}) or {},
-        "sample_trade_stats": row.get("sample_trade_stats", {}) or {},
+        "sample_metrics": sample_metrics,
+        "sample_trade_stats": sample_trade_stats,
         "popularity": {
-            "adds_count": row.get("adds_count", 0),
-            "likes_count": row.get("likes_count", 0),
-            "runs_count": row.get("runs_count", 0),
+            "adds_count": popularity.get("adds_count", row.get("adds_count", 0)),
+            "likes_count": popularity.get("likes_count", row.get("likes_count", 0)),
+            "runs_count": popularity.get("runs_count", row.get("runs_count", 0)),
         },
         "supported_assets": row.get("supported_assets", []) or [],
         "supported_timeframes": row.get("supported_timeframes", []) or [],
@@ -74,19 +119,27 @@ def _format_public_strategy(row: dict) -> dict:
 
 def _format_public_detail(row: dict) -> dict:
     base = _format_public_strategy(row)
+    rules = {**DEFAULT_RULES, **(row.get("rules") or {})}
+    requirements = row.get("requirements") or {}
+    requirements_block = {
+        "universe": requirements.get("universe") or {},
+        "data": requirements.get("data") or {},
+    }
+    sample_backtest_spec = {**DEFAULT_SAMPLE_BACKTEST_SPEC, **(row.get("sample_backtest_spec") or {})}
+    sample_performance = {**DEFAULT_SAMPLE_PERFORMANCE, **(row.get("sample_performance") or {})}
     base.update(
         {
-            "full_description": row.get("full_description", ""),
-            "thesis": row.get("thesis", ""),
-            "rules": row.get("rules", {}) or {},
+            "full_description": row.get("full_description") or "",
+            "thesis": row.get("thesis") or "",
+            "rules": rules,
             "param_schema": row.get("param_schema", {}) or {},
             "default_params": row.get("default_params", {}) or {},
             "recommended_presets": row.get("recommended_presets", []) or [],
-            "requirements": row.get("requirements", {}) or {},
-            "sample_backtest_spec": row.get("sample_backtest_spec", {}) or {},
-            "sample_performance": row.get("sample_performance", {}) or {},
+            "requirements": requirements_block,
+            "sample_backtest_spec": sample_backtest_spec,
+            "sample_performance": sample_performance,
             "known_failure_modes": row.get("known_failure_modes", []) or [],
-            "risk_disclaimer": row.get("risk_disclaimer", ""),
+            "risk_disclaimer": row.get("risk_disclaimer") or "",
         }
     )
     return base
