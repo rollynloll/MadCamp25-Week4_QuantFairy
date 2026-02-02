@@ -10,6 +10,7 @@ import type {
   PortfolioKpiResponse,
   PortfolioActivityResponse,
   PortfolioAttributionResponse,
+  UserStrategiesResponse,
 } from "@/types/portfolio";
 
 import {
@@ -22,6 +23,7 @@ import {
   getPortfolioActivity,
   getPortfolioAttribution,
 } from "@/api/portfolio";
+import { getUserStrategies } from "@/api/userStrategies";
 
 type PortfolioPageData = {
   summary: PortfolioSummaryResponse;
@@ -32,6 +34,7 @@ type PortfolioPageData = {
   kpi: PortfolioKpiResponse;
   activity: PortfolioActivityResponse;
   attribution: PortfolioAttributionResponse;
+  userStrategies: UserStrategiesResponse;
 };
 
 type PortfolioViewData = {
@@ -79,6 +82,7 @@ export function usePortfolioPageData(env: Env, range: Range, showBenchmark: bool
           drawdown,
           kpi,
           attribution,
+          userStrategies,
         ] = await Promise.all([
           getPortfolioSummary(env),
           getPortfolioPositions(env),
@@ -87,6 +91,7 @@ export function usePortfolioPageData(env: Env, range: Range, showBenchmark: bool
           getPortfolioDrawdown(env, range),
           getPortfolioKpi(env, range),
           getPortfolioAttribution({ env, by: "strategy", range }),
+          getUserStrategies(env),
         ]);
 
         const activityResult = await getPortfolioActivity({
@@ -109,6 +114,7 @@ export function usePortfolioPageData(env: Env, range: Range, showBenchmark: bool
           kpi,
           attribution,
           activity: activityResult,
+          userStrategies,
         });
       } catch (err) {
         if (!isMounted) return;

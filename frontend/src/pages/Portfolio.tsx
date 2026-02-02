@@ -9,6 +9,7 @@ import StrategyEditDrawer from "@/components/portfolio/StrategyEditDrawer";
 import { usePortfolioPageData } from "@/hooks/usePortfolio";
 import type { Env, Range } from "@/types/portfolio";
 import { useState } from "react";
+import { rebalancePortfolio } from "@/api/portfolio";
 
 export default function Portfolio() {
   const [env] = useState<Env>("paper");
@@ -20,7 +21,7 @@ export default function Portfolio() {
 
   const [editingStrategy, setEditingStrategy] = useState<string | null>(null);
 
-  const [targetWeights, setTargetWeights] = useState<Record<number, number>>({});
+  const [targetWeights, setTargetWeights] = useState<Record<string, number>>({});
   const [targetCash, setTargetCash] = useState(12.5);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -31,14 +32,53 @@ export default function Portfolio() {
   if (error) return <div className="text-red-400">{error}</div>;
   if (!data || !view) return null;
 
-  const handleWeightChange = (id: number, value: number) => {
+  const equity = data.summary.account.equity || 0;
+  const strategyValueMap = new Map<string, { value: number; count: number }>();
+  for (const item of data.positions.items ?? []) {
+    const key = item.strategy?.user_strategy_id ?? "unassigned";
+    const entry = strategyValueMap.get(key) ?? { value: 0, count: 0 };
+    entry.value += item.market_value ?? 0;
+    entry.count += 1;
+    strategyValueMap.set(key, entry);
+  }
+  const allocationStrategies = (data.userStrategies?.items ?? []).map((strategy) => {
+    const key = strategy.user_strategy_id;
+    const entry = strategyValueMap.get(key) ?? { value: 0, count: 0 };
+    const currentWeight = equity ? (entry.value / equity) * 100 : 0;
+    return {
+      id: key,
+      name: strategy.name,
+      state: strategy.state,
+      currentWeight,
+      targetWeight: targetWeights[key] ?? currentWeight,
+      positionsCount: entry.count || strategy.positions_count || 0,
+      lastRun: strategy.last_run_at ?? "-",
+    };
+  });
+
+  const handleWeightChange = (id: string, value: number) => {
     setTargetWeights({ ...targetWeights, [id]: value });
     setHasUnsavedChanges(true);
   };
 
-  const handleSaveTargets = () => {
-    console.log("Saving targets...", targetWeights, targetCash);
-    setHasUnsavedChanges(false);
+  const handleSaveTargets = async () => {
+    try {
+      const weights = allocationStrategies.reduce<Record<string, number>>((acc, strategy) => {
+        acc[strategy.id] = targetWeights[strategy.id] ?? strategy.currentWeight;
+        return acc;
+      }, {});
+      await rebalancePortfolio({
+        env,
+        mode: "execute",
+        target_source: "strategy",
+        strategy_ids: allocationStrategies.map((s) => s.id),
+        target_weights: weights,
+        target_cash_pct: targetCash,
+      });
+      setHasUnsavedChanges(false);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleReset = () => {
@@ -66,7 +106,7 @@ export default function Portfolio() {
         <AllocationCard
           tab={allocationTab}
           onTabChange={setAllocationTab}
-          strategies={[]}
+          strategies={allocationStrategies}
           sectorAllocation={view.sectorAllocation}
           targetWeights={targetWeights}
           onTargetWeightChange={handleWeightChange}
@@ -98,7 +138,7 @@ export default function Portfolio() {
 
       {/* My Strategies Section */}
       <StrategiesTable
-        strategies={[]}
+        strategies={data.userStrategies?.items ?? []}
         onEdit={(id) => setEditingStrategy(id)}
       />
 
@@ -116,11 +156,11 @@ export default function Portfolio() {
         open={editingStrategy !== null}
         env={env}
         strategyId={editingStrategy}
-        strategies={[]}
+        strategies={data.userStrategies?.items ?? []}
         onClose={() => setEditingStrategy(null)}
-        onSave={() => { 
-          console.log("Saving strategy settings..."); 
-          setEditingStrategy(null); 
+        onSave={() => {
+          console.log("Saving strategy settings...");
+          setEditingStrategy(null);
         }}
       />
     </div>

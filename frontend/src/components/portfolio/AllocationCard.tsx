@@ -9,8 +9,8 @@ interface AllocationProps {
   onTabChange: (tab: tab) => void;
   strategies: Strategy[];
   sectorAllocation: SectorAllocationItem[];
-  targetWeights: Record<number, number>;
-  onTargetWeightChange: (id: number, value: number) => void;
+  targetWeights: Record<string, number>;
+  onTargetWeightChange: (id: string, value: number) => void;
   targetCash: number;
   onTargetCashChange: (value: number) => void;
 
@@ -130,7 +130,9 @@ export default function AllocationCard({
 
                   <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
                     <span>Current: {strategy.currentWeight.toFixed(1)}%</span>
-                    <span>Target: {targetWeights[strategy.id]?.toFixed(1) ?? "—"}%</span>
+                    <span>
+                      Target: {(targetWeights[strategy.id] ?? strategy.currentWeight).toFixed(1)}%
+                    </span>
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -139,14 +141,14 @@ export default function AllocationCard({
                       min="0"
                       max="40"
                       step="0.5"
-                      value={targetWeights[strategy.id] ?? 0}
+                      value={targetWeights[strategy.id] ?? strategy.currentWeight}
                       onChange={(e) => onTargetWeightChange(strategy.id, Number(e.target.value))}
                       className="flex-1 h-1.5 bg-gray-800 rounded appearance-none cursor-pointer accent-blue-600"
                     />
 
                     <input
                       type="number"
-                      value={targetWeights[strategy.id] ?? 0}
+                      value={targetWeights[strategy.id] ?? strategy.currentWeight}
                       onChange={(e) => onTargetWeightChange(strategy.id, Number(e.target.value))}
                       className="w-14 bg-[#0a0d14] border border-gray-800 rounded px-2 py-1 text-xs text-right font-mono"
                       step="0.5"

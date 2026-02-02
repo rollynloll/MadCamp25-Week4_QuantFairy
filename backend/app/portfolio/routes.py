@@ -32,6 +32,7 @@ from app.schemas.portfolio import (
 )
 from app.schemas.trading import KillSwitchRequest, KillSwitchResponse
 from app.storage.my_strategies_repo import MyStrategiesRepository
+from app.storage.positions_repo import PositionsRepository
 from app.storage.strategies_repo import StrategiesRepository
 from app.storage.user_settings_repo import UserSettingsRepository
 
@@ -153,6 +154,68 @@ def _normalize_positions(raw_positions: Any) -> List[Dict[str, Any]]:
     return items
 
 
+def _normalize_position_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    items: List[Dict[str, Any]] = []
+    for row in rows:
+        symbol = str(row.get("symbol") or row.get("ticker") or "").upper()
+        if not symbol:
+            continue
+        qty = _to_float(row.get("qty", row.get("quantity", 0)))
+        side = str(row.get("side") or "").lower()
+        if side not in {"long", "short"}:
+            side = "short" if qty < 0 else "long"
+        qty = abs(qty)
+        avg_entry_price = _to_float(
+            row.get("avg_entry_price", row.get("avg_price", row.get("average_price", 0)))
+        )
+        current_price = _to_float(
+            row.get("current_price", row.get("price", row.get("last_price", 0)))
+        )
+        market_value = _to_float(
+            row.get("market_value", current_price * qty)
+        )
+        pnl_value = _to_float(
+            row.get(
+                "unrealized_pnl",
+                row.get("unrealized_pl", row.get("pnl_value", 0)),
+            )
+        )
+        pnl_pct = _to_pct(
+            row.get(
+                "unrealized_pnl_pct",
+                row.get("unrealized_plpc", row.get("pnl_pct", 0)),
+            )
+        )
+        strategy_id = (
+            row.get("strategy_id")
+            or row.get("user_strategy_id")
+            or row.get("my_strategy_id")
+            or "unassigned"
+        )
+        strategy_name = (
+            row.get("strategy_name")
+            or row.get("strategy_label")
+            or row.get("strategy")
+            or "Unassigned"
+        )
+        items.append(
+            {
+                "symbol": symbol,
+                "qty": qty,
+                "side": side,
+                "avg_entry_price": avg_entry_price,
+                "current_price": current_price,
+                "market_value": market_value,
+                "unrealized_pnl": {"value": pnl_value, "pct": pnl_pct},
+                "strategy": {
+                    "user_strategy_id": str(strategy_id),
+                    "name": str(strategy_name),
+                },
+            }
+        )
+    return items
+
+
 def _positions_exposure(
     positions: List[Dict[str, Any]],
     equity: float,
@@ -207,6 +270,113 @@ def _compute_returns(equity_curve: List[Dict[str, Any]]) -> List[float]:
         returns.append(ret)
         prev = equity
     return returns
+
+
+def _aggregate_position_values(
+    positions: List[Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+    grouped: Dict[str, Dict[str, Any]] = {}
+    for pos in positions:
+        if pos.get("side") == "short":
+            raise APIError(
+                "SHORT_POSITIONS_NOT_SUPPORTED",
+                "Rebalance does not support short positions yet",
+                status_code=422,
+            )
+        strategy_id = pos["strategy"]["user_strategy_id"]
+        group = grouped.setdefault(
+            strategy_id,
+            {"value": 0.0, "positions": []},
+        )
+        value = abs(_to_float(pos.get("market_value", 0.0)))
+        group["value"] += value
+        group["positions"].append({**pos, "abs_value": value})
+    return grouped
+
+
+def _build_rebalance_orders(
+    *,
+    equity: float,
+    positions: List[Dict[str, Any]],
+    target_weights: Dict[str, float],
+    target_cash_pct: float,
+    min_notional: float = 1.0,
+) -> List[Dict[str, Any]]:
+    if equity <= 0:
+        return []
+    grouped = _aggregate_position_values(positions)
+    cleaned_weights: Dict[str, float] = {}
+    for key, raw in target_weights.items():
+        try:
+            weight = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if weight < 0:
+            raise APIError(
+                "VALIDATION_ERROR",
+                f"Negative weight not allowed: {key}",
+                status_code=422,
+            )
+        cleaned_weights[str(key)] = weight
+
+    investable_pct = max(0.0, 100.0 - target_cash_pct)
+    total_target = sum(cleaned_weights.values())
+    if total_target <= 0:
+        return []
+    scale = 1.0
+    if total_target > investable_pct and investable_pct > 0:
+        scale = investable_pct / total_target
+
+    symbol_deltas: Dict[str, Dict[str, Any]] = {}
+    for strategy_id, weight_pct in cleaned_weights.items():
+        if weight_pct <= 0:
+            continue
+        current = grouped.get(strategy_id)
+        current_value = current["value"] if current else 0.0
+        if current_value <= 0:
+            raise APIError(
+                "VALIDATION_ERROR",
+                f"No positions for strategy {strategy_id}",
+                status_code=422,
+            )
+        target_value = equity * (weight_pct * scale / 100.0)
+        for pos in current["positions"]:
+            abs_value = pos["abs_value"]
+            if abs_value <= 0:
+                continue
+            price = _to_float(pos.get("current_price", 0.0))
+            if price <= 0:
+                continue
+            target_pos_value = target_value * abs_value / current_value
+            delta_value = target_pos_value - abs_value
+            if abs(delta_value) < min_notional:
+                continue
+            entry = symbol_deltas.setdefault(
+                pos["symbol"],
+                {"symbol": pos["symbol"], "delta_value": 0.0, "price": price},
+            )
+            entry["delta_value"] += delta_value
+
+    orders: List[Dict[str, Any]] = []
+    for entry in symbol_deltas.values():
+        delta = entry["delta_value"]
+        if abs(delta) < min_notional:
+            continue
+        side = "buy" if delta > 0 else "sell"
+        price = entry["price"]
+        qty = abs(delta) / price if price > 0 else 0.0
+        if qty <= 0:
+            continue
+        orders.append(
+            {
+                "symbol": entry["symbol"],
+                "side": side,
+                "qty": qty,
+                "notional": abs(delta),
+                "estimated_price": price,
+            }
+        )
+    return orders
 
 
 def _drawdown_curve(equity_curve: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -454,10 +624,19 @@ async def get_portfolio_positions(
     order: OrderLiteral = Query(default="desc"),
 ):
     settings = get_settings()
-    client = AlpacaClient(settings, env)
-    _require_account(client)
-
-    items = _load_alpaca_positions(client)
+    user_id = _resolve_user_id()
+    repo = PositionsRepository(settings)
+    rows = repo.list(
+        user_id,
+        env,
+        q=q,
+        side=side,
+        strategy_id=strategy_id,
+        sort=sort,
+        order=order,
+        limit=200,
+    )
+    items = _normalize_position_rows(rows)
     if q:
         q_lower = q.lower()
         items = [item for item in items if q_lower in item["symbol"].lower()]
@@ -569,13 +748,18 @@ async def list_user_strategies(
 
     items = []
     for row in rows:
+        if row.get("environment") and row.get("environment") != env:
+            continue
         risk = row.get("risk_limits") or {}
+        state = row.get("state", "stopped")
+        if state not in {"running", "paused", "stopped"}:
+            state = "stopped"
         items.append(
             {
                 "user_strategy_id": row.get("strategy_id") or row.get("user_strategy_id"),
                 "name": row.get("name", ""),
                 "public_strategy_id": row.get("source_public_strategy_id", ""),
-                "state": row.get("state", "idle"),
+                "state": state,
                 "positions_count": int(row.get("positions_count", 0)),
                 "today_pnl": {
                     "value": float(row.get("pnl_today_value", 0) or 0),
@@ -611,11 +795,14 @@ async def get_user_strategy(
 
     risk = row.get("risk_limits") or {}
     now = now_kst().isoformat()
+    state = row.get("state", "stopped")
+    if state not in {"running", "paused", "stopped"}:
+        state = "stopped"
     return {
         "env": env,
         "user_strategy_id": row.get("strategy_id") or user_strategy_id,
         "name": row.get("name", ""),
-        "state": row.get("state", "idle"),
+        "state": state,
         "public_strategy": {
             "public_strategy_id": row.get("source_public_strategy_id", ""),
             "name": row.get("name", ""),
@@ -735,23 +922,75 @@ async def rebalance_portfolio(
             "strategy_ids required when target_source='strategy'",
             status_code=422,
         )
+    if not payload.target_weights:
+        raise APIError(
+            "VALIDATION_ERROR",
+            "target_weights required",
+            status_code=422,
+        )
+
+    settings = get_settings()
+    if env == "live" and not settings.allow_live_trading:
+        raise APIError(
+            "LIVE_TRADING_DISABLED",
+            "Live trading is disabled",
+            "Set ALLOW_LIVE_TRADING=true to enable",
+            status_code=403,
+        )
+
+    user_id = _resolve_user_id()
+    settings_repo = UserSettingsRepository(settings)
+    user_settings = settings_repo.get_or_create(user_id)
+    if user_settings.get("kill_switch", False):
+        raise APIError(
+            "KILL_SWITCH_ON",
+            "Kill switch is enabled",
+            "Disable kill switch to rebalance",
+            status_code=403,
+        )
+
+    client = AlpacaClient(settings, env)
+    account, _ = _require_account(client)
+
+    positions_repo = PositionsRepository(settings)
+    rows = positions_repo.list(user_id, env, limit=500)
+    positions = _normalize_position_rows(rows)
+
+    target_weights = payload.target_weights or {}
+    if payload.strategy_ids:
+        target_weights = {
+            key: val for key, val in target_weights.items() if key in payload.strategy_ids
+        }
+    if not target_weights:
+        raise APIError(
+            "VALIDATION_ERROR",
+            "No target weights for selected strategies",
+            status_code=422,
+        )
+
+    target_cash_pct = (
+        payload.target_cash_pct
+        if payload.target_cash_pct is not None
+        else (account.cash / account.equity * 100 if account.equity else 0.0)
+    )
+
+    orders = _build_rebalance_orders(
+        equity=account.equity,
+        positions=positions,
+        target_weights=target_weights,
+        target_cash_pct=target_cash_pct,
+    )
+
+    if payload.mode == "execute":
+        for order in orders:
+            client.submit_market_order(
+                symbol=order["symbol"],
+                side=order["side"],
+                qty=order["qty"],
+                time_in_force="day",
+            )
+
     rebalance_id = f"rb_{now_kst().strftime('%Y%m%d_%H%M%S')}"
-    orders = [
-        {
-            "symbol": "AAPL",
-            "side": "buy",
-            "qty": 3.0,
-            "notional": 585.6,
-            "estimated_price": 195.2,
-        },
-        {
-            "symbol": "MSFT",
-            "side": "sell",
-            "qty": 1.0,
-            "notional": 368.5,
-            "estimated_price": 368.5,
-        },
-    ]
     status = "preview" if payload.mode == "dry_run" else "submitted"
     return {
         "env": env,

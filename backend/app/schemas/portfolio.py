@@ -325,6 +325,8 @@ class PortfolioRebalanceRequest(BaseModel):
     mode: Literal["dry_run", "execute"]
     target_source: Literal["combined", "strategy"]
     strategy_ids: Optional[List[str]] = None
+    target_weights: Optional[Dict[str, float]] = None
+    target_cash_pct: Optional[float] = Field(default=None, ge=0, le=100)
     overrides: Optional[RebalanceOverrides] = None
 
 
