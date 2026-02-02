@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+import time
 from typing import Dict, List
 
 from app.core.config import get_settings
@@ -72,6 +73,19 @@ def _load_from_supabase(
     field = price_field if price_field in {"adj_close", "close"} else "adj_close"
     result: Dict[str, Dict[str, float]] = {}
 
+    def _execute_with_retry(query, attempts: int = 3) -> object:
+        last_exc: Exception | None = None
+        for attempt in range(attempts):
+            try:
+                return query.execute()
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                if attempt < attempts - 1:
+                    time.sleep(0.5 * (2 ** attempt))
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("Supabase query failed")
+
     for ticker in tickers:
         query = (
             supabase.table("market_prices")
@@ -86,7 +100,7 @@ def _load_from_supabase(
         from_index = 0
         page_size = 1000
         while True:
-            page = query.range(from_index, from_index + page_size - 1).execute()
+            page = _execute_with_retry(query.range(from_index, from_index + page_size - 1))
             data = getattr(page, "data", None) or []
             rows.extend(data)
             if len(data) < page_size:

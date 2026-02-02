@@ -5,8 +5,10 @@ type StrategyOption = {
 
 export default function BacktestConfig({
   strategies,
-  selectedStrategyId,
+  selectedStrategyIds,
   onStrategyChange,
+  onAddStrategy,
+  onRemoveStrategy,
   initialCapital,
   onInitialCapitalChange,
   commission,
@@ -15,8 +17,10 @@ export default function BacktestConfig({
   onSlippageChange
 }: {
   strategies: StrategyOption[];
-  selectedStrategyId: string;
-  onStrategyChange: (value: string) => void;
+  selectedStrategyIds: string[];
+  onStrategyChange: (index: number, value: string) => void;
+  onAddStrategy: () => void;
+  onRemoveStrategy: (index: number) => void;
   initialCapital: string;
   onInitialCapitalChange: (value: string) => void;
   commission: string;
@@ -25,35 +29,68 @@ export default function BacktestConfig({
   onSlippageChange: (value: string) => void;
 }) {
   const hasStrategies = strategies.length > 0;
-  const selectedValue = hasStrategies
-    ? strategies.some((strategy) => strategy.value === selectedStrategyId)
-      ? selectedStrategyId
-      : strategies[0].value
-    : "";
+  const selectedValues = selectedStrategyIds.length
+    ? selectedStrategyIds.map((value) =>
+        strategies.some((strategy) => strategy.value === value)
+          ? value
+          : strategies[0]?.value ?? ""
+      )
+    : hasStrategies
+      ? [strategies[0].value]
+      : [""];
 
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
-      <h2 className="text-lg font-semibold mb-4">Configuration</h2>
-      <div className="grid grid-cols-4 gap-4">
-        <div>
-          <label className="text-sm text-gray-400 mb-2 block">Strategy</label>
-          <select
-            className="w-full bg-[#0a0d14] border border-gray-800 rounded px-3 py-2 text-sm"
-            value={selectedValue}
-            onChange={(event) => onStrategyChange(event.target.value)}
-            disabled={!hasStrategies}
-          >
-            {hasStrategies ? (
-              strategies.map((strategy) => (
-                <option key={strategy.value} value={strategy.value}>
-                  {strategy.label}
-                </option>
-              ))
-            ) : (
-              <option value="">No user strategies</option>
-            )}
-          </select>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold">Configuration</h2>
+        <button
+          type="button"
+          className="text-xs text-gray-300 border border-gray-800 px-2 py-1 rounded hover:text-white hover:border-gray-600 transition-colors disabled:opacity-50"
+          onClick={onAddStrategy}
+          disabled={!hasStrategies}
+        >
+          + Add Strategy
+        </button>
+      </div>
+      <div className="space-y-4">
+        <div className="grid grid-cols-4 gap-4">
+          {selectedValues.map((value, index) => (
+            <div key={`${value}-${index}`} className="col-span-4 grid grid-cols-4 gap-4">
+              <div className="col-span-3">
+                <label className="text-sm text-gray-400 mb-2 block">
+                  Strategy {index + 1}
+                </label>
+                <select
+                  className="w-full bg-[#0a0d14] border border-gray-800 rounded px-3 py-2 text-sm"
+                  value={value}
+                  onChange={(event) => onStrategyChange(index, event.target.value)}
+                  disabled={!hasStrategies}
+                >
+                  {hasStrategies ? (
+                    strategies.map((strategy) => (
+                      <option key={strategy.value} value={strategy.value}>
+                        {strategy.label}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">No user strategies</option>
+                  )}
+                </select>
+              </div>
+              <div className="col-span-1 flex items-end">
+                <button
+                  type="button"
+                  className="w-full text-xs text-gray-300 border border-gray-800 px-2 py-2 rounded hover:text-white hover:border-gray-600 transition-colors disabled:opacity-50"
+                  onClick={() => onRemoveStrategy(index)}
+                  disabled={selectedValues.length <= 1}
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
+        <div className="grid grid-cols-4 gap-4">
         <div>
           <label className="text-sm text-gray-400 mb-2 block">
             Initial Capital
@@ -84,6 +121,7 @@ export default function BacktestConfig({
             onChange={(event) => onSlippageChange(event.target.value)}
             className="w-full bg-[#0a0d14] border border-gray-800 rounded px-3 py-2 text-sm font-mono"
           />
+        </div>
         </div>
       </div>
     </div>

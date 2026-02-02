@@ -11,7 +11,7 @@ from app.benchmarks.data import BENCHMARKS
 from app.core.auth import resolve_my_user_id
 from app.core.config import get_settings
 from app.core.errors import APIError
-from app.core.time import now_kst
+from app.core.time import now_kst, parse_datetime
 from app.schemas.backtests import (
     BacktestCreateRequest,
     BacktestJob,
@@ -32,6 +32,27 @@ from app.universes.presets import UNIVERSE_PRESETS
 
 router = APIRouter()
 
+MAX_PROGRESS_LOG = 50
+
+
+def _estimate_eta_seconds(started_at: str | None, now_iso: str, progress: int | None) -> int | None:
+    if not started_at or progress is None:
+        return None
+    if progress <= 0:
+        return None
+    if progress >= 100:
+        return 0
+    try:
+        start_dt = parse_datetime(started_at)
+        now_dt = parse_datetime(now_iso)
+    except Exception:
+        return None
+    elapsed = (now_dt - start_dt).total_seconds()
+    if elapsed <= 0:
+        return None
+    remaining = elapsed * (100 - progress) / progress
+    return max(0, int(remaining))
+
 
 def _update_job_state(
     backtest_id: str,
@@ -39,14 +60,65 @@ def _update_job_state(
     status_value: str | None = None,
     progress: int | None = None,
     error: Dict[str, Any] | None = None,
+    stage: str | None = None,
+    message: str | None = None,
+    detail: Dict[str, Any] | None = None,
+    log: bool = True,
 ) -> None:
-    updates: Dict[str, Any] = {"updated_at": now_kst().isoformat()}
+    job = STORE.get_job(backtest_id)
+    if not job:
+        return
+    now_iso = now_kst().isoformat()
+    updates: Dict[str, Any] = {"updated_at": now_iso}
     if status_value is not None:
         updates["status"] = status_value
+        if status_value == "running" and not job.get("started_at"):
+            updates["started_at"] = now_iso
     if progress is not None:
-        updates["progress"] = progress
+        updates["progress"] = max(0, min(100, progress))
+    if stage is not None:
+        updates["progress_stage"] = stage
+    if message is not None:
+        updates["progress_message"] = message
+    if detail is not None:
+        updates["progress_detail"] = detail
     if error is not None:
         updates["error"] = error
+
+    progress_value = updates.get("progress", job.get("progress"))
+    eta_seconds = _estimate_eta_seconds(
+        updates.get("started_at") or job.get("started_at") or job.get("created_at"),
+        now_iso,
+        progress_value,
+    )
+    if eta_seconds is not None:
+        updates["eta_seconds"] = eta_seconds
+    if status_value in {"done", "failed", "canceled"}:
+        updates["eta_seconds"] = 0
+
+    if log and (message or stage or status_value or progress is not None or error):
+        log_items = list(job.get("progress_log") or [])
+        entry = {
+            "at": now_iso,
+            "stage": stage or job.get("progress_stage") or status_value or "update",
+            "message": message
+            or stage
+            or status_value
+            or ("error" if error else "progress_update"),
+            "progress": progress_value,
+            "eta_seconds": updates.get("eta_seconds", job.get("eta_seconds")),
+            "detail": detail or job.get("progress_detail"),
+        }
+        if not log_items or (
+            log_items[-1].get("message") != entry["message"]
+            or log_items[-1].get("progress") != entry["progress"]
+            or log_items[-1].get("stage") != entry["stage"]
+        ):
+            log_items.append(entry)
+            if len(log_items) > MAX_PROGRESS_LOG:
+                log_items = log_items[-MAX_PROGRESS_LOG:]
+            updates["progress_log"] = log_items
+
     STORE.update_job(backtest_id, updates)
 
 
@@ -66,17 +138,147 @@ def _run_backtest_job(
     benchmark_refs: List[Dict[str, Any]],
     baseline_benchmark_curve: List[Dict[str, float]] | None,
 ) -> None:
-    _update_job_state(backtest_id, status_value="running", progress=5)
+    _update_job_state(
+        backtest_id,
+        status_value="running",
+        progress=5,
+        stage="preparing",
+        message="Preparing backtest",
+    )
 
     try:
         results_payload: Dict[str, Any] = {}
         result_items: List[tuple[StrategyRef, StrategyContext, Dict[str, Any]]] = []
-        benchmark_symbol = benchmark_refs[0]["symbol"] if benchmark_refs else None
+        benchmark_ref = benchmark_refs[0] if benchmark_refs else None
+        benchmark_symbol = benchmark_ref["symbol"] if benchmark_ref else None
+        benchmark_cash = None
+        benchmark_fee_bps = None
+        benchmark_slippage_bps = None
+        if benchmark_ref:
+            benchmark_cash, benchmark_fee_bps, benchmark_slippage_bps = _resolve_benchmark_cash(
+                benchmark_ref, spec_dict
+            )
 
         settings = get_settings()
         public_repo = PublicStrategiesRepository(settings)
         my_repo = MyStrategiesRepository(settings)
         public_repo.ensure_seed()
+
+        def _strategy_detail(label: str, index: int, total: int, phase: str) -> Dict[str, Any]:
+            return {
+                "strategy_label": label,
+                "strategy_index": index,
+                "strategy_total": total,
+                "phase": phase,
+            }
+
+        def _make_strategy_progress_cb(
+            *,
+            label: str,
+            index: int,
+            total: int,
+            progress_start: int,
+            progress_end: int,
+        ):
+            span = max(progress_end - progress_start, 0)
+            pre_span = 0
+            if span > 2:
+                pre_span = max(min(int(span * 0.15), span - 1), 1)
+            simulate_start = progress_start + pre_span
+            simulate_span = max(span - pre_span, 1)
+            last_bucket = -1
+
+            def _cb(phase: str, fraction: float | None) -> None:
+                nonlocal last_bucket
+                detail = _strategy_detail(label, index, total, phase)
+                prefix = f"[{index}/{total}] " if total > 1 else ""
+                if phase == "load_data":
+                    _update_job_state(
+                        backtest_id,
+                        progress=progress_start,
+                        stage="loading_data",
+                        message=f"{prefix}Loading data for {label}",
+                        detail=detail,
+                        log=True,
+                    )
+                    return
+                if phase == "signals":
+                    progress = min(progress_start + pre_span, progress_end)
+                    _update_job_state(
+                        backtest_id,
+                        progress=progress,
+                        stage="generating_signals",
+                        message=f"{prefix}Generating signals for {label}",
+                        detail=detail,
+                        log=True,
+                    )
+                    return
+                if phase == "simulate":
+                    if fraction is None:
+                        return
+                    bounded = max(0.0, min(1.0, fraction))
+                    progress = simulate_start + int(simulate_span * bounded)
+                    progress = min(progress_end, max(progress_start, progress))
+                    percent = int(bounded * 100)
+                    bucket = int(bounded * 20)
+                    log = bucket != last_bucket
+                    if log:
+                        last_bucket = bucket
+                    _update_job_state(
+                        backtest_id,
+                        progress=progress,
+                        stage="simulating",
+                        message=f"{prefix}Simulating {label} ({percent}%)",
+                        detail=detail,
+                        log=log,
+                    )
+                    return
+                if phase == "metrics":
+                    _update_job_state(
+                        backtest_id,
+                        progress=progress_end,
+                        stage="computing_metrics",
+                        message=f"{prefix}Computing metrics for {label}",
+                        detail=detail,
+                        log=True,
+                    )
+
+            return _cb
+
+        def _make_simulation_progress_cb(
+            *,
+            label: str,
+            index: int,
+            total: int,
+            progress_start: int,
+            progress_end: int,
+            stage: str,
+            message: str,
+        ):
+            span = max(progress_end - progress_start, 1)
+            last_bucket = -1
+
+            def _cb(fraction: float) -> None:
+                nonlocal last_bucket
+                bounded = max(0.0, min(1.0, fraction))
+                progress = progress_start + int(span * bounded)
+                progress = min(progress_end, max(progress_start, progress))
+                detail = _strategy_detail(label, index, total, stage)
+                percent = int(bounded * 100)
+                bucket = int(bounded * 20)
+                log = bucket != last_bucket
+                if log:
+                    last_bucket = bucket
+                _update_job_state(
+                    backtest_id,
+                    progress=progress,
+                    stage=stage,
+                    message=f"{message} ({percent}%)",
+                    detail=detail,
+                    log=log,
+                )
+
+            return _cb
 
         def resolve_runtime(ref: StrategyRef) -> Dict[str, Any]:
             if ref.type == "public":
@@ -91,6 +293,7 @@ def _run_backtest_job(
                     "code_version": public_row.get("code_version") or "unknown",
                     "public_strategy_id": public_row.get("public_strategy_id", ref.id),
                     "public_version_snapshot": public_row.get("version"),
+                    "default_params": public_row.get("default_params") or {},
                 }
 
             my_row = my_repo.get(user_id, ref.id)
@@ -108,12 +311,21 @@ def _run_backtest_job(
                 "code_version": code_version,
                 "public_strategy_id": public_id,
                 "public_version_snapshot": public_version_snapshot,
+                "default_params": public_row.get("default_params") if public_row else {},
                 "my_row": my_row,
             }
 
-        def build_item_from_run(ref: StrategyRef, ctx: StrategyContext) -> Dict[str, Any]:
+        def build_item_from_run(
+            ref: StrategyRef,
+            ctx: StrategyContext,
+            *,
+            progress_cb=None,
+        ) -> Dict[str, Any]:
             runtime = resolve_runtime(ref)
-            run_params = dict(ctx.params)
+            run_params = {
+                **(runtime.get("default_params") or {}),
+                **(ctx.params or {}),
+            }
             if (
                 "universe" not in run_params
                 and "universe_preset" not in run_params
@@ -135,6 +347,10 @@ def _run_backtest_job(
                 initial_cash=spec_dict["initial_cash"],
                 fee_bps=spec_dict["fee_bps"],
                 slippage_bps=spec_dict["slippage_bps"],
+                benchmark_initial_cash=benchmark_cash,
+                benchmark_fee_bps=benchmark_fee_bps,
+                benchmark_slippage_bps=benchmark_slippage_bps,
+                progress_cb=progress_cb,
             )
             equity_curve = run_result.equity_curve
             trade_count = run_result.trade_stats.get("trades_count", 0) if run_result.trade_stats else 0
@@ -145,6 +361,7 @@ def _run_backtest_job(
                 "equity_curve": equity_curve,
                 "returns": compute_returns(equity_curve),
                 "drawdown": compute_drawdown(equity_curve),
+                "holdings_history": run_result.holdings_history,
                 "positions_summary": {
                     "avg_positions": 1 if trade_count else 0,
                     "max_positions": 1 if trade_count else 0,
@@ -152,21 +369,52 @@ def _run_backtest_job(
             }
 
         if payload.mode == "single":
-            _update_job_state(backtest_id, progress=15)
             ctx = strategy_contexts[0]
-            item = build_item_from_run(payload.strategies[0], ctx)
+            _update_job_state(
+                backtest_id,
+                progress=10,
+                stage="preparing_strategy",
+                message=f"Preparing strategy {ctx.label}",
+                detail=_strategy_detail(ctx.label, 1, 1, "prepare"),
+            )
+            progress_cb = _make_strategy_progress_cb(
+                label=ctx.label,
+                index=1,
+                total=1,
+                progress_start=15,
+                progress_end=80,
+            )
+            item = build_item_from_run(payload.strategies[0], ctx, progress_cb=progress_cb)
             results_payload["results"] = [item]
             result_items.append((payload.strategies[0], ctx, results_payload["results"][0]))
-            _update_job_state(backtest_id, progress=85)
+            _update_job_state(
+                backtest_id,
+                progress=85,
+                stage="aggregating",
+                message="Building results",
+            )
         elif payload.mode == "batch":
             results = []
             total = max(len(strategy_contexts), 1)
+            _update_job_state(
+                backtest_id,
+                progress=10,
+                stage="running_strategies",
+                message=f"Running {total} strategies",
+            )
             for idx, (ref, ctx) in enumerate(zip(payload.strategies, strategy_contexts), start=1):
                 if _job_is_canceled(backtest_id):
                     return
-                progress = 10 + int((idx - 1) / total * 60)
-                _update_job_state(backtest_id, progress=progress)
-                results.append(build_item_from_run(ref, ctx))
+                start = 10 + int((idx - 1) / total * 60)
+                end = 10 + int(idx / total * 60)
+                progress_cb = _make_strategy_progress_cb(
+                    label=ctx.label,
+                    index=idx,
+                    total=total,
+                    progress_start=start,
+                    progress_end=end,
+                )
+                results.append(build_item_from_run(ref, ctx, progress_cb=progress_cb))
                 result_items.append((ref, ctx, results[-1]))
             results_payload["results"] = results
             comparison_table = []
@@ -182,18 +430,38 @@ def _run_backtest_job(
                     }
                 )
             results_payload["comparison_table"] = comparison_table
-            _update_job_state(backtest_id, progress=85)
+            _update_job_state(
+                backtest_id,
+                progress=85,
+                stage="aggregating",
+                message="Building comparison table",
+            )
         else:
             if _job_is_canceled(backtest_id):
                 return
-            _update_job_state(backtest_id, progress=20)
+            _update_job_state(
+                backtest_id,
+                progress=20,
+                stage="running_ensemble",
+                message="Running ensemble backtest",
+            )
             ensemble_spec = payload.ensemble.model_dump() if payload.ensemble else {}
+            ensemble_progress_cb = _make_simulation_progress_cb(
+                label="ensemble",
+                index=1,
+                total=1,
+                progress_start=20,
+                progress_end=40,
+                stage="simulating_ensemble",
+                message="Simulating ensemble",
+            )
             ensemble_result = run_ensemble_backtest(
                 spec_dict,
                 strategy_contexts,
                 universe_tickers,
                 ensemble_spec,
                 benchmark_curve=baseline_benchmark_curve,
+                progress_cb=ensemble_progress_cb,
             )
             results_payload["ensemble_result"] = {
                 "label": "ensemble",
@@ -202,13 +470,48 @@ def _run_backtest_job(
             }
             component_results = []
             total = max(len(strategy_contexts), 1)
+            _update_job_state(
+                backtest_id,
+                progress=40,
+                stage="running_components",
+                message=f"Running {total} component strategies",
+            )
             for idx, (ref, ctx) in enumerate(zip(payload.strategies, strategy_contexts), start=1):
                 if _job_is_canceled(backtest_id):
                     return
-                progress = 40 + int((idx - 1) / total * 40)
-                _update_job_state(backtest_id, progress=progress)
+                start = 40 + int((idx - 1) / total * 40)
+                end = 40 + int(idx / total * 40)
+                _update_job_state(
+                    backtest_id,
+                    progress=start,
+                    stage="loading_data",
+                    message=f"[{idx}/{total}] Loading data for {ctx.label}",
+                    detail=_strategy_detail(ctx.label, idx, total, "load_data"),
+                    log=True,
+                )
+                progress_cb = _make_simulation_progress_cb(
+                    label=ctx.label,
+                    index=idx,
+                    total=total,
+                    progress_start=start,
+                    progress_end=end,
+                    stage="simulating_component",
+                    message=f"[{idx}/{total}] Simulating {ctx.label}",
+                )
                 item = run_single_backtest(
-                    spec_dict, ctx, universe_tickers, benchmark_curve=baseline_benchmark_curve
+                    spec_dict,
+                    ctx,
+                    universe_tickers,
+                    benchmark_curve=baseline_benchmark_curve,
+                    progress_cb=progress_cb,
+                )
+                _update_job_state(
+                    backtest_id,
+                    progress=end,
+                    stage="computing_metrics",
+                    message=f"[{idx}/{total}] Computing metrics for {ctx.label}",
+                    detail=_strategy_detail(ctx.label, idx, total, "metrics"),
+                    log=True,
                 )
                 component_results.append(
                     {
@@ -219,19 +522,40 @@ def _run_backtest_job(
                 )
                 result_items.append((ref, ctx, component_results[-1]))
             results_payload["components"] = component_results
-            _update_job_state(backtest_id, progress=85)
+            _update_job_state(
+                backtest_id,
+                progress=85,
+                stage="aggregating",
+                message="Building ensemble results",
+            )
 
         if _job_is_canceled(backtest_id):
             return
 
         if benchmark_refs:
-            _update_job_state(backtest_id, progress=90)
+            _update_job_state(
+                backtest_id,
+                progress=90,
+                stage="building_benchmarks",
+                message="Building benchmarks",
+            )
             results_payload["benchmarks"] = _build_benchmarks_payload(benchmark_refs, spec_dict)
-            _update_job_state(backtest_id, progress=95)
+            _update_job_state(
+                backtest_id,
+                progress=95,
+                stage="building_benchmarks",
+                message="Benchmark metrics computed",
+            )
 
         if result_items:
             if _job_is_canceled(backtest_id):
                 return
+            _update_job_state(
+                backtest_id,
+                progress=97,
+                stage="saving_runs",
+                message="Saving run snapshots",
+            )
             runs_repo = BacktestRunsRepository(settings)
             benchmark_item = None
             if isinstance(results_payload.get("benchmarks"), dict):
@@ -272,12 +596,20 @@ def _run_backtest_job(
                 )
 
         STORE.set_results(backtest_id, results_payload)
-        _update_job_state(backtest_id, status_value="done", progress=100)
+        _update_job_state(
+            backtest_id,
+            status_value="done",
+            progress=100,
+            stage="done",
+            message="Backtest completed",
+        )
     except APIError as exc:
         _update_job_state(
             backtest_id,
             status_value="failed",
             progress=100,
+            stage="failed",
+            message="Backtest failed",
             error={
                 "code": exc.code,
                 "message": exc.message,
@@ -290,6 +622,8 @@ def _run_backtest_job(
             backtest_id,
             status_value="failed",
             progress=100,
+            stage="failed",
+            message="Backtest failed",
             error={
                 "code": "INTERNAL_ERROR",
                 "message": "Unexpected error",
@@ -467,11 +801,30 @@ def _resolve_strategy_contexts(
     return contexts
 
 
-def _build_benchmark_curve(symbol: str, spec: dict) -> List[Dict[str, float]]:
+def _apply_entry_cost(initial_cash: float, fee_bps: float, slippage_bps: float) -> float:
+    total_bps = fee_bps + slippage_bps
+    if total_bps <= 0:
+        return initial_cash
+    return initial_cash * (1 - total_bps / 10000)
+
+
+def _resolve_benchmark_cash(ref: Dict[str, Any], spec: dict) -> tuple[float, float, float]:
+    initial_cash = ref.get("initial_cash")
+    if initial_cash is None:
+        initial_cash = spec.get("initial_cash", 1.0)
+    fee_bps = ref.get("fee_bps") or 0.0
+    slippage_bps = ref.get("slippage_bps") or 0.0
+    return float(initial_cash), float(fee_bps), float(slippage_bps)
+
+
+def _build_benchmark_curve(ref: Dict[str, Any], spec: dict) -> List[Dict[str, float]]:
+    symbol = ref["symbol"]
+    initial_cash, fee_bps, slippage_bps = _resolve_benchmark_cash(ref, spec)
+    initial_cash = _apply_entry_cost(initial_cash, fee_bps, slippage_bps)
     if symbol.upper() == "CASH":
         curve = []
         for d in trading_days(parse_date(spec["period_start"]), parse_date(spec["period_end"])):
-            curve.append({"date": d.isoformat(), "equity": spec["initial_cash"]})
+            curve.append({"date": d.isoformat(), "equity": initial_cash})
         return curve
 
     prices = load_price_series([symbol], spec["period_start"], spec["period_end"], spec.get("price_field", "adj_close"))
@@ -479,7 +832,7 @@ def _build_benchmark_curve(symbol: str, spec: dict) -> List[Dict[str, float]]:
     if not series:
         return []
     dates = list(series.keys())
-    equity = spec["initial_cash"]
+    equity = initial_cash
     curve = []
     prev_price = None
     for date in dates:
@@ -495,7 +848,7 @@ def _build_benchmarks_payload(benchmarks: List[Dict[str, Any]], spec: dict) -> D
     items = []
     for ref in benchmarks:
         symbol = ref["symbol"]
-        curve = _build_benchmark_curve(symbol, spec)
+        curve = _build_benchmark_curve(ref, spec)
         metrics = compute_metrics(curve)
         item = {
             "symbol": symbol,
@@ -512,7 +865,7 @@ def _build_benchmarks_payload(benchmarks: List[Dict[str, Any]], spec: dict) -> D
 def _get_baseline_benchmark_curve(benchmarks: List[Dict[str, Any]] | None, spec: dict) -> List[Dict[str, float]] | None:
     if not benchmarks:
         return None
-    return _build_benchmark_curve(benchmarks[0]["symbol"], spec)
+    return _build_benchmark_curve(benchmarks[0], spec)
 
 
 def _validate_and_prepare(payload: BacktestCreateRequest, user_id: str):
@@ -568,6 +921,21 @@ async def create_backtest(
         "mode": payload.mode,
         "status": "queued",
         "progress": 0,
+        "progress_stage": "queued",
+        "progress_message": "Backtest queued",
+        "progress_detail": None,
+        "eta_seconds": None,
+        "started_at": None,
+        "progress_log": [
+            {
+                "at": now,
+                "stage": "queued",
+                "message": "Backtest queued",
+                "progress": 0,
+                "eta_seconds": None,
+                "detail": None,
+            }
+        ],
         "spec": spec_dict,
         "strategies": [s.model_dump() for s in payload.strategies],
         "benchmarks": benchmark_refs or None,
@@ -679,10 +1047,14 @@ async def cancel_backtest(
         raise APIError("NOT_FOUND", "Backtest not found", status_code=404)
     if job.get("status") not in {"queued", "running"}:
         raise APIError("CONFLICT", "Backtest cannot be canceled", status_code=409)
-    updated = STORE.update_job(
+    _update_job_state(
         backtest_id,
-        {"status": "canceled", "updated_at": now_kst().isoformat()},
+        status_value="canceled",
+        stage="canceled",
+        message="Backtest canceled",
+        log=True,
     )
+    updated = STORE.get_job(backtest_id)
     return {k: v for k, v in (updated or job).items() if k != "user_id"}
 
 
