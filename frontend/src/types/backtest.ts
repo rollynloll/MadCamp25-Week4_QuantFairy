@@ -142,6 +142,7 @@ export interface ApiResultItem {
 
 export interface BenchmarkItem {
   symbol: string;
+  label?: string;
   metrics?: ApiMetrics;
   equity_curve?: ApiEquityPoint[];
   returns?: ApiReturnPoint[];
