@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Check, Minus } from "lucide-react";
 import StrategyCard from "@/components/strategies/StrategyCard";
 import StrategyDetailModal from "@/components/strategies/StrategyDetailModal";
 import {
@@ -24,15 +25,21 @@ export default function Strategies() {
   const [myStrategies, setMyStrategies] = useState<MyStrategy[]>([]);
   const [myLoading, setMyLoading] = useState(false);
   const [myError, setMyError] = useState<string | null>(null);
-  const filteredData = useMemo(() => {
-    if (scope === "public") return data ?? [];
-    const byPublicId = new Map(
-      (data ?? []).map((item) => [item.public_strategy_id, item])
-    );
+  const [addingIds, setAddingIds] = useState<Set<string>>(new Set());
+  const publicStrategyById = useMemo(() => {
+    return new Map((data ?? []).map((item) => [item.public_strategy_id, item]));
+  }, [data]);
+
+  const myFromPublic = useMemo(() => {
     return myStrategies
-      .map((myItem) => byPublicId.get(myItem.source_public_strategy_id))
+      .filter((item) => Boolean(item.source_public_strategy_id))
+      .map((myItem) => publicStrategyById.get(myItem.source_public_strategy_id))
       .filter(Boolean) as PublicStrategyListItem[];
-  }, [data, scope, myStrategies]);
+  }, [myStrategies, publicStrategyById]);
+
+  const myCustom = useMemo(() => {
+    return myStrategies.filter((item) => !item.source_public_strategy_id);
+  }, [myStrategies]);
 
   const myStrategyIdByPublicId = useMemo(() => {
     const map = new Map<string, string>();
@@ -45,7 +52,11 @@ export default function Strategies() {
   }, [myStrategies]);
 
   const handleAddToMy = (strategy: PublicStrategyListItem) => {
+    if (myStrategyIdByPublicId.has(strategy.public_strategy_id)) {
+      return;
+    }
     setMyError(null);
+    setAddingIds((prev) => new Set(prev).add(strategy.public_strategy_id));
     getPublicStrategy(strategy.public_strategy_id)
       .then((detailResult) =>
         addPublicStrategyToMy(strategy.public_strategy_id, {
@@ -63,17 +74,41 @@ export default function Strategies() {
       })
       .catch((err) => {
         setMyError(err instanceof Error ? err.message : "Failed to add strategy");
+      })
+      .finally(() => {
+        setAddingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(strategy.public_strategy_id);
+          return next;
+        });
       });
   };
 
   const handleRemoveFromMy = (strategy: PublicStrategyListItem) => {
     const myId = myStrategyIdByPublicId.get(strategy.public_strategy_id);
     if (!myId) return;
+    if (!window.confirm("Remove this strategy from My Strategies?")) return;
     setMyError(null);
     deleteMyStrategy(myId)
       .then(() => {
         setMyStrategies((prev) =>
           prev.filter((item) => item.my_strategy_id !== myId)
+        );
+      })
+      .catch((err) => {
+        setMyError(
+          err instanceof Error ? err.message : "Failed to remove strategy"
+        );
+      });
+  };
+
+  const handleRemoveCustom = (myStrategyId: string) => {
+    if (!window.confirm("Remove this custom strategy?")) return;
+    setMyError(null);
+    deleteMyStrategy(myStrategyId)
+      .then(() => {
+        setMyStrategies((prev) =>
+          prev.filter((item) => item.my_strategy_id !== myStrategyId)
         );
       })
       .catch((err) => {
@@ -213,23 +248,118 @@ export default function Strategies() {
         <div className="text-sm text-gray-400">Loading my strategies...</div>
       ) : scope === "private" && myError ? (
         <div className="text-sm text-red-400">{myError}</div>
-      ) : filteredData.length === 0 ? (
+      ) : scope === "private" && myFromPublic.length === 0 && myCustom.length === 0 ? (
         <div className="rounded-lg border border-gray-800 bg-[#0d1117] p-6 text-sm text-gray-400">
-          {scope === "private"
-            ? "No private strategies found."
-            : "No strategies found."}
+          No private strategies found.
         </div>
       ) : (
-        <div className="space-y-4">
-          {filteredData.map((strategy) => (
-            <StrategyCard
-              key={strategy.public_strategy_id}
-              strategy={strategy}
-              onSelect={(item) => setSelected(item)}
-              onAdd={scope === "public" ? handleAddToMy : undefined}
-              onRemove={scope === "private" ? handleRemoveFromMy : undefined}
-            />
-          ))}
+        <div className="space-y-6">
+          {scope === "public" && (
+            <div className="space-y-4">
+              {(data ?? []).map((strategy) => (
+                <div
+                  key={strategy.public_strategy_id}
+                  className="relative"
+                >
+                  {(() => {
+                    const isAdded = myStrategyIdByPublicId.has(strategy.public_strategy_id);
+                    const isAdding = addingIds.has(strategy.public_strategy_id);
+                    return (
+                      <div
+                        className={
+                          isAdded || isAdding
+                            ? "rounded-lg ring-1 ring-green-500/40 bg-green-500/5"
+                            : ""
+                        }
+                      >
+                        <StrategyCard
+                          strategy={strategy}
+                          onSelect={(item) => setSelected(item)}
+                          onAdd={isAdded || isAdding ? undefined : handleAddToMy}
+                        />
+                        {(isAdding || isAdded) && (
+                          <div className="absolute top-4 right-4 flex items-center gap-1 rounded-full bg-green-600/20 px-2 py-1 text-xs text-green-300">
+                            <Check className="w-3 h-3" />
+                            {isAdding ? "Adding" : "Added"}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {scope === "private" && (
+            <>
+              <div className="space-y-3">
+                <div className="text-xs uppercase tracking-wide text-gray-500">
+                  From Public Strategies
+                </div>
+                {myFromPublic.length === 0 ? (
+                  <div className="text-sm text-gray-400">
+                    No strategies added from Public.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {myFromPublic.map((strategy) => (
+                      <StrategyCard
+                        key={strategy.public_strategy_id}
+                        strategy={strategy}
+                        onSelect={(item) => setSelected(item)}
+                        onRemove={handleRemoveFromMy}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                <div className="text-xs uppercase tracking-wide text-gray-500">
+                  Custom Strategies
+                </div>
+                {myCustom.length === 0 ? (
+                  <div className="text-sm text-gray-400">
+                    No custom strategies yet.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {myCustom.map((strategy) => (
+                      <div
+                        key={strategy.my_strategy_id}
+                        className="bg-[#0d1117] border border-gray-800 rounded-lg p-6"
+                      >
+                        <div className="flex items-start justify-between gap-6 mb-3">
+                          <div>
+                            <h3 className="text-lg font-semibold">
+                              {strategy.name}
+                            </h3>
+                            {strategy.note && (
+                              <p className="text-sm text-gray-400 mt-1">
+                                {strategy.note}
+                              </p>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => handleRemoveCustom(strategy.my_strategy_id)}
+                            className="p-1.5 hover:bg-gray-800 rounded transition-colors"
+                            title="Remove"
+                            type="button"
+                          >
+                            <Minus size={16} />
+                          </button>
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          Created: {new Date(strategy.created_at).toLocaleString()}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
 
