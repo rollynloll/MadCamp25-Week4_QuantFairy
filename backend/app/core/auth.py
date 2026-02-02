@@ -17,9 +17,10 @@ def require_bearer_token(authorization: str | None) -> str:
 
 
 def resolve_my_user_id(settings: Settings, authorization: str | None) -> str:
-    token = require_bearer_token(authorization)
-    if settings.api_token and token != settings.api_token:
-        raise APIError("FORBIDDEN", "Invalid token", status_code=403)
+    if settings.api_token:
+        token = require_bearer_token(authorization)
+        if token != settings.api_token:
+            raise APIError("FORBIDDEN", "Invalid token", status_code=403)
 
     if settings.default_user_id:
         return settings.default_user_id

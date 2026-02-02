@@ -41,7 +41,7 @@ class MyStrategiesRepository:
         query = query.order(sort, desc=(order == "desc")).limit(limit)
         result = query.execute()
         data = getattr(result, "data", None) or []
-        return [row for row in data if row.get("source_public_strategy_id")]
+        return data
 
     def get(self, user_id: str, my_strategy_id: str) -> Optional[Dict[str, Any]]:
         if self.supabase is None:
@@ -57,10 +57,26 @@ class MyStrategiesRepository:
             )
             data = getattr(result, "data", None)
             if data:
-                row = data[0]
-                if not row.get("source_public_strategy_id"):
-                    return None
-                return row
+                return data[0]
+        except Exception:
+            return None
+        return None
+
+    def get_by_source(self, user_id: str, public_strategy_id: str) -> Optional[Dict[str, Any]]:
+        if self.supabase is None:
+            return None
+        try:
+            result = (
+                self.supabase.table("user_strategies")
+                .select("*")
+                .eq("user_id", user_id)
+                .eq("source_public_strategy_id", public_strategy_id)
+                .limit(1)
+                .execute()
+            )
+            data = getattr(result, "data", None)
+            if data:
+                return data[0]
         except Exception:
             return None
         return None
