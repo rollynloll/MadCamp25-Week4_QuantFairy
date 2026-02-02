@@ -2,6 +2,7 @@ import { AlertCircle, ChevronDown, ChevronUp } from "lucide-react";
 import MetricItem from "./MetricItem";
 import type { SectorAllocationItem, Strategy } from "@/types/portfolio";
 import StateToggle from "./StateToggle";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 type tab = "strategy" | "sector" | "exposure";
 interface AllocationProps {
@@ -37,6 +38,7 @@ export default function AllocationCard({
   showAdvanced,
   onToggleAdvanced
 }: AllocationProps) {
+  const { tr } = useLanguage();
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded flex flex-col h-fit max-h-[600px]">
       {/* Tabs */}
@@ -47,7 +49,7 @@ export default function AllocationCard({
             tab === "strategy" ? "text-white border-b-2 border-blue-500" : "text-gray-500"
           }`}
         >
-          Strategy
+          {tr("Strategy", "전략")}
         </button>
         <button
           onClick={() => onTabChange("sector")}
@@ -55,7 +57,7 @@ export default function AllocationCard({
             tab === "sector" ? "text-white border-b-2 border-blue-500" : "text-gray-500"
           }`}
         >
-          Sector
+          {tr("Sector", "섹터")}
         </button>
         <button
           onClick={() => onTabChange("exposure")}
@@ -63,7 +65,7 @@ export default function AllocationCard({
             tab === "exposure" ? "text-white border-b-2 border-blue-500" : "text-gray-500"
           }`}
         >
-          Exposure
+          {tr("Exposure", "익스포저")}
         </button>
       </div>
 
@@ -73,11 +75,13 @@ export default function AllocationCard({
           <div className="p-4 space-y-4">
             {/* Portfolio Constraints */}
             <div className="p-3 bg-gray-900/30 rounded border border-gray-800">
-              <div className="text-xs font-semibold text-gray-400 mb-3">Portfolio Constraints</div>
+              <div className="text-xs font-semibold text-gray-400 mb-3">
+                {tr("Portfolio Constraints", "포트폴리오 제약")}
+              </div>
               <div className="space-y-3">
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs text-gray-400">Target Cash %</label>
+                    <label className="text-xs text-gray-400">{tr("Target Cash %", "목표 현금 %")}</label>
                     <input
                       type="number"
                       value={targetCash}
@@ -107,13 +111,13 @@ export default function AllocationCard({
                   className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 transition-colors"
                 >
                   {showAdvanced ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                  Advanced
+                  {tr("Advanced", "고급 설정")}
                 </button>
                 {showAdvanced && (
                   <div className="pl-4 space-y-2 text-xs text-gray-500">
-                    <div>Max strategy weight: 35%</div>
-                    <div>Min strategy weight: 5%</div>
-                    <div>Rebalance tolerance: 2%</div>
+                    <div>{tr("Max strategy weight: 35%", "전략 최대 비중: 35%")}</div>
+                    <div>{tr("Min strategy weight: 5%", "전략 최소 비중: 5%")}</div>
+                    <div>{tr("Rebalance tolerance: 2%", "리밸런스 허용 오차: 2%")}</div>
                   </div>
                 )}
               </div>
@@ -129,8 +133,8 @@ export default function AllocationCard({
                   </div>
 
                   <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
-                    <span>Current: {strategy.currentWeight.toFixed(1)}%</span>
-                    <span>Target: {targetWeights[strategy.id]?.toFixed(1) ?? "—"}%</span>
+                    <span>{tr("Current", "현재")}: {strategy.currentWeight.toFixed(1)}%</span>
+                    <span>{tr("Target", "목표")}: {targetWeights[strategy.id]?.toFixed(1) ?? "—"}%</span>
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -157,7 +161,7 @@ export default function AllocationCard({
             </div>
 
             <div className="text-xs text-gray-500 pt-2">
-              Changes will be applied at the next scheduled rebalance
+              {tr("Changes will be applied at the next scheduled rebalance", "변경 사항은 다음 리밸런스에 적용됩니다")}
             </div>
           </div>
         )}
@@ -186,10 +190,10 @@ export default function AllocationCard({
         {tab === "exposure" && (
           <div className="p-4 space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <MetricItem label="Net Exposure" value="87.5%" />
-              <MetricItem label="Gross Exposure" value="97.7%" />
-              <MetricItem label="Cash" value="12.5%" />
-              <MetricItem label="Top 5 Concentration" value="76.8%" />
+              <MetricItem label={tr("Net Exposure", "순 익스포저")} value="87.5%" />
+              <MetricItem label={tr("Gross Exposure", "총 익스포저")} value="97.7%" />
+              <MetricItem label={tr("Cash", "현금")} value="12.5%" />
+              <MetricItem label={tr("Top 5 Concentration", "상위 5 집중도")} value="76.8%" />
             </div>
           </div>
         )}
@@ -201,7 +205,7 @@ export default function AllocationCard({
           {hasUnsavedChanges && (
             <div className="flex items-center gap-2 text-xs text-yellow-500 mb-2">
               <AlertCircle className="w-3 h-3" />
-              Unsaved changes
+              {tr("Unsaved changes", "저장되지 않은 변경사항")}
             </div>
           )}
           <div className="flex gap-2">
@@ -210,14 +214,14 @@ export default function AllocationCard({
               className="flex-1 py-2 bg-gray-800 hover:bg-gray-700 rounded text-sm font-medium transition-colors"
               disabled={!hasUnsavedChanges}
             >
-              Reset
+              {tr("Reset", "초기화")}
             </button>
             <button
               onClick={onSave}
               className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm font-medium transition-colors disabled:opacity-50"
               disabled={!hasUnsavedChanges}
             >
-              Save Targets
+              {tr("Save Targets", "목표 저장")}
             </button>
           </div>
         </div>

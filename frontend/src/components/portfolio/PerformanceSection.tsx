@@ -1,5 +1,6 @@
 import type { DrawdownPoint, EquityPoint } from "@/types/portfolio";
 import { Area, AreaChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface PerformanceProps {
   equityCurve: EquityPoint[];
@@ -18,15 +19,16 @@ export default function PerformanceSection({
   showBenchmark,
   onShowBenchmarkChange
 }: PerformanceProps ) {
+  const { tr } = useLanguage();
 
   return (
     <div>
-      <h2 className="font-semibold mb-4">Performance</h2>
+      <h2 className="font-semibold mb-4">{tr("Performance", "성과")}</h2>
       <div className="grid grid-cols-2 gap-6">
         {/* Equity Curve */}
         <div className="bg-[#0d1117] border border-gray-800 rounded p-4">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-medium">Equity Curve</h3>
+            <h3 className="text-sm font-medium">{tr("Equity Curve", "자산 추이")}</h3>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1">
                 {["1W", "1M", "3M", "1Y", "ALL"].map((range) => (
@@ -73,7 +75,7 @@ export default function PerformanceSection({
         {/* Drawdown + Metrics */}
         <div className="space-y-4">
           <div className="bg-[#0d1117] border border-gray-800 rounded p-4">
-            <h3 className="text-sm font-medium mb-4">Drawdown</h3>
+            <h3 className="text-sm font-medium mb-4">{tr("Drawdown", "낙폭")}</h3>
             <ResponsiveContainer width="100%" height={140}>
               <AreaChart data={drawdownData}>
                 <defs>
@@ -107,15 +109,15 @@ export default function PerformanceSection({
           <div className="bg-[#0d1117] border border-gray-800 rounded p-4">
             <div className="grid grid-cols-3 gap-4 text-sm">
               <div>
-                <div className="text-xs text-gray-500 mb-1">CAGR</div>
+                <div className="text-xs text-gray-500 mb-1">{tr("CAGR", "연복리")}</div>
                 <div className="font-semibold text-green-500">+28.9%</div>
               </div>
               <div>
-                <div className="text-xs text-gray-500 mb-1">Sharpe</div>
+                <div className="text-xs text-gray-500 mb-1">{tr("Sharpe", "샤프 지수")}</div>
                 <div className="font-semibold">2.34</div>
               </div>
               <div>
-                <div className="text-xs text-gray-500 mb-1">Max DD</div>
+                <div className="text-xs text-gray-500 mb-1">{tr("Max DD", "최대 낙폭")}</div>
                 <div className="font-semibold text-red-500">-5.2%</div>
               </div>
             </div>

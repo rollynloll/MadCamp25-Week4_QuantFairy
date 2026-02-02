@@ -17,6 +17,7 @@ import type {
 import type { MyStrategy } from "@/types/strategy";
 import { createBacktest, getBacktestJob, getBacktestResults, getBacktests } from "@/api/backtests";
 import { getMyStrategies } from "@/api/strategies";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const POLL_MS = 2000;
 const DEFAULT_CONFIG = {
@@ -67,15 +68,18 @@ function toMonthlyReturns(series?: ApiReturnPoint[]): MonthlyReturn[] {
   }));
 }
 
-function buildMetrics(payload: BacktestResultsResponse): BacktestMetric[] {
+function buildMetrics(
+  payload: BacktestResultsResponse,
+  tr: (en: string, ko: string) => string
+): BacktestMetric[] {
   const result = pickPrimaryResult(payload);
   const m = result?.metrics ?? {};
   return [
-    { label: "Total Return", value: formatPct(m.total_return_pct), isPositive: (m.total_return_pct ?? 0) >= 0 },
+    { label: tr("Total Return", "총 수익률"), value: formatPct(m.total_return_pct), isPositive: (m.total_return_pct ?? 0) >= 0 },
     { label: "CAGR", value: formatPct(m.cagr_pct), isPositive: (m.cagr_pct ?? 0) >= 0 },
-    { label: "Sharpe", value: m.sharpe?.toFixed(2) ?? "-", isPositive: (m.sharpe ?? 0) >= 0 },
-    { label: "Max Drawdown", value: formatPct(m.max_drawdown_pct), isPositive: (m.max_drawdown_pct ?? 0) >= 0 },
-    { label: "Volatility", value: formatPct(m.volatility_pct), isPositive: (m.volatility_pct ?? 0) >= 0 },
+    { label: tr("Sharpe", "샤프"), value: m.sharpe?.toFixed(2) ?? "-", isPositive: (m.sharpe ?? 0) >= 0 },
+    { label: tr("Max Drawdown", "최대 낙폭"), value: formatPct(m.max_drawdown_pct), isPositive: (m.max_drawdown_pct ?? 0) >= 0 },
+    { label: tr("Volatility", "변동성"), value: formatPct(m.volatility_pct), isPositive: (m.volatility_pct ?? 0) >= 0 },
   ];
 }
 
@@ -83,6 +87,7 @@ export default function Backtest() {
   const [searchParams] = useSearchParams();
   const backtestIdParam = searchParams.get("id");
   const [resolvedId, setResolvedId] = useState<string | null>(null);
+  const { tr } = useLanguage();
 
   const [job, setJob] = useState<BacktestJob | null>(null);
   const [results, setResults] = useState<BacktestResultsResponse | null>(null);
@@ -158,7 +163,7 @@ export default function Backtest() {
         setResolvedId(latestId);
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load backtests");
+          setError(err instanceof Error ? err.message : tr("Failed to load backtests", "백테스트 목록을 불러오지 못했습니다"));
           setLoading(false);
         }
       }
@@ -196,7 +201,7 @@ export default function Backtest() {
         timer = window.setTimeout(poll, POLL_MS);
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load backtest");
+          setError(err instanceof Error ? err.message : tr("Failed to load backtest", "백테스트를 불러오지 못했습니다"));
           setLoading(false);
         }
       }
@@ -238,7 +243,7 @@ export default function Backtest() {
           onEndDateChange={(value) => setPeriodEnd(value)}
           rangeDisabled
         />
-        <div className="text-sm text-gray-400">Loading backtest...</div>
+        <div className="text-sm text-gray-400">{tr("Loading backtest...", "백테스트 불러오는 중...")}</div>
       </div>
     );
   }
@@ -259,7 +264,7 @@ export default function Backtest() {
     );
   }
 
-  const metrics = results ? buildMetrics(results) : [];
+  const metrics = results ? buildMetrics(results, tr) : [];
   const strategyOptions = myStrategies.map((strategy) => ({
     value: strategy.my_strategy_id,
     label: strategy.name
@@ -279,11 +284,11 @@ export default function Backtest() {
 
   const handleRunBacktest = async () => {
     if (!selectedStrategyId) {
-      setError("전략을 선택해주세요.");
+      setError(tr("Please select a strategy.", "전략을 선택해주세요."));
       return;
     }
     if (periodStart && periodEnd && periodStart > periodEnd) {
-      setError("기간을 확인해주세요.");
+      setError(tr("Please check the period.", "기간을 확인해주세요."));
       return;
     }
 
@@ -317,7 +322,7 @@ export default function Backtest() {
       setResolvedId(created.backtest_id);
       setJob(created);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start backtest");
+      setError(err instanceof Error ? err.message : tr("Failed to start backtest", "백테스트 시작에 실패했습니다"));
     } finally {
       setIsSubmitting(false);
       setLoading(false);
@@ -357,13 +362,13 @@ export default function Backtest() {
       )}
       {isRunning && (
         <div className="text-sm text-gray-400">
-          Backtest {job?.status} {progressLabel && `· ${progressLabel}`}
+          {tr("Backtest", "백테스트")} {job?.status} {progressLabel && `· ${progressLabel}`}
         </div>
       )}
       {job?.status === "failed" && (
         <div className="text-sm text-red-400 space-y-1">
           <div>
-            Backtest failed{jobError?.message ? `: ${jobError.message}` : "."}
+            {tr("Backtest failed", "백테스트 실패")}{jobError?.message ? `: ${jobError.message}` : "."}
           </div>
           {jobError?.detail && (
             <div className="text-xs text-red-300">{jobError.detail}</div>
@@ -376,7 +381,7 @@ export default function Backtest() {
         </div>
       )}
       {job?.status === "canceled" && (
-        <div className="text-sm text-gray-400">Backtest canceled.</div>
+        <div className="text-sm text-gray-400">{tr("Backtest canceled.", "백테스트가 취소되었습니다.")}</div>
       )}
       <BacktestConfig
         strategies={strategyOptions}

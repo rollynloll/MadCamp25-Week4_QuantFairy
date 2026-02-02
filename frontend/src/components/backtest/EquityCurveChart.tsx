@@ -1,15 +1,17 @@
 import { Download } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import type { EquityPoint } from "@/types/backtest";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function EquityCurveChart({ data }: { data: EquityPoint[] }) {
+  const { tr } = useLanguage();
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-lg font-semibold">Equity Curve</h2>
+        <h2 className="text-lg font-semibold">{tr("Equity Curve", "자산 추이")}</h2>
         <button className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors">
           <Download className="w-4 h-4" />
-          Export Results
+          {tr("Export Results", "결과 내보내기")}
         </button>
       </div>
       <ResponsiveContainer width="100%" height={300}>
@@ -25,8 +27,8 @@ export default function EquityCurveChart({ data }: { data: EquityPoint[] }) {
               fontSize: 12,
             }}
           />
-          <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} name="Strategy" dot={false} />
-          <Line type="monotone" dataKey="benchmark" stroke="#6b7280" strokeWidth={2} name="Benchmark" strokeDasharray="5 5" dot={false} />
+          <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} name={tr("Strategy", "전략")} dot={false} />
+          <Line type="monotone" dataKey="benchmark" stroke="#6b7280" strokeWidth={2} name={tr("Benchmark", "벤치마크")} strokeDasharray="5 5" dot={false} />
         </LineChart>
       </ResponsiveContainer>
     </div>

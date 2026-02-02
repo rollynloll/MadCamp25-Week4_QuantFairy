@@ -1,4 +1,5 @@
 import { Calendar, Play } from "lucide-react";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface BacktestHeaderProps {
   rangeLabel?: string;
@@ -21,12 +22,13 @@ export default function BacktestHeader({
   onRun,
   runDisabled = false
 }: BacktestHeaderProps) {
+  const { tr } = useLanguage();
   return (
     <div className="flex items-center justify-between">
       <div>
-        <h1 className="text-2xl font-semibold mb-1">Backtest</h1>
+        <h1 className="text-2xl font-semibold mb-1">{tr("Backtest", "백테스트")}</h1>
         <p className="text-sm text-gray-400">
-          Test strategies against historical data
+          {tr("Test strategies against historical data", "과거 데이터를 기준으로 전략을 테스트합니다")}
         </p>
       </div>
       <div className="flex items-center gap-3">
@@ -39,7 +41,7 @@ export default function BacktestHeader({
             disabled={rangeDisabled}
             className="bg-transparent text-gray-200 text-sm focus:outline-none"
           />
-          <span className="text-gray-400 text-xs">to</span>
+          <span className="text-gray-400 text-xs">{tr("to", "부터")}</span>
           <input
             type="date"
             value={endDate ?? ""}
@@ -57,7 +59,7 @@ export default function BacktestHeader({
           disabled={runDisabled}
         >
           <Play className="w-4 h-4" />
-          Run Backtest
+          {tr("Run Backtest", "백테스트 실행")}
         </button>
       </div>
     </div>

@@ -2,6 +2,7 @@ import type { Env, UserStrategyListItem } from "@/types/portfolio";
 import { useUserStrategyDetail } from "@/hooks/useUserStrategyDetail";
 import { X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface StrategyEditProps {
   open: boolean;
@@ -20,6 +21,7 @@ export default function StrategyEditDrawer({
   onClose,
   onSave,
 }: StrategyEditProps) {
+  const { tr } = useLanguage();
   const { data, loading, error } = useUserStrategyDetail(env, open ? strategyId : null);
 
   const listItem = useMemo(
@@ -48,7 +50,7 @@ export default function StrategyEditDrawer({
         {/* Header */}
         <div className="p-4 border-b border-gray-800 flex items-center justify-between">
           <h3 className="font-semibold">
-            Edit Strategy: {data?.name ?? listItem?.name ?? "Unknown"}
+            {tr("Edit Strategy", "전략 편집")}: {data?.name ?? listItem?.name ?? tr("Unknown", "알 수 없음")}
           </h3>
           <button onClick={onClose} className="p-1 hover:bg-gray-800 rounded transition-colors" type="button">
             <X className="w-5 h-5" />
@@ -57,19 +59,19 @@ export default function StrategyEditDrawer({
 
         {/* Content */}
         <div className="flex-1 overflow-auto p-4 space-y-6">
-          {loading && <div className="text-sm text-gray-500">Loading...</div>}
+          {loading && <div className="text-sm text-gray-500">{tr("Loading...", "불러오는 중...")}</div>}
           {error && <div className="text-sm text-red-400">{error}</div>}
 
           {!loading && !error && (
             <>
-              {/* Summary (list 기반으로도 표시 가능) */}
+              {/* Summary */}
               <div>
-                <h4 className="text-sm font-semibold mb-3 text-gray-400">Summary</h4>
+                <h4 className="text-sm font-semibold mb-3 text-gray-400">{tr("Summary", "요약")}</h4>
                 <div className="space-y-2 text-sm">
-                  <Row label="State" value={(data?.state ?? listItem?.state ?? "unknown").toString().toUpperCase()} />
-                  <Row label="Positions" value={String(listItem?.positions_count ?? "-")} />
+                  <Row label={tr("State", "상태")} value={(data?.state ?? listItem?.state ?? "unknown").toString().toUpperCase()} />
+                  <Row label={tr("Positions", "포지션")} value={String(listItem?.positions_count ?? "-")} />
                   <Row
-                    label="P&L (Today)"
+                    label={tr("P&L (Today)", "오늘 손익")}
                     value={
                       listItem?.today_pnl
                         ? `${listItem.today_pnl.value >= 0 ? "+" : ""}$${listItem.today_pnl.value.toFixed(2)}`
@@ -82,8 +84,8 @@ export default function StrategyEditDrawer({
 
               {/* Name */}
               <div>
-                <h4 className="text-sm font-semibold mb-3 text-gray-400">General</h4>
-                <Field label="Name">
+                <h4 className="text-sm font-semibold mb-3 text-gray-400">{tr("General", "일반")}</h4>
+                <Field label={tr("Name", "이름")}>
                   <input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
@@ -92,9 +94,9 @@ export default function StrategyEditDrawer({
                 </Field>
               </div>
 
-              {/* Parameters (동적으로 렌더링) */}
+              {/* Parameters */}
               <div>
-                <h4 className="text-sm font-semibold mb-3 text-gray-400">Parameters</h4>
+                <h4 className="text-sm font-semibold mb-3 text-gray-400">{tr("Parameters", "파라미터")}</h4>
 
                 {data?.public_strategy?.param_schema ? (
                   <div className="space-y-4">
@@ -116,16 +118,14 @@ export default function StrategyEditDrawer({
                     ))}
                   </div>
                 ) : (
-                  <div className="text-sm text-gray-500">No param schema</div>
+                  <div className="text-sm text-gray-500">{tr("No param schema", "파라미터 스키마 없음")}</div>
                 )}
               </div>
 
-              {/* Risk Limits (MVP: known keys만 먼저 혹은 JSON 형태로) */}
+              {/* Risk Limits */}
               <div>
-                <h4 className="text-sm font-semibold mb-3 text-gray-400">Risk Limits</h4>
-
+                <h4 className="text-sm font-semibold mb-3 text-gray-400">{tr("Risk Limits", "리스크 제한")}</h4>
                 <div className="space-y-4">
-                  {/* 예시: 자주 쓸만한 키만 UI 제공 */}
                   <Field label="max_weight_per_asset">
                     <input
                       type="number"
@@ -168,7 +168,7 @@ export default function StrategyEditDrawer({
             className="flex-1 py-2 bg-gray-800 hover:bg-gray-700 rounded text-sm font-medium transition-colors"
             type="button"
           >
-            Cancel
+            {tr("Cancel", "취소")}
           </button>
           <button
             onClick={() => onSave(strategyId, { name, params, risk_limits: risk })}
@@ -176,7 +176,7 @@ export default function StrategyEditDrawer({
             type="button"
             disabled={loading}
           >
-            Save
+            {tr("Save", "저장")}
           </button>
         </div>
       </div>

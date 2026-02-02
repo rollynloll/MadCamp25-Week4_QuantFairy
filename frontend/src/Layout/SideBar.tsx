@@ -6,23 +6,24 @@ import {
   LineChart,
   TrendingUp,
 } from "lucide-react";
-import { useBotControl } from "@/hooks/useBotControl";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface NavItem {
   path: string;
-  label: string;
+  labelKey: string;
   icon: React.ComponentType<{ className?: string }>;
 }
 
 const navItems: NavItem[] = [
-  { path: "/", label: "Dashboard", icon: LayoutDashboard },
-  { path: "/strategies", label: "Strategies", icon: TrendingUp },
-  { path: "/portfolio", label: "Portfolio", icon: Briefcase },
-  { path: "/backtest", label: "Backtest", icon: LineChart },
-  { path: "/trading", label: "Trading", icon: Activity },
+  { path: "/", labelKey: "nav.dashboard", icon: LayoutDashboard },
+  { path: "/strategies", labelKey: "nav.strategies", icon: TrendingUp },
+  { path: "/portfolio", labelKey: "nav.portfolio", icon: Briefcase },
+  { path: "/backtest", labelKey: "nav.backtest", icon: LineChart },
+  { path: "/trading", labelKey: "nav.trading", icon: Activity },
 ];
 
 export default function SideBar() {
+  const { t } = useLanguage();
   return (
     <aside className="w-64 bg-[#0d1117] border-r border-gray-800 flex flex-col">
       <div className="h-16 flex items-center px-6 border-b border-gray-800">
@@ -53,7 +54,7 @@ export default function SideBar() {
               {({ isActive }) => (
                 <>
                   <Icon className={`w-5 h-5 ${isActive ? "text-blue-400" : ""}`} />
-                  <span>{item.label}</span>
+                  <span>{t(item.labelKey)}</span>
                 </>
               )}
             </NavLink>

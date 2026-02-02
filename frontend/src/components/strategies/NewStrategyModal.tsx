@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface NewStrategyModalProps {
   open: boolean;
@@ -22,6 +23,7 @@ export default function NewStrategyModal({
   const [name, setName] = useState("");
   const [paramsText, setParamsText] = useState("{\n \n}");
   const [note, setNote] = useState("");
+  const { tr } = useLanguage();
 
   if (!open) return null;
 
@@ -30,11 +32,11 @@ export default function NewStrategyModal({
     try {
       params = paramsText.trim() ? JSON.parse(paramsText) : {};
     } catch {
-      alert("Params must be valid JSON.");
+      alert(tr("Params must be valid JSON.", "파라미터는 올바른 JSON이어야 합니다."));
       return;
     }
     if (!name.trim()) {
-      alert("Name is required.");
+      alert(tr("Name is required.", "이름을 입력해주세요."));
       return;
     }
     onSubmit({ name: name.trim(), params, note: note.trim() || undefined });
@@ -47,9 +49,9 @@ export default function NewStrategyModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-gray-800 px-6 py-4">
-          <h2 className="text-lg font-semibold">New Strategy</h2>
+          <h2 className="text-lg font-semibold">{tr("New Strategy", "새 전략")}</h2>
           <button className="text-sm text-gray-400 hover:text-gray-200" onClick={onClose}>
-            Close
+            {tr("Close", "닫기")}
           </button>
         </div>
 
@@ -57,17 +59,17 @@ export default function NewStrategyModal({
           {error && <div className="text-red-400">{error}</div>}
 
           <div>
-            <label className="text-xs text-gray-400 mb-2 block">Name</label>
+            <label className="text-xs text-gray-400 mb-2 block">{tr("Name", "이름")}</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full bg-[#0a0d14] border border-gray-800 rounded px-3 py-2"
-              placeholder="My Custom Strategy"
+              placeholder={tr("My Custom Strategy", "내 커스텀 전략")}
             />
           </div>
 
           <div>
-            <label className="text-xs text-gray-400 mb-2 block">Params (JSON)</label>
+            <label className="text-xs text-gray-400 mb-2 block">{tr("Params (JSON)", "파라미터 (JSON)")}</label>
             <textarea
               value={paramsText}
               onChange={(e) => setParamsText(e.target.value)}
@@ -76,12 +78,12 @@ export default function NewStrategyModal({
           </div>
 
           <div>
-            <label className="text-xs text-gray-400 mb-2 block">Note (optional)</label>
+            <label className="text-xs text-gray-400 mb-2 block">{tr("Note (optional)", "메모 (선택)")}</label>
             <input
               value={note}
               onChange={(e) => setNote(e.target.value)}
               className="w-full bg-[#0a0d14] border border-gray-800 rounded px-3 py-2"
-              placeholder="Memo..."
+              placeholder={tr("Memo...", "메모...")}
             />
           </div>
         </div>
@@ -92,7 +94,7 @@ export default function NewStrategyModal({
             className="flex-1 py-2 bg-gray-800 hover:bg-gray-700 rounded text-sm font-medium"
             type="button"
           >
-            Cancel
+            {tr("Cancel", "취소")}
           </button>
           <button
             onClick={handleSubmit}
@@ -100,7 +102,7 @@ export default function NewStrategyModal({
             type="button"
             disabled={loading}
           >
-            {loading ? "Saving..." : "Save"}
+            {loading ? tr("Saving...", "저장 중...") : tr("Save", "저장")}
           </button>
         </div>
       </div>

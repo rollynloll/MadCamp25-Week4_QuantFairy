@@ -1,10 +1,12 @@
 import type { PortfolioAttributionResponse } from "@/types/portfolio";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface AttributionSectionProps {
   attribution: PortfolioAttributionResponse;
 }
 
 export default function AttributionSection({ attribution }: AttributionSectionProps) {
+  const { tr } = useLanguage();
   const rows = attribution.items.map((item) => ({
     key: item.key,
     label: item.label,
@@ -16,13 +18,13 @@ export default function AttributionSection({ attribution }: AttributionSectionPr
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">Attribution</h2>
+        <h2 className="text-lg font-semibold">{tr("Attribution", "기여도")}</h2>
         <span className="text-xs text-gray-500">
-          {attribution.by === "sector" ? "By Sector" : "By Strategy"}
+          {attribution.by === "sector" ? tr("By Sector", "산업군 기준") : tr("By Strategy", "전략 기준")}
         </span>
       </div>
       {rows.length === 0 ? (
-        <div className="text-sm text-gray-400">No attribution data.</div>
+        <div className="text-sm text-gray-400">{tr("No attribution data.", "기여도 데이터가 없습니다.")}</div>
       ) : (
         <div className="space-y-2">
           {rows.map((row) => (

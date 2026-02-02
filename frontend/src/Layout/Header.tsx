@@ -3,6 +3,7 @@ import { AlertCircle, Play, Square, Wifi } from "lucide-react";
 import { useKillSwitch } from "@/hooks/useKillSwitch";
 import type { BotState } from "@/types/dashboard";
 import { useBotControl } from "@/hooks/useBotControl";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 type TradeMode = "paper" | "live";
 
@@ -16,13 +17,14 @@ export default function Header({ mode, onModeChange, botState }: HeaderProps) {
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== "undefined" ? navigator.onLine : true
   );
+  const { language, setLanguage, t } = useLanguage();
 
   const { enabled, toggle } = useKillSwitch(false);
   const { state: uiBotState, loading, start, stop } = useBotControl(botState);
 
   const handleChange = async (next: "paper" | "live") => {
     if (next === "live") {
-      const ok = window.confirm("Live 모드로 전환할까요?");
+      const ok = window.confirm(t("header.liveConfirm"));
       if (!ok) return;
     }
     await onModeChange(next);
@@ -58,7 +60,7 @@ export default function Header({ mode, onModeChange, botState }: HeaderProps) {
                 : "text-gray-400 hover:text-gray-200"
             }`}
           >
-            Paper
+            {t("header.paper")}
           </button>
           <button
             onClick={() => handleChange("live")}
@@ -72,7 +74,7 @@ export default function Header({ mode, onModeChange, botState }: HeaderProps) {
               {mode === "live" && (
                 <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
               )}
-              LIVE
+              {t("header.live")}
             </span>
           </button>
         </div>
@@ -80,7 +82,7 @@ export default function Header({ mode, onModeChange, botState }: HeaderProps) {
         {mode === "live" && (
           <div className="flex items-center gap-2 px-3 py-1.5 bg-red-600/10 border border-red-500/30 rounded text-xs text-red-400">
             <AlertCircle className="w-3 h-3" />
-            <span>Live trading enabled</span>
+            <span>{t("header.liveEnabled")}</span>
           </div>
         )}
       </div>
@@ -102,7 +104,7 @@ export default function Header({ mode, onModeChange, botState }: HeaderProps) {
               enabled ? "bg-red-400 animate-pulse" : "bg-amber-300"
             }`}
           />
-          {enabled ? "Kill Switch On" : "Enable Kill Switch"}
+          {enabled ? t("header.killSwitchOn") : t("header.killSwitchEnable")}
         </button>
 
         {/* connection */}
@@ -113,7 +115,7 @@ export default function Header({ mode, onModeChange, botState }: HeaderProps) {
             }`}
           />
           <span className="text-gray-400">
-            {isOnline ? "Connected" : "Unconnected"}
+            {isOnline ? t("header.connected") : t("header.disconnected")}
           </span>
         </div>
 
@@ -136,22 +138,41 @@ export default function Header({ mode, onModeChange, botState }: HeaderProps) {
                 : "text-green-400"
             }`}
           >
-            {uiBotState === "running" ? "Stop" : "Run"}
+            {uiBotState === "running" ? t("header.stop") : t("header.run")}
           </span>
         </button>
         {uiBotState === "queued" && (
-          <span className="text-xs text-blue-300">Queued</span>
+          <span className="text-xs text-blue-300">{t("header.queued")}</span>
         )}
 
-        <div className="flex items-center gap-3 pl-6 border-l border-gray-800">
+        <div className="flex items-center gap-10 pl-6 border-l border-gray-800">
           <div className="text-right">
-            <div className="text-xs text-gray-500">Account Balance</div>
+            <div className="text-xs text-gray-500">{t("header.accountBalance")}</div>
             <div className="text-sm font-semibold">
               {mode === "paper" ? "$100,000.00" : "$50,245.87"}
             </div>
           </div>
-          <div className="w-8 h-8 bg-blue-600/20 rounded-full flex items-center justify-center text-blue-400 text-sm font-medium">
-            JD
+          <div className="flex items-center gap-1 rounded-full border border-gray-800 bg-[#0a0d14] p-1 text-xs">
+            <button
+              onClick={() => setLanguage("en")}
+              className={`px-2 py-1 rounded-full transition-colors ${
+                language === "en"
+                  ? "bg-white text-black font-medium"
+                  : "text-gray-400 hover:text-gray-200"
+              }`}
+            >
+              {t("header.langEn")}
+            </button>
+            <button
+              onClick={() => setLanguage("ko")}
+              className={`px-2 py-1 rounded-full transition-colors ${
+                language === "ko"
+                  ? "bg-white text-black font-medium"
+                  : "text-gray-400 hover:text-gray-200"
+              }`}
+            >
+              {t("header.langKo")}
+            </button>
           </div>
         </div>
       </div>

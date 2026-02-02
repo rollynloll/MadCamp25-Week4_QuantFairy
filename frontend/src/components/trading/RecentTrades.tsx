@@ -1,14 +1,16 @@
 import type { RecentTrade } from "@/types/trading";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function RecentTrades({ trades }: { trades: RecentTrade[] }) {
+  const { tr } = useLanguage();
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
-      <h2 className="text-lg font-semibold mb-4">Recent Trades</h2>
+      <h2 className="text-lg font-semibold mb-4">{tr("Recent Trades", "최근 체결")}</h2>
       <div className="space-y-1">
         <div className="text-xs text-gray-500 mb-2 flex justify-between px-2">
-          <span>Time</span>
-          <span>Price</span>
-          <span>Size</span>
+          <span>{tr("Time", "시간")}</span>
+          <span>{tr("Price", "가격")}</span>
+          <span>{tr("Size", "수량")}</span>
         </div>
         {trades.map((trade, i) => (
           <div

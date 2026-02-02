@@ -1,6 +1,7 @@
 import StatusBadge from "./StatusBadge";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
 import type { AlertItem, BotRun, Order } from "@/types/portfolio";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 type tab = "orders" | "trades" | "alerts" | "runs";
 
@@ -19,6 +20,7 @@ export default function ActivitySection({
   alerts,
   botRuns
 }: ActivityProps) {
+  const { tr } = useLanguage();
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded">
       <div className="flex border-b border-gray-800">
@@ -28,7 +30,7 @@ export default function ActivitySection({
             tab === "orders" ? "text-white border-b-2 border-blue-500" : "text-gray-500"
           }`}
         >
-          Orders
+          {tr("Orders", "주문")}
         </button>
         <button
           onClick={() => onTabChange("trades")}
@@ -36,7 +38,7 @@ export default function ActivitySection({
             tab === "trades" ? "text-white border-b-2 border-blue-500" : "text-gray-500"
           }`}
         >
-          Trades
+          {tr("Trades", "체결")}
         </button>
         <button
           onClick={() => onTabChange("alerts")}
@@ -44,7 +46,7 @@ export default function ActivitySection({
             tab === "alerts" ? "text-white border-b-2 border-blue-500" : "text-gray-500"
           }`}
         >
-          Alerts
+          {tr("Alerts", "알림")}
         </button>
         <button
           onClick={() => onTabChange("runs")}
@@ -52,7 +54,7 @@ export default function ActivitySection({
             tab === "runs" ? "text-white border-b-2 border-blue-500" : "text-gray-500"
           }`}
         >
-          Bot Runs
+          {tr("Bot Runs", "봇 실행")}
         </button>
       </div>
 
@@ -121,7 +123,9 @@ export default function ActivitySection({
                     {run.status.toUpperCase()}
                   </span>
                   <span className="text-gray-500 font-mono text-xs">{run.duration}</span>
-                  <span className="text-gray-400">{run.trades} trades</span>
+                  <span className="text-gray-400">
+                    {run.trades} {tr("trades", "거래")}
+                  </span>
                 </div>
               </div>
             ))}
@@ -130,7 +134,7 @@ export default function ActivitySection({
 
         {tab === "trades" && (
           <div className="text-sm text-gray-500 text-center py-8">
-            No recent trades
+            {tr("No recent trades", "최근 체결이 없습니다")}
           </div>
         )}
       </div>
