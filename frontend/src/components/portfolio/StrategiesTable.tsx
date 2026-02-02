@@ -1,15 +1,14 @@
-import { strategies } from "@/data/portfolio.mock";
 import StateToggle from "./StateToggle";
 import { Pause, Play, Settings, Square } from "lucide-react";
-import type { Strategy } from "@/types/portfolio";
+import type { UserStrategyListItem } from "@/types/portfolio";
 
 
 interface StrategiesProps {
-  strategies: Strategy[];
-  onEdit: (id: number) => void;
-  onStart?: (id: number) => void;
-  onPause?: (id: number) => void;
-  onStop?: (id: number) => void;
+  strategies: UserStrategyListItem[];
+  onEdit: (id: string) => void;
+  onStart?: (id: string) => void;
+  onPause?: (id: string) => void;
+  onStop?: (id: string) => void;
 }
 
 export default function StrategiesTable({
@@ -38,16 +37,23 @@ export default function StrategiesTable({
 
         <tbody>
           {strategies.map((strategy) => (
-            <tr key={strategy.id} className="border-b border-gray-800/50 hover:bg-gray-900/30 transition-colors">
+            <tr
+              key={strategy.user_strategy_id}
+              className="border-b border-gray-800/50 hover:bg-gray-900/30 transition-colors"
+            >
               <td className="py-3 px-4 font-medium">{strategy.name}</td>
 
               <td className="py-3 px-4">
                 <StateToggle state={strategy.state} small />
               </td>
 
-              <td className="text-right py-3 px-4 font-mono">{strategy.positionsCount}</td>
+              <td className="text-right py-3 px-4 font-mono">{strategy.positions_count}</td>
 
-              <td className="py-3 px-4 text-gray-500">{strategy.lastRun}</td>
+              <td className="py-3 px-4 text-gray-500">
+                {strategy.last_run_at
+                  ? new Date(strategy.last_run_at).toLocaleString()
+                  : "-"}
+              </td>
 
               <td className="text-right py-3 px-4">
                 <div className="flex items-center justify-end gap-2">
@@ -55,7 +61,7 @@ export default function StrategiesTable({
                     className="p-1.5 hover:bg-gray-800 rounded transition-colors"
                     title="Start"
                     type="button"
-                    onClick={() => onStart?.(strategy.id)}
+                    onClick={() => onStart?.(strategy.user_strategy_id)}
                   >
                     <Play className="w-3.5 h-3.5 text-green-500" />
                   </button>
@@ -64,7 +70,7 @@ export default function StrategiesTable({
                     className="p-1.5 hover:bg-gray-800 rounded transition-colors"
                     title="Pause"
                     type="button"
-                    onClick={() => onPause?.(strategy.id)}
+                    onClick={() => onPause?.(strategy.user_strategy_id)}
                   >
                     <Pause className="w-3.5 h-3.5 text-yellow-500" />
                   </button>
@@ -73,13 +79,13 @@ export default function StrategiesTable({
                     className="p-1.5 hover:bg-gray-800 rounded transition-colors"
                     title="Stop"
                     type="button"
-                    onClick={() => onStop?.(strategy.id)}
+                    onClick={() => onStop?.(strategy.user_strategy_id)}
                   >
                     <Square className="w-3.5 h-3.5 text-red-500" />
                   </button>
 
                   <button
-                    onClick={() => onEdit(strategy.id)}
+                    onClick={() => onEdit(strategy.user_strategy_id)}
                     className="p-1.5 hover:bg-gray-800 rounded transition-colors"
                     title="Edit"
                     type="button"

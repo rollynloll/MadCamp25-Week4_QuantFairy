@@ -1,30 +1,35 @@
 import ActivitySection from "@/components/portfolio/ActivitySection";
+import AttributionSection from "@/components/portfolio/AttributionSection";
 import AllocationCard from "@/components/portfolio/AllocationCard";
 import PerformanceSection from "@/components/portfolio/PerformanceSection";
 import PortfolioSummary from "@/components/portfolio/PortfolioSummary";
 import PositionsTable from "@/components/portfolio/PositionsTable";
 import StrategiesTable from "@/components/portfolio/StrategiesTable";
-import { StrategyEditDrawer } from "@/components/portfolio/StrategyEditDrawer";
-import { alerts, botRuns, drawdownData, equityCurve, orders, positions, sectorAllocation, strategies } from "@/data/portfolio.mock";
-import { useMemo, useState } from "react";
+import StrategyEditDrawer from "@/components/portfolio/StrategyEditDrawer";
+import { usePortfolioPageData } from "@/hooks/usePortfolio";
+import type { Env, Range } from "@/types/portfolio";
+import { useState } from "react";
 
 export default function Portfolio() {
-  const [allocationTab, setAllocationTab] = useState<"strategy" | "sector" | "exposure">("strategy");
-  const [activityTab, setActivityTab] = useState<"orders" | "trades" | "alerts" | "runs">("orders");
-  const [timeRange, setTimeRange] = useState("1M");
+  const [env] = useState<Env>("paper");
+  const [range, setRange] = useState<Range>("1M");
   const [showBenchmark, setShowBenchmark] = useState(false);
 
-  const [editingStrategy, setEditingStrategy] = useState<number | null>(null);
+  const [allocationTab, setAllocationTab] = useState<"strategy" | "sector" | "exposure">("strategy");
+  const [activityTab, setActivityTab] = useState<"orders" | "trades" | "alerts" | "runs">("orders");
 
-  const initialTargets = useMemo(
-    () => strategies.reduce((acc, s) => ({ ...acc, [s.id]: s.targetWeight }), {} as Record<number, number>),
-    []
-  );
+  const [editingStrategy, setEditingStrategy] = useState<string | null>(null);
 
-  const [targetWeights, setTargetWeights] = useState<Record<number, number>>(initialTargets);
+  const [targetWeights, setTargetWeights] = useState<Record<number, number>>({});
   const [targetCash, setTargetCash] = useState(12.5);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const { data, view, loading, error } = usePortfolioPageData(env, range, showBenchmark);
+
+  if (loading) return <div className="text-gray-400">Lodaing...</div>;
+  if (error) return <div className="text-red-400">{error}</div>;
+  if (!data || !view) return null;
 
   const handleWeightChange = (id: number, value: number) => {
     setTargetWeights({ ...targetWeights, [id]: value });
@@ -37,7 +42,7 @@ export default function Portfolio() {
   };
 
   const handleReset = () => {
-    setTargetWeights(strategies.reduce((acc, s) => ({ ...acc, [s.id]: s.targetWeight }), {}));
+    setTargetWeights({});
     setTargetCash(12.5);
     setHasUnsavedChanges(false);
   };
@@ -51,63 +56,72 @@ export default function Portfolio() {
       </div>
 
       {/* KPI Cards */}
-      <PortfolioSummary />
+      <PortfolioSummary summary={data.summary} />
 
-      {/* Holdings Section */}
       <div className="grid grid-cols-[1fr_400px] gap-6">
         {/* Positions Table */}
-        <PositionsTable positions={positions} />
+        <PositionsTable positions={view.positions} />
 
         {/* Allocation Card */}
         <AllocationCard
           tab={allocationTab}
           onTabChange={setAllocationTab}
-          strategies={strategies}
-          sectorAllocation={sectorAllocation}
+          strategies={[]}
+          sectorAllocation={view.sectorAllocation}
           targetWeights={targetWeights}
           onTargetWeightChange={handleWeightChange}
           targetCash={targetCash}
-          onTargetCashChange={(v)=>{setTargetCash(v); setHasUnsavedChanges(true);}}
+          onTargetCashChange={(v) => {
+            setTargetCash(v); 
+            setHasUnsavedChanges(true);
+          }}
           hasUnsavedChanges={hasUnsavedChanges}
           onReset={handleReset}
           onSave={handleSaveTargets}
           showAdvanced={showAdvanced}
-          onToggleAdvanced={()=>setShowAdvanced(v=>!v)}
+          onToggleAdvanced={() => setShowAdvanced(v => !v)}
         />
       </div>
 
       {/* Performance Section */}
       <PerformanceSection
-        equityCurve={equityCurve}
-        drawdownData={drawdownData}
-        timeRange={timeRange}
-        onTimeRangeChange={setTimeRange}
+        equityCurve={view.equityCurve}
+        drawdownData={view.drawdownData}
+        timeRange={range}
+        onTimeRangeChange={(r) => setRange(r as Range)}
         showBenchmark={showBenchmark}
         onShowBenchmarkChange={setShowBenchmark}
       />
 
+      {/* Attribution Section */}
+      <AttributionSection attribution={data.attribution} />
+
       {/* My Strategies Section */}
       <StrategiesTable
-        strategies={strategies}
-        onEdit={(id)=>setEditingStrategy(id)}
+        strategies={[]}
+        onEdit={(id) => setEditingStrategy(id)}
       />
 
       {/* Activity Section */}
       <ActivitySection
         tab={activityTab}
         onTabChange={setActivityTab}
-        orders={orders}
-        alerts={alerts}
-        botRuns={botRuns}
+        orders={[]}
+        alerts={[]}
+        botRuns={[]}
       />
 
       {/* Strategy Edit Drawer */}
       <StrategyEditDrawer
         open={editingStrategy !== null}
+        env={env}
         strategyId={editingStrategy}
-        strategies={strategies}
-        onClose={()=>setEditingStrategy(null)}
-        onSave={()=>{ console.log("Saving strategy settings..."); setEditingStrategy(null); }}
+        strategies={[]}
+        onClose={() => setEditingStrategy(null)}
+        onSave={() => { 
+          console.log("Saving strategy settings..."); 
+          setEditingStrategy(null); 
+        }}
       />
     </div>
   );

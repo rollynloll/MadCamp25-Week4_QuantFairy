@@ -1,4 +1,3 @@
-
 interface KPIProps {
   label: string;
   value: string;

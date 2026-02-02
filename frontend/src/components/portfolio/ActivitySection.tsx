@@ -1,5 +1,3 @@
-import { alerts, botRuns, orders } from "@/data/portfolio.mock";
-import { useState } from "react";
 import StatusBadge from "./StatusBadge";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
 import type { AlertItem, BotRun, Order } from "@/types/portfolio";
