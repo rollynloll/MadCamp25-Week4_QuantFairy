@@ -441,8 +441,11 @@ export default function Backtest() {
     setIsSubmitting(true);
 
     try {
+      const mode = (uniqueStrategyIds.length > 1 ? "batch" : "single") as
+        | "batch"
+        | "single";
       const payload = {
-        mode: (uniqueStrategyIds.length > 1 ? "batch" : "single") as const,
+        mode,
         spec: {
           period_start: periodStart,
           period_end: periodEnd,

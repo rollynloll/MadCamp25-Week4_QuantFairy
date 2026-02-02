@@ -1,4 +1,14 @@
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList } from "recharts";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  LabelList
+} from "recharts";
+import type { TooltipContentProps } from "recharts";
 
 export type PortfolioChangePoint = {
   month: string;
@@ -33,12 +43,16 @@ export default function PortfolioChangeChart({
     );
   };
 
-  const renderTooltip = ({ active, payload, label }: any) => {
+  const renderTooltip = ({
+    active,
+    payload,
+    label
+  }: TooltipContentProps<number, string>) => {
     if (!active || !payload?.length) return null;
-    const items = payload
-      .map((item: any) => ({
-        name: item.name as string,
-        value: Number(item.value) || 0
+    const items: { name: string; value: number }[] = payload
+      .map((item) => ({
+        name: item?.name ?? "",
+        value: Number(item?.value) || 0
       }))
       .filter((item) => item.value > 0)
       .sort((a, b) => b.value - a.value);
