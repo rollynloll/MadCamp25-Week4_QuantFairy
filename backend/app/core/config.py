@@ -38,11 +38,19 @@ def _get_list(name: str, default: List[str]) -> List[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def _get_env(*names: str) -> str | None:
+    for name in names:
+        value = os.getenv(name)
+        if value:
+            return value
+    return None
+
+
 def get_settings() -> Settings:
     return Settings(
         app_name=os.getenv("APP_NAME", "QuantFairy API"),
-        alpaca_api_key=os.getenv("ALPACA_API_KEY"),
-        alpaca_secret_key=os.getenv("ALPACA_SECRET_KEY"),
+        alpaca_api_key=_get_env("ALPACA_API_KEY", "ALPACA_API_KEY_ID"),
+        alpaca_secret_key=_get_env("ALPACA_SECRET_KEY", "ALPACA_API_SECRET_KEY"),
         alpaca_base_url=os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets"),
         supabase_url=os.getenv("SUPABASE_URL"),
         supabase_service_role_key=os.getenv("SUPABASE_SERVICE_ROLE_KEY"),

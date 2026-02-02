@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from datetime import timedelta
+import math
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Query
 
+from app.alpaca.client import AlpacaClient
 from app.core.config import get_settings
 from app.core.errors import APIError
 from app.core.time import now_kst
@@ -29,6 +31,8 @@ from app.schemas.portfolio import (
     UserStrategyDetailResponse,
 )
 from app.schemas.trading import KillSwitchRequest, KillSwitchResponse
+from app.storage.my_strategies_repo import MyStrategiesRepository
+from app.storage.strategies_repo import StrategiesRepository
 from app.storage.user_settings_repo import UserSettingsRepository
 
 
@@ -56,97 +60,215 @@ def _range_days(range_value: RangeLiteral) -> int:
     }[range_value]
 
 
-def _dummy_equity_curve(range_value: RangeLiteral) -> List[Dict[str, Any]]:
-    now = now_kst().date()
-    days = _range_days(range_value)
-    step = max(days // 4, 1)
-    points = []
-    equity = 100000.0
-    for offset in range(0, days + 1, step):
-        day = now - timedelta(days=days - offset)
-        equity += 120.5
-        points.append({"t": day.isoformat(), "equity": round(equity, 2)})
-        if len(points) >= 5:
-            break
+def _range_to_alpaca_period(range_value: RangeLiteral) -> str:
+    return {
+        "1W": "1W",
+        "1M": "1M",
+        "3M": "3M",
+        "1Y": "1A",
+        "ALL": "ALL",
+    }[range_value]
+
+
+def _get_field(obj: Any, name: str, default: Any = None) -> Any:
+    if isinstance(obj, dict):
+        return obj.get(name, default)
+    return getattr(obj, name, default)
+
+
+def _to_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _to_pct(value: Any) -> float:
+    pct = _to_float(value)
+    if abs(pct) <= 1:
+        return pct * 100
+    return pct
+
+
+def _format_timestamp(ts: Any) -> str:
+    if isinstance(ts, datetime):
+        return ts.date().isoformat()
+    if isinstance(ts, (int, float)):
+        return datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat()
+    return str(ts)
+
+
+def _require_account(client: AlpacaClient):
+    result = client.get_account()
+    if result.account is None:
+        raise APIError(
+            "ALPACA_UNAVAILABLE",
+            "Alpaca account not available",
+            result.error or "Missing Alpaca credentials",
+            status_code=503,
+        )
+    return result.account, result.latency_ms or 0
+
+
+def _normalize_positions(raw_positions: Any) -> List[Dict[str, Any]]:
+    items: List[Dict[str, Any]] = []
+    for pos in raw_positions or []:
+        symbol = str(_get_field(pos, "symbol", "")).upper()
+        if not symbol:
+            continue
+        side_raw = str(_get_field(pos, "side", "long")).lower()
+        side = "short" if "short" in side_raw else "long"
+        qty = _to_float(_get_field(pos, "qty", 0))
+        avg_entry_price = _to_float(_get_field(pos, "avg_entry_price", 0))
+        current_price = _to_float(_get_field(pos, "current_price", 0))
+        market_value = _to_float(
+            _get_field(pos, "market_value", current_price * qty)
+        )
+        unrealized_pl = _to_float(_get_field(pos, "unrealized_pl", 0))
+        unrealized_plpc = _to_pct(_get_field(pos, "unrealized_plpc", 0))
+        strategy_id = (
+            _get_field(pos, "strategy_id")
+            or _get_field(pos, "user_strategy_id")
+            or "unassigned"
+        )
+        strategy_name = _get_field(pos, "strategy_name") or "Unassigned"
+        items.append(
+            {
+                "symbol": symbol,
+                "qty": qty,
+                "side": side,
+                "avg_entry_price": avg_entry_price,
+                "current_price": current_price,
+                "market_value": market_value,
+                "unrealized_pnl": {
+                    "value": unrealized_pl,
+                    "pct": unrealized_plpc,
+                },
+                "strategy": {
+                    "user_strategy_id": str(strategy_id),
+                    "name": str(strategy_name),
+                },
+            }
+        )
+    return items
+
+
+def _positions_exposure(
+    positions: List[Dict[str, Any]],
+    equity: float,
+    cash: float,
+) -> Dict[str, float]:
+    long_value = 0.0
+    short_value = 0.0
+    abs_values: List[float] = []
+    for pos in positions:
+        value = abs(_to_float(pos.get("market_value", 0.0)))
+        abs_values.append(value)
+        if pos.get("side") == "short":
+            short_value += value
+        else:
+            long_value += value
+
+    net_pct = ((long_value - short_value) / equity * 100) if equity else 0.0
+    gross_pct = ((long_value + short_value) / equity * 100) if equity else 0.0
+    cash_pct = (cash / equity * 100) if equity else 0.0
+    top5 = sum(sorted(abs_values, reverse=True)[:5])
+    top5_pct = (top5 / equity * 100) if equity else 0.0
+    return {
+        "net_pct": round(net_pct, 2),
+        "gross_pct": round(gross_pct, 2),
+        "cash_pct": round(cash_pct, 2),
+        "top5_concentration_pct": round(top5_pct, 2),
+    }
+
+
+def _history_to_equity_points(history: Any) -> List[Dict[str, Any]]:
+    if history is None:
+        return []
+    timestamps = _get_field(history, "timestamp") or _get_field(history, "timestamps")
+    equity = _get_field(history, "equity")
+    if not timestamps or not equity:
+        return []
+    points: List[Dict[str, Any]] = []
+    for ts, value in zip(timestamps, equity):
+        points.append({"t": _format_timestamp(ts), "equity": _to_float(value)})
     return points
 
 
-def _dummy_benchmark_curve(range_value: RangeLiteral) -> List[Dict[str, Any]]:
-    now = now_kst().date()
-    days = _range_days(range_value)
-    step = max(days // 4, 1)
-    points = []
-    price = 480.0
-    for offset in range(0, days + 1, step):
-        day = now - timedelta(days=days - offset)
-        price += 1.1
-        points.append({"t": day.isoformat(), "price": round(price, 2)})
-        if len(points) >= 5:
-            break
-    return points
+def _compute_returns(equity_curve: List[Dict[str, Any]]) -> List[float]:
+    returns: List[float] = []
+    prev = None
+    for point in equity_curve:
+        equity = _to_float(point.get("equity", 0.0))
+        if prev is None:
+            prev = equity
+            continue
+        ret = (equity / prev - 1.0) if prev else 0.0
+        returns.append(ret)
+        prev = equity
+    return returns
 
 
-def _dummy_positions() -> List[Dict[str, Any]]:
-    return [
-        {
-            "symbol": "AAPL",
-            "qty": 12.0,
-            "side": "long",
-            "avg_entry_price": 190.1,
-            "current_price": 195.2,
-            "market_value": 2342.4,
-            "unrealized_pnl": {"value": 61.2, "pct": 2.68},
-            "strategy": {"user_strategy_id": "us_123", "name": "Momentum Top10"},
-        },
-        {
-            "symbol": "MSFT",
-            "qty": 8.0,
-            "side": "long",
-            "avg_entry_price": 370.0,
-            "current_price": 368.5,
-            "market_value": 2948.0,
-            "unrealized_pnl": {"value": -12.0, "pct": -0.41},
-            "strategy": {"user_strategy_id": "us_456", "name": "Low Volatility"},
-        },
-        {
-            "symbol": "TSLA",
-            "qty": 4.0,
-            "side": "long",
-            "avg_entry_price": 210.0,
-            "current_price": 225.0,
-            "market_value": 900.0,
-            "unrealized_pnl": {"value": 60.0, "pct": 7.14},
-            "strategy": {"user_strategy_id": "us_123", "name": "Momentum Top10"},
-        },
-    ]
+def _drawdown_curve(equity_curve: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    drawdown: List[Dict[str, Any]] = []
+    peak = None
+    for point in equity_curve:
+        equity = _to_float(point.get("equity", 0.0))
+        if peak is None or equity > peak:
+            peak = equity
+        dd = (equity - peak) / peak * 100 if peak else 0.0
+        drawdown.append({"t": point.get("t"), "drawdown_pct": round(dd, 2)})
+    return drawdown
 
 
-def _dummy_user_strategies() -> List[Dict[str, Any]]:
-    now = now_kst().isoformat()
-    return [
-        {
-            "user_strategy_id": "us_123",
-            "name": "Momentum Top10",
-            "public_strategy_id": "ps_001",
-            "state": "running",
-            "positions_count": 8,
-            "today_pnl": {"value": 83.2, "pct": 0.08},
-            "last_run_at": now,
-            "params": {"lookback_days": 63, "top_k": 10},
-            "risk_limits": {"max_weight_per_asset": 0.15, "cash_buffer": 0.02},
-        },
-        {
-            "user_strategy_id": "us_456",
-            "name": "Low Volatility",
-            "public_strategy_id": "ps_010",
-            "state": "paused",
-            "positions_count": 5,
-            "today_pnl": {"value": 12.4, "pct": 0.02},
-            "last_run_at": now,
-            "params": {"lookback_days": 60, "top_k": 10},
-            "risk_limits": {"max_weight_per_asset": 0.2, "cash_buffer": 0.05},
-        },
-    ]
+def _kpi_from_equity(equity_curve: List[Dict[str, Any]]) -> Dict[str, float]:
+    if len(equity_curve) < 2:
+        return {
+            "period_return_pct": 0.0,
+            "cagr_pct": 0.0,
+            "volatility_pct": 0.0,
+            "sharpe": 0.0,
+            "max_drawdown_pct": 0.0,
+            "win_rate_pct": 0.0,
+        }
+
+    first = _to_float(equity_curve[0].get("equity", 0.0))
+    last = _to_float(equity_curve[-1].get("equity", 0.0))
+    period_return_pct = ((last / first - 1.0) * 100) if first else 0.0
+
+    returns = _compute_returns(equity_curve)
+    mean = sum(returns) / len(returns) if returns else 0.0
+    variance = sum((r - mean) ** 2 for r in returns) / len(returns) if returns else 0.0
+    std = math.sqrt(variance) if variance else 0.0
+
+    volatility_pct = std * math.sqrt(252) * 100 if std else 0.0
+    sharpe = (mean / std * math.sqrt(252)) if std else 0.0
+
+    periods = max(len(returns), 1)
+    cagr_pct = ((last / first) ** (252 / periods) - 1) * 100 if first else 0.0
+
+    drawdown = _drawdown_curve(equity_curve)
+    max_drawdown_pct = min((d["drawdown_pct"] for d in drawdown), default=0.0)
+
+    win_rate_pct = (
+        sum(1 for r in returns if r > 0) / len(returns) * 100 if returns else 0.0
+    )
+
+    return {
+        "period_return_pct": round(period_return_pct, 2),
+        "cagr_pct": round(cagr_pct, 2),
+        "volatility_pct": round(volatility_pct, 2),
+        "sharpe": round(sharpe, 2),
+        "max_drawdown_pct": round(max_drawdown_pct, 2),
+        "win_rate_pct": round(win_rate_pct, 2),
+    }
+
+
+def _load_alpaca_positions(client: AlpacaClient) -> List[Dict[str, Any]]:
+    raw_positions = client.get_positions()
+    if raw_positions is None:
+        return []
+    return _normalize_positions(raw_positions)
 
 
 @router.get(
@@ -157,33 +279,51 @@ def _dummy_user_strategies() -> List[Dict[str, Any]]:
 async def get_portfolio_summary(
     env: EnvLiteral = Query(..., description="paper or live"),
 ):
-    # TODO: Replace dummy values with real account + broker data.
     settings = get_settings()
-    user_id = _resolve_user_id()
+    client = AlpacaClient(settings, env)
+    account, latency_ms = _require_account(client)
+    raw_positions = client.get_positions() or []
+    positions = _normalize_positions(raw_positions)
     settings_repo = UserSettingsRepository(settings)
-    user_settings = settings_repo.get_or_create(user_id)
+    user_settings = settings_repo.get_or_create(_resolve_user_id())
+
+    today_pnl_value = 0.0
+    for pos in raw_positions:
+        today_pnl_value += _to_float(_get_field(pos, "unrealized_intraday_pl", 0))
+    today_pnl_pct = (today_pnl_value / account.equity * 100) if account.equity else 0.0
+
+    long_count = len([p for p in positions if p.get("side") == "long"])
+    short_count = len([p for p in positions if p.get("side") == "short"])
+
+    exposure = _positions_exposure(positions, account.equity, account.cash)
+
     now = now_kst().isoformat()
     return {
         "env": env,
         "as_of": now,
-        "mode": {"environment": env, "kill_switch": bool(user_settings.get("kill_switch", False))},
+        "mode": {
+            "environment": env,
+            "kill_switch": bool(user_settings.get("kill_switch", False)),
+        },
         "status": {
-            "broker": {"state": "up", "latency_ms": 120},
+            "broker": {"state": "up", "latency_ms": latency_ms},
             "worker": {"state": "running", "last_heartbeat_at": now},
         },
         "account": {
-            "equity": 102345.12,
-            "cash": 24567.89,
-            "buying_power": 49000.0,
-            "today_pnl": {"value": 123.45, "pct": 0.12},
-            "open_positions": {"count": 8, "long": 8, "short": 0},
+            "equity": account.equity,
+            "cash": account.cash,
+            "buying_power": account.buying_power,
+            "today_pnl": {
+                "value": round(today_pnl_value, 2),
+                "pct": round(today_pnl_pct, 2),
+            },
+            "open_positions": {
+                "count": len(positions),
+                "long": long_count,
+                "short": short_count,
+            },
         },
-        "exposure": {
-            "net_pct": 78.2,
-            "gross_pct": 78.2,
-            "cash_pct": 21.8,
-            "top5_concentration_pct": 44.1,
-        },
+        "exposure": exposure,
     }
 
 
@@ -198,16 +338,31 @@ async def get_portfolio_performance(
     benchmark: str = Query(default="SPY"),
     downsample: Optional[str] = Query(default=None),
 ):
-    # TODO: Use stored equity curve + market data for benchmark.
     _ = downsample
-    now = now_kst().isoformat()
+    settings = get_settings()
+    client = AlpacaClient(settings, env)
+    _require_account(client)
+
+    history = client.get_portfolio_history(
+        period=_range_to_alpaca_period(range),
+        timeframe="1D",
+    )
+    if history is None:
+        raise APIError(
+            "ALPACA_UNAVAILABLE",
+            "Portfolio history not available",
+            "Check Alpaca credentials or account permissions",
+            status_code=503,
+        )
+
+    equity_curve = _history_to_equity_points(history)
     return {
         "env": env,
         "range": range,
         "benchmark": benchmark,
-        "as_of": now,
-        "equity_curve": _dummy_equity_curve(range),
-        "benchmark_curve": _dummy_benchmark_curve(range),
+        "as_of": now_kst().isoformat(),
+        "equity_curve": equity_curve,
+        "benchmark_curve": [],
     }
 
 
@@ -220,25 +375,35 @@ async def get_portfolio_drawdown(
     env: EnvLiteral = Query(..., description="paper or live"),
     range: RangeLiteral = Query(..., description="1W|1M|3M|1Y|ALL"),
 ):
-    # TODO: Compute drawdown from equity curve.
-    curve = _dummy_equity_curve(range)
-    drawdowns = []
-    peak = curve[0]["equity"] if curve else 0.0
-    max_dd = 0.0
-    for point in curve:
-        equity = point["equity"]
-        if equity > peak:
-            peak = equity
-        drawdown = ((equity - peak) / peak * 100) if peak else 0.0
-        if drawdown < max_dd:
-            max_dd = drawdown
-        drawdowns.append({"t": point["t"], "drawdown_pct": round(drawdown, 2)})
-    current_dd = drawdowns[-1]["drawdown_pct"] if drawdowns else 0.0
+    settings = get_settings()
+    client = AlpacaClient(settings, env)
+    _require_account(client)
+
+    history = client.get_portfolio_history(
+        period=_range_to_alpaca_period(range),
+        timeframe="1D",
+    )
+    if history is None:
+        raise APIError(
+            "ALPACA_UNAVAILABLE",
+            "Portfolio history not available",
+            "Check Alpaca credentials or account permissions",
+            status_code=503,
+        )
+
+    equity_curve = _history_to_equity_points(history)
+    drawdown_curve = _drawdown_curve(equity_curve)
+    current_dd = drawdown_curve[-1]["drawdown_pct"] if drawdown_curve else 0.0
+    max_dd = min((d["drawdown_pct"] for d in drawdown_curve), default=0.0)
+
     return {
         "env": env,
         "range": range,
-        "drawdown_curve": drawdowns,
-        "summary": {"current_drawdown_pct": current_dd, "max_drawdown_pct": max_dd},
+        "drawdown_curve": drawdown_curve,
+        "summary": {
+            "current_drawdown_pct": round(current_dd, 2),
+            "max_drawdown_pct": round(max_dd, 2),
+        },
     }
 
 
@@ -251,18 +416,27 @@ async def get_portfolio_kpi(
     env: EnvLiteral = Query(..., description="paper or live"),
     range: RangeLiteral = Query(..., description="1W|1M|3M|1Y|ALL"),
 ):
-    # TODO: Calculate KPI from returns.
+    settings = get_settings()
+    client = AlpacaClient(settings, env)
+    _require_account(client)
+
+    history = client.get_portfolio_history(
+        period=_range_to_alpaca_period(range),
+        timeframe="1D",
+    )
+    if history is None:
+        raise APIError(
+            "ALPACA_UNAVAILABLE",
+            "Portfolio history not available",
+            "Check Alpaca credentials or account permissions",
+            status_code=503,
+        )
+
+    equity_curve = _history_to_equity_points(history)
     return {
         "env": env,
         "range": range,
-        "kpi": {
-            "period_return_pct": 2.34,
-            "cagr_pct": 18.2,
-            "volatility_pct": 12.4,
-            "sharpe": 1.35,
-            "max_drawdown_pct": -4.8,
-            "win_rate_pct": 54.0,
-        },
+        "kpi": _kpi_from_equity(equity_curve),
     }
 
 
@@ -279,8 +453,11 @@ async def get_portfolio_positions(
     sort: Optional[SortLiteral] = Query(default=None),
     order: OrderLiteral = Query(default="desc"),
 ):
-    # TODO: Load positions from broker/storage.
-    items = _dummy_positions()
+    settings = get_settings()
+    client = AlpacaClient(settings, env)
+    _require_account(client)
+
+    items = _load_alpaca_positions(client)
     if q:
         q_lower = q.lower()
         items = [item for item in items if q_lower in item["symbol"].lower()]
@@ -315,35 +492,17 @@ async def get_portfolio_positions(
 async def get_portfolio_allocation(
     env: EnvLiteral = Query(..., description="paper or live"),
 ):
-    # TODO: Compute allocation by sector and strategy.
+    settings = get_settings()
+    client = AlpacaClient(settings, env)
+    account, _ = _require_account(client)
+    positions = _load_alpaca_positions(client)
+
+    exposure = _positions_exposure(positions, account.equity, account.cash)
     return {
         "env": env,
-        "by_sector": [
-            {"sector": "Technology", "value": 32000.0, "pct": 31.3, "pnl_value": 420.0},
-            {"sector": "Healthcare", "value": 18000.0, "pct": 17.6, "pnl_value": 90.0},
-        ],
-        "by_strategy": [
-            {
-                "user_strategy_id": "us_123",
-                "name": "Momentum Top10",
-                "value": 45000.0,
-                "pct": 44.0,
-                "pnl_value": 380.0,
-            },
-            {
-                "user_strategy_id": "us_456",
-                "name": "Low Volatility",
-                "value": 22000.0,
-                "pct": 21.5,
-                "pnl_value": 120.0,
-            },
-        ],
-        "exposure": {
-            "net_pct": 78.2,
-            "gross_pct": 78.2,
-            "cash_pct": 21.8,
-            "top5_concentration_pct": 44.1,
-        },
+        "by_sector": [],
+        "by_strategy": [],
+        "exposure": exposure,
     }
 
 
@@ -357,42 +516,41 @@ async def get_portfolio_attribution(
     by: AttributionByLiteral = Query(..., description="strategy or sector"),
     range: Optional[RangeLiteral] = Query(default=None),
 ):
-    # TODO: Calculate attribution from positions and PnL.
-    if by == "strategy":
-        items = [
-            {
-                "key": "us_123",
-                "label": "Momentum Top10",
-                "exposure_pct": 44.0,
-                "unrealized_pnl_value": 380.0,
-                "period_contribution_pct": 1.02,
-            },
-            {
-                "key": "us_456",
-                "label": "Low Volatility",
-                "exposure_pct": 21.5,
-                "unrealized_pnl_value": 120.0,
-                "period_contribution_pct": 0.42,
-            },
-        ]
-    else:
-        items = [
-            {
-                "key": "Technology",
-                "label": "Technology",
-                "exposure_pct": 31.3,
-                "unrealized_pnl_value": 420.0,
-                "period_contribution_pct": 0.95,
-            },
-            {
-                "key": "Healthcare",
-                "label": "Healthcare",
-                "exposure_pct": 17.6,
-                "unrealized_pnl_value": 90.0,
-                "period_contribution_pct": 0.21,
-            },
-        ]
+    settings = get_settings()
+    client = AlpacaClient(settings, env)
+    account, _ = _require_account(client)
+    positions = _load_alpaca_positions(client)
 
+    items: List[Dict[str, Any]] = []
+    if by == "strategy":
+        grouped: Dict[str, Dict[str, Any]] = {}
+        for pos in positions:
+            key = pos["strategy"]["user_strategy_id"]
+            group = grouped.setdefault(
+                key,
+                {
+                    "key": key,
+                    "label": pos["strategy"]["name"],
+                    "value": 0.0,
+                    "pnl": 0.0,
+                },
+            )
+            group["value"] += abs(_to_float(pos.get("market_value", 0.0)))
+            group["pnl"] += _to_float(pos["unrealized_pnl"]["value"])
+        for group in grouped.values():
+            exposure_pct = (group["value"] / account.equity * 100) if account.equity else 0.0
+            contribution_pct = (
+                group["pnl"] / account.equity * 100 if account.equity else 0.0
+            )
+            items.append(
+                {
+                    "key": group["key"],
+                    "label": group["label"],
+                    "exposure_pct": round(exposure_pct, 2),
+                    "unrealized_pnl_value": round(group["pnl"], 2),
+                    "period_contribution_pct": round(contribution_pct, 2),
+                }
+            )
     return {"env": env, "range": range, "by": by, "items": items}
 
 
@@ -404,8 +562,35 @@ async def get_portfolio_attribution(
 async def list_user_strategies(
     env: EnvLiteral = Query(..., description="paper or live"),
 ):
-    # TODO: Replace with persistent storage.
-    return {"env": env, "items": _dummy_user_strategies()}
+    settings = get_settings()
+    user_id = _resolve_user_id()
+    repo = MyStrategiesRepository(settings)
+    rows = repo.list(user_id, filters={}, sort="updated_at", order="desc", limit=50, cursor_value=None)
+
+    items = []
+    for row in rows:
+        risk = row.get("risk_limits") or {}
+        items.append(
+            {
+                "user_strategy_id": row.get("strategy_id") or row.get("user_strategy_id"),
+                "name": row.get("name", ""),
+                "public_strategy_id": row.get("source_public_strategy_id", ""),
+                "state": row.get("state", "idle"),
+                "positions_count": int(row.get("positions_count", 0)),
+                "today_pnl": {
+                    "value": float(row.get("pnl_today_value", 0) or 0),
+                    "pct": float(row.get("pnl_today_pct", 0) or 0),
+                },
+                "last_run_at": row.get("last_run_at") or row.get("updated_at") or now_kst().isoformat(),
+                "params": row.get("params") or {},
+                "risk_limits": {
+                    "max_weight_per_asset": float(risk.get("max_weight_per_asset", 0) or 0),
+                    "cash_buffer": float(risk.get("cash_buffer", 0) or 0),
+                    "max_turnover_pct": risk.get("max_turnover_pct"),
+                },
+            }
+        )
+    return {"env": env, "items": items}
 
 
 @router.get(
@@ -417,34 +602,34 @@ async def get_user_strategy(
     user_strategy_id: str,
     env: EnvLiteral = Query(..., description="paper or live"),
 ):
-    # TODO: Load from storage.
-    strategies = _dummy_user_strategies()
-    match = next((s for s in strategies if s["user_strategy_id"] == user_strategy_id), None)
-    if match is None:
+    settings = get_settings()
+    user_id = _resolve_user_id()
+    repo = MyStrategiesRepository(settings)
+    row = repo.get(user_id, user_strategy_id)
+    if not row:
         raise APIError("NOT_FOUND", "User strategy not found", status_code=404)
+
+    risk = row.get("risk_limits") or {}
     now = now_kst().isoformat()
     return {
         "env": env,
-        "user_strategy_id": match["user_strategy_id"],
-        "name": match["name"],
-        "state": match["state"],
+        "user_strategy_id": row.get("strategy_id") or user_strategy_id,
+        "name": row.get("name", ""),
+        "state": row.get("state", "idle"),
         "public_strategy": {
-            "public_strategy_id": match["public_strategy_id"],
-            "name": match["name"],
-            "one_liner": "Buy top-K strongest performers",
-            "param_schema": {
-                "lookback_days": {"type": "int", "default": 63, "min": 20, "max": 252},
-                "top_k": {"type": "int", "default": 10, "min": 1, "max": 50},
-            },
+            "public_strategy_id": row.get("source_public_strategy_id", ""),
+            "name": row.get("name", ""),
+            "one_liner": row.get("one_liner", ""),
+            "param_schema": row.get("param_schema", {}) or {},
         },
-        "params": match["params"],
+        "params": row.get("params") or {},
         "risk_limits": {
-            "max_weight_per_asset": match["risk_limits"]["max_weight_per_asset"],
-            "cash_buffer": match["risk_limits"]["cash_buffer"],
-            "max_turnover_pct": 30,
+            "max_weight_per_asset": float(risk.get("max_weight_per_asset", 0) or 0),
+            "cash_buffer": float(risk.get("cash_buffer", 0) or 0),
+            "max_turnover_pct": risk.get("max_turnover_pct"),
         },
         "recent_runs": [
-            {"run_id": "br_100", "started_at": now, "status": "success", "orders_created": 3}
+            {"run_id": "br_100", "started_at": now, "status": "success", "orders_created": 0}
         ],
     }
 
@@ -459,18 +644,36 @@ async def update_user_strategy(
     payload: UpdateUserStrategyRequest,
     env: EnvLiteral = Query(..., description="paper or live"),
 ):
-    # TODO: Persist updates to storage.
     _ = env
-    strategies = _dummy_user_strategies()
-    match = next((s for s in strategies if s["user_strategy_id"] == user_strategy_id), None)
-    if match is None:
+    settings = get_settings()
+    user_id = _resolve_user_id()
+    repo = MyStrategiesRepository(settings)
+    existing = repo.get(user_id, user_strategy_id)
+    if not existing:
         raise APIError("NOT_FOUND", "User strategy not found", status_code=404)
     if payload.name is None and payload.params is None and payload.risk_limits is None:
         raise APIError("VALIDATION_ERROR", "No fields to update", status_code=422)
+
+    update_payload: Dict[str, Any] = {}
+    if payload.name is not None:
+        update_payload["name"] = payload.name
+    if payload.params is not None:
+        update_payload["params"] = payload.params
+    if payload.risk_limits is not None:
+        update_payload["risk_limits"] = payload.risk_limits.model_dump()
+
+    updated = repo.update(user_id, user_strategy_id, update_payload)
+    if updated is None:
+        raise APIError(
+            "DATA_SOURCE_UNAVAILABLE",
+            "Failed to update user strategy",
+            status_code=503,
+        )
+
     return {
         "ok": True,
         "user_strategy_id": user_strategy_id,
-        "updated_at": now_kst().isoformat(),
+        "updated_at": updated.get("updated_at") or now_kst().isoformat(),
     }
 
 
@@ -484,14 +687,20 @@ async def set_user_strategy_state(
     payload: StrategyStateRequest,
     env: EnvLiteral = Query(..., description="paper or live"),
 ):
-    # TODO: Persist strategy state in storage.
     _ = env
+    settings = get_settings()
+    user_id = _resolve_user_id()
+    repo = StrategiesRepository(settings)
     state_map = {"start": "running", "pause": "paused", "stop": "stopped"}
-    return {
-        "ok": True,
-        "user_strategy_id": user_strategy_id,
-        "state": state_map[payload.action],
-    }
+    new_state = state_map[payload.action]
+    updated = repo.update_state(user_id, user_strategy_id, new_state)
+    if updated is None:
+        raise APIError(
+            "DATA_SOURCE_UNAVAILABLE",
+            "Failed to update strategy state",
+            status_code=503,
+        )
+    return {"ok": True, "user_strategy_id": user_strategy_id, "state": new_state}
 
 
 @router.post(
@@ -503,7 +712,6 @@ async def set_kill_switch(
     payload: KillSwitchRequest,
     env: EnvLiteral = Query(..., description="paper or live"),
 ):
-    # TODO: Update kill switch per environment.
     _ = env
     settings = get_settings()
     user_id = _resolve_user_id()
@@ -521,7 +729,6 @@ async def rebalance_portfolio(
     payload: PortfolioRebalanceRequest,
     env: EnvLiteral = Query(..., description="paper or live"),
 ):
-    # TODO: Generate orders from live portfolio + targets.
     if payload.target_source == "strategy" and not payload.strategy_ids:
         raise APIError(
             "VALIDATION_ERROR",
@@ -568,7 +775,6 @@ async def get_portfolio_activity(
     symbol: Optional[str] = Query(default=None),
     user_strategy_id: Optional[str] = Query(default=None),
 ):
-    # TODO: Load activity from storage with real pagination.
     _ = cursor
     now = now_kst()
     items: List[ActivityItem] = [
