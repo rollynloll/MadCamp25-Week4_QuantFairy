@@ -102,8 +102,15 @@ export async function addPublicStrategyToMy(
   return res.json();
 }
 
-export async function getMyStrategies(): Promise<MyStrategyListResponse> {
-  const res = await fetch(buildApiUrl("/my-strategies"), {
+export async function getMyStrategies(params?: {
+  q?: string;
+  source_public_strategy_id?: string;
+  sort?: "created_at" | "updated_at" | "name";
+  order?: "asc" | "desc";
+  limit?: number;
+  cursor?: string;
+}): Promise<MyStrategyListResponse> {
+  const res = await fetch(buildApiUrl("/my-strategies", params), {
     headers: { "Content-Type": "application/json" }
   });
 

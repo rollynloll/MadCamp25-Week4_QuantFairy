@@ -1,38 +1,14 @@
-import type { PortfolioSummaryData } from "@/types/portfolio";
+import KPICard from "./KPICard";
 
-export default function PortfolioSummary({
-  totalValue,
-  totalPnL,
-  openPositions,
-  longCount,
-  shortCount
-}: PortfolioSummaryData) {
+export default function PortfolioSummary() {
   return (
-    <div className="grid grid-cols-4 gap-4">
-      <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-5">
-        <div className="text-sm text-gray-400 mb-1">Total Value</div>
-        <div className="text-2xl font-semibold">${totalValue.toFixed(2)}</div>
+    <div className="grid grid-cols-6 gap-3">
+        <KPICard label="Total Value" value="$115,600" />
+        <KPICard label="Cash" value="$14,450" />
+        <KPICard label="Today P&L" value="+$1,245" subvalue="+1.08%" positive />
+        <KPICard label="Unrealized P&L" value="+$702" positive />
+        <KPICard label="Open Positions" value="5" />
+        <KPICard label="Long/Short" value="4:1" />
       </div>
-      <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-5">
-        <div className="text-sm text-gray-400 mb-1">Unrealized P&L</div>
-        <div
-          className={`text-2xl font-semibold ${
-            totalPnL >= 0 ? "text-green-500" : "text-red-500"
-          }`}
-        >
-          {totalPnL >= 0 ? "+" : ""}${totalPnL.toFixed(2)}
-        </div>
-      </div>
-      <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-5">
-        <div className="text-sm text-gray-400 mb-1">Open Positions</div>
-        <div className="text-2xl font-semibold">{openPositions}</div>
-      </div>
-      <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-5">
-        <div className="text-sm text-gray-400 mb-1">Long / Short</div>
-        <div className="text-2xl font-semibold">
-          {longCount} / {shortCount}
-        </div>
-      </div>
-    </div>
   );
 }

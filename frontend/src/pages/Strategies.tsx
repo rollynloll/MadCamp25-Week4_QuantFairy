@@ -46,7 +46,13 @@ export default function Strategies() {
 
   const handleAddToMy = (strategy: PublicStrategyListItem) => {
     setMyError(null);
-    addPublicStrategyToMy(strategy.public_strategy_id)
+    getPublicStrategy(strategy.public_strategy_id)
+      .then((detailResult) =>
+        addPublicStrategyToMy(strategy.public_strategy_id, {
+          name: strategy.name,
+          params: detailResult.default_params ?? {}
+        })
+      )
       .then((created) => {
         setMyStrategies((prev) => {
           if (prev.some((item) => item.my_strategy_id === created.my_strategy_id)) {
