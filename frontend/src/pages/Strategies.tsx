@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, Minus } from "lucide-react";
-import StrategyCard from "@/components/strategies/StrategyCard";
 import StrategyDetailModal from "@/components/strategies/StrategyDetailModal";
+import PublicStrategyList from "@/components/strategies/PublicStrategyList";
+import MyStrategiesList from "@/components/strategies/MyStrategiesList";
 import {
   addPublicStrategyToMy,
   deleteMyStrategy,
@@ -255,110 +255,23 @@ export default function Strategies() {
       ) : (
         <div className="space-y-6">
           {scope === "public" && (
-            <div className="space-y-4">
-              {(data ?? []).map((strategy) => (
-                <div
-                  key={strategy.public_strategy_id}
-                  className="relative"
-                >
-                  {(() => {
-                    const isAdded = myStrategyIdByPublicId.has(strategy.public_strategy_id);
-                    const isAdding = addingIds.has(strategy.public_strategy_id);
-                    return (
-                      <div
-                        className={
-                          isAdded || isAdding
-                            ? "rounded-lg ring-1 ring-green-500/40 bg-green-500/5"
-                            : ""
-                        }
-                      >
-                        <StrategyCard
-                          strategy={strategy}
-                          onSelect={(item) => setSelected(item)}
-                          onAdd={isAdded || isAdding ? undefined : handleAddToMy}
-                        />
-                        {(isAdding || isAdded) && (
-                          <div className="absolute top-4 right-4 flex items-center gap-1 rounded-full bg-green-600/20 px-2 py-1 text-xs text-green-300">
-                            <Check className="w-3 h-3" />
-                            {isAdding ? "Adding" : "Added"}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
-                </div>
-              ))}
-            </div>
+            <PublicStrategyList
+              strategies={data ?? []}
+              addedIds={new Set(myStrategyIdByPublicId.keys())}
+              addingIds={addingIds}
+              onSelect={(item) => setSelected(item)}
+              onAdd={handleAddToMy}
+            />
           )}
 
           {scope === "private" && (
-            <>
-              <div className="space-y-3">
-                <div className="text-xs uppercase tracking-wide text-gray-500">
-                  From Public Strategies
-                </div>
-                {myFromPublic.length === 0 ? (
-                  <div className="text-sm text-gray-400">
-                    No strategies added from Public.
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {myFromPublic.map((strategy) => (
-                      <StrategyCard
-                        key={strategy.public_strategy_id}
-                        strategy={strategy}
-                        onSelect={(item) => setSelected(item)}
-                        onRemove={handleRemoveFromMy}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-3">
-                <div className="text-xs uppercase tracking-wide text-gray-500">
-                  Custom Strategies
-                </div>
-                {myCustom.length === 0 ? (
-                  <div className="text-sm text-gray-400">
-                    No custom strategies yet.
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {myCustom.map((strategy) => (
-                      <div
-                        key={strategy.my_strategy_id}
-                        className="bg-[#0d1117] border border-gray-800 rounded-lg p-6"
-                      >
-                        <div className="flex items-start justify-between gap-6 mb-3">
-                          <div>
-                            <h3 className="text-lg font-semibold">
-                              {strategy.name}
-                            </h3>
-                            {strategy.note && (
-                              <p className="text-sm text-gray-400 mt-1">
-                                {strategy.note}
-                              </p>
-                            )}
-                          </div>
-                          <button
-                            onClick={() => handleRemoveCustom(strategy.my_strategy_id)}
-                            className="p-1.5 hover:bg-gray-800 rounded transition-colors"
-                            title="Remove"
-                            type="button"
-                          >
-                            <Minus size={16} />
-                          </button>
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          Created: {new Date(strategy.created_at).toLocaleString()}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </>
+            <MyStrategiesList
+              fromPublic={myFromPublic}
+              custom={myCustom}
+              onSelect={(item) => setSelected(item)}
+              onRemovePublic={handleRemoveFromMy}
+              onRemoveCustom={handleRemoveCustom}
+            />
           )}
         </div>
       )}
