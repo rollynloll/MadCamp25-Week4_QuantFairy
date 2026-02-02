@@ -46,17 +46,21 @@ class AlpacaClient:
         if TradingClient is None:
             return None
         if self._client is None:
-            base_url = (
-                self.settings.alpaca_base_url
-                if self.environment == "paper"
-                else LIVE_BASE_URL
-            )
-            self._client = TradingClient(
-                self.settings.alpaca_api_key,
-                self.settings.alpaca_secret_key,
-                paper=self.environment == "paper",
-                base_url=base_url,
-            )
+            try:
+                self._client = TradingClient(
+                    self.settings.alpaca_api_key,
+                    self.settings.alpaca_secret_key,
+                    paper=self.environment == "paper",
+                    base_url=self.settings.alpaca_base_url
+                    if self.environment == "paper"
+                    else LIVE_BASE_URL,
+                )
+            except TypeError:
+                self._client = TradingClient(
+                    self.settings.alpaca_api_key,
+                    self.settings.alpaca_secret_key,
+                    paper=self.environment == "paper",
+                )
         return self._client
 
     def get_account(self) -> AlpacaAccountResult:
