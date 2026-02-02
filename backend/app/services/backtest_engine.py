@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Tuple
 
 from app.services.data_provider import load_price_series, parse_date, trading_days
 from app.services.metrics import compute_drawdown, compute_metrics, compute_returns
@@ -12,6 +12,9 @@ class StrategyContext:
     strategy_id: str
     params: Dict[str, Any]
     label: str
+
+
+SimulationProgressCallback = Callable[[float], None]
 
 
 def _is_rebalance_day(date_index: int, rebalance: str) -> bool:
@@ -97,13 +100,19 @@ def _simulate_portfolio(
     slippage_bps: float,
     weight_fn,
     initial_cash: float,
-) -> Tuple[List[Dict[str, float]], float, List[int]]:
+    progress_cb: SimulationProgressCallback | None = None,
+) -> Tuple[List[Dict[str, float]], float, List[int], List[Dict[str, Any]]]:
     equity = initial_cash
     equity_curve: List[Dict[str, float]] = []
     weights: Dict[str, float] = {}
     turnovers: List[float] = []
     positions_counts: List[int] = []
+    holdings_history: List[Dict[str, Any]] = []
 
+    total = len(dates)
+    stride = max(total // 50, 1) if total else 1
+    if progress_cb and total:
+        progress_cb(0.0)
     for idx, date in enumerate(dates):
         if _is_rebalance_day(idx, rebalance):
             new_weights = weight_fn(idx, date)
@@ -127,9 +136,18 @@ def _simulate_portfolio(
         equity *= (1 + daily_ret)
         positions_counts.append(len([w for w in weights.values() if w != 0]))
         equity_curve.append({"date": date, "equity": equity})
+        if total:
+            is_month_end = idx == total - 1 or dates[idx + 1][:7] != date[:7]
+            if is_month_end:
+                snapshot = {k: v for k, v in weights.items() if v != 0}
+                holdings_history.append({"month": date[:7], "weights": snapshot})
+        if progress_cb and total:
+            step = idx + 1
+            if step % stride == 0 or step == total:
+                progress_cb(step / total)
 
     turnover_pct = sum(turnovers) / max(len(turnovers), 1) * 100
-    return equity_curve, turnover_pct, positions_counts
+    return equity_curve, turnover_pct, positions_counts, holdings_history
 
 
 def run_single_backtest(
@@ -137,6 +155,7 @@ def run_single_backtest(
     strategy_ctx: StrategyContext,
     universe: List[str],
     benchmark_curve: List[Dict[str, float]] | None = None,
+    progress_cb: SimulationProgressCallback | None = None,
 ) -> Dict[str, Any]:
     prices = load_price_series(
         universe,
@@ -162,7 +181,7 @@ def run_single_backtest(
     def weight_fn(idx: int, date: str) -> Dict[str, float]:
         return _momentum_weights(prices, dates, idx, lookback, top_k)
 
-    equity_curve, turnover_pct, positions_counts = _simulate_portfolio(
+    equity_curve, turnover_pct, positions_counts, holdings_history = _simulate_portfolio(
         prices,
         dates,
         spec["rebalance"],
@@ -170,6 +189,7 @@ def run_single_backtest(
         spec["slippage_bps"],
         weight_fn,
         spec.get("initial_cash", 1.0),
+        progress_cb=progress_cb,
     )
 
     returns = compute_returns(equity_curve)
@@ -187,6 +207,7 @@ def run_single_backtest(
         "returns": returns,
         "drawdown": drawdown,
         "metrics": metrics,
+        "holdings_history": holdings_history,
         "positions_summary": positions_summary,
     }
 
@@ -197,6 +218,7 @@ def run_ensemble_backtest(
     universe: List[str],
     ensemble: Dict[str, Any],
     benchmark_curve: List[Dict[str, float]] | None = None,
+    progress_cb: SimulationProgressCallback | None = None,
 ) -> Dict[str, Any]:
     prices = load_price_series(
         universe,
@@ -237,7 +259,7 @@ def run_ensemble_backtest(
             strategy_weights[ctx.strategy_id] = weight_functions[ctx.strategy_id](idx, date)
         return _mix_weights(strategy_weights, mix_weights, constraints)
 
-    equity_curve, turnover_pct, positions_counts = _simulate_portfolio(
+    equity_curve, turnover_pct, positions_counts, holdings_history = _simulate_portfolio(
         prices,
         dates,
         spec["rebalance"],
@@ -245,6 +267,7 @@ def run_ensemble_backtest(
         spec["slippage_bps"],
         mixed_weight_fn,
         spec.get("initial_cash", 1.0),
+        progress_cb=progress_cb,
     )
 
     results = {
@@ -254,6 +277,7 @@ def run_ensemble_backtest(
         "metrics": compute_metrics(
             equity_curve, benchmark_curve=benchmark_curve, turnover_pct=turnover_pct
         ),
+        "holdings_history": holdings_history,
         "positions_summary": {
             "avg_positions": sum(positions_counts) / len(positions_counts),
             "max_positions": max(positions_counts),

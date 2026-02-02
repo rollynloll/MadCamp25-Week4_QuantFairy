@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Protocol
 
 import pandas as pd
+
+from app.strategies.spec import StrategySpec
 
 
 @dataclass
@@ -12,6 +14,15 @@ class StrategyContext:
     user_id: str
     params: Dict
     code_version: str
+    state: Dict = field(default_factory=dict)
+    spec: StrategySpec | None = None
+
+    def resolved_params(self) -> Dict:
+        """Return merged params, with ctx.params overriding spec.template.params."""
+        spec_params = {}
+        if self.spec and self.spec.kind == "template" and self.spec.template:
+            spec_params = self.spec.template.params or {}
+        return {**spec_params, **(self.params or {})}
 
 
 @dataclass
@@ -36,4 +47,14 @@ class Strategy(Protocol):
         universe: List[str],
     ) -> Iterable[StrategySignal]:
         """Yield target allocations for rebalance dates."""
+        ...
+
+    def compute_target_weights(
+        self,
+        prices: pd.DataFrame,
+        ctx: StrategyContext,
+        universe: List[str],
+        dt: pd.Timestamp,
+    ) -> Dict[str, float]:
+        """Preferred interface: compute weights for a given rebalance date."""
         ...
