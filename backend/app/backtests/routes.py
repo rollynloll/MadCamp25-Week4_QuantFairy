@@ -4,7 +4,7 @@ import base64
 import uuid
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, Header, Query, status
+from fastapi import APIRouter, BackgroundTasks, Header, Query, status
 from jsonschema import Draft7Validator
 
 from app.benchmarks.data import BENCHMARKS
@@ -19,9 +19,8 @@ from app.schemas.backtests import (
     BacktestResultsResponse,
     BacktestValidateResponse,
 )
-from app.schemas.backtests_run import BacktestRunRequest, BacktestRunResponse
 from app.services.backtest_engine import StrategyContext, run_ensemble_backtest, run_single_backtest
-from app.services.backtest_runner import run_backtest, validate_params
+from app.services.backtest_runner import run_backtest
 from app.services.data_provider import load_price_series, parse_date, trading_days
 from app.services.metrics import compute_drawdown, compute_metrics, compute_returns
 from app.storage.backtests_store import STORE
@@ -32,6 +31,271 @@ from app.universes.presets import UNIVERSE_PRESETS
 
 
 router = APIRouter()
+
+
+def _update_job_state(
+    backtest_id: str,
+    *,
+    status_value: str | None = None,
+    progress: int | None = None,
+    error: Dict[str, Any] | None = None,
+) -> None:
+    updates: Dict[str, Any] = {"updated_at": now_kst().isoformat()}
+    if status_value is not None:
+        updates["status"] = status_value
+    if progress is not None:
+        updates["progress"] = progress
+    if error is not None:
+        updates["error"] = error
+    STORE.update_job(backtest_id, updates)
+
+
+def _job_is_canceled(backtest_id: str) -> bool:
+    job = STORE.get_job(backtest_id)
+    return not job or job.get("status") == "canceled"
+
+
+def _run_backtest_job(
+    *,
+    backtest_id: str,
+    payload: BacktestCreateRequest,
+    user_id: str,
+    universe_tickers: List[str],
+    strategy_contexts: List[StrategyContext],
+    spec_dict: Dict[str, Any],
+    benchmark_refs: List[Dict[str, Any]],
+    baseline_benchmark_curve: List[Dict[str, float]] | None,
+) -> None:
+    _update_job_state(backtest_id, status_value="running", progress=5)
+
+    try:
+        results_payload: Dict[str, Any] = {}
+        result_items: List[tuple[StrategyRef, StrategyContext, Dict[str, Any]]] = []
+        benchmark_symbol = benchmark_refs[0]["symbol"] if benchmark_refs else None
+
+        settings = get_settings()
+        public_repo = PublicStrategiesRepository(settings)
+        my_repo = MyStrategiesRepository(settings)
+        public_repo.ensure_seed()
+
+        def resolve_runtime(ref: StrategyRef) -> Dict[str, Any]:
+            if ref.type == "public":
+                public_row = public_repo.get(ref.id)
+                if not public_row:
+                    raise APIError("NOT_FOUND", "Public strategy not found", status_code=404)
+                entrypoint = public_row.get("entrypoint")
+                if not entrypoint:
+                    raise APIError("VALIDATION_ERROR", "Missing entrypoint", status_code=422)
+                return {
+                    "entrypoint": entrypoint,
+                    "code_version": public_row.get("code_version") or "unknown",
+                    "public_strategy_id": public_row.get("public_strategy_id", ref.id),
+                    "public_version_snapshot": public_row.get("version"),
+                }
+
+            my_row = my_repo.get(user_id, ref.id)
+            if not my_row:
+                raise APIError("NOT_FOUND", "My strategy not found", status_code=404)
+            public_id = my_row.get("source_public_strategy_id")
+            public_row = public_repo.get(public_id) if public_id else None
+            entrypoint = my_row.get("entrypoint_snapshot") or (public_row.get("entrypoint") if public_row else None)
+            if not entrypoint:
+                raise APIError("VALIDATION_ERROR", "Missing entrypoint", status_code=422)
+            code_version = my_row.get("code_version_snapshot") or (public_row.get("code_version") if public_row else None) or "unknown"
+            public_version_snapshot = my_row.get("public_version_snapshot") or (public_row.get("version") if public_row else None)
+            return {
+                "entrypoint": entrypoint,
+                "code_version": code_version,
+                "public_strategy_id": public_id,
+                "public_version_snapshot": public_version_snapshot,
+                "my_row": my_row,
+            }
+
+        def build_item_from_run(ref: StrategyRef, ctx: StrategyContext) -> Dict[str, Any]:
+            runtime = resolve_runtime(ref)
+            run_params = dict(ctx.params)
+            if (
+                "universe" not in run_params
+                and "universe_preset" not in run_params
+                and "symbol" not in run_params
+            ):
+                if spec_dict.get("universe", {}).get("type") == "CUSTOM":
+                    run_params["universe"] = spec_dict.get("universe", {}).get("tickers") or []
+                else:
+                    run_params["universe_preset"] = spec_dict.get("universe", {}).get("preset_id")
+            run_result = run_backtest(
+                my_strategy_id=ref.id,
+                user_id=user_id,
+                params=run_params,
+                entrypoint=runtime["entrypoint"],
+                code_version=runtime["code_version"],
+                start_date=spec_dict["period_start"],
+                end_date=spec_dict["period_end"],
+                benchmark_symbol=benchmark_symbol,
+                initial_cash=spec_dict["initial_cash"],
+                fee_bps=spec_dict["fee_bps"],
+                slippage_bps=spec_dict["slippage_bps"],
+            )
+            equity_curve = run_result.equity_curve
+            trade_count = run_result.trade_stats.get("trades_count", 0) if run_result.trade_stats else 0
+            return {
+                "label": ctx.label,
+                "strategy_ref": ref.model_dump(),
+                "metrics": run_result.metrics,
+                "equity_curve": equity_curve,
+                "returns": compute_returns(equity_curve),
+                "drawdown": compute_drawdown(equity_curve),
+                "positions_summary": {
+                    "avg_positions": 1 if trade_count else 0,
+                    "max_positions": 1 if trade_count else 0,
+                },
+            }
+
+        if payload.mode == "single":
+            _update_job_state(backtest_id, progress=15)
+            ctx = strategy_contexts[0]
+            item = build_item_from_run(payload.strategies[0], ctx)
+            results_payload["results"] = [item]
+            result_items.append((payload.strategies[0], ctx, results_payload["results"][0]))
+            _update_job_state(backtest_id, progress=85)
+        elif payload.mode == "batch":
+            results = []
+            total = max(len(strategy_contexts), 1)
+            for idx, (ref, ctx) in enumerate(zip(payload.strategies, strategy_contexts), start=1):
+                if _job_is_canceled(backtest_id):
+                    return
+                progress = 10 + int((idx - 1) / total * 60)
+                _update_job_state(backtest_id, progress=progress)
+                results.append(build_item_from_run(ref, ctx))
+                result_items.append((ref, ctx, results[-1]))
+            results_payload["results"] = results
+            comparison_table = []
+            for item in results:
+                metrics = item["metrics"]
+                comparison_table.append(
+                    {
+                        "label": item["label"],
+                        "total_return_pct": metrics.get("total_return_pct", 0.0),
+                        "cagr_pct": metrics.get("cagr_pct", 0.0),
+                        "sharpe": metrics.get("sharpe", 0.0),
+                        "max_drawdown_pct": metrics.get("max_drawdown_pct", 0.0),
+                    }
+                )
+            results_payload["comparison_table"] = comparison_table
+            _update_job_state(backtest_id, progress=85)
+        else:
+            if _job_is_canceled(backtest_id):
+                return
+            _update_job_state(backtest_id, progress=20)
+            ensemble_spec = payload.ensemble.model_dump() if payload.ensemble else {}
+            ensemble_result = run_ensemble_backtest(
+                spec_dict,
+                strategy_contexts,
+                universe_tickers,
+                ensemble_spec,
+                benchmark_curve=baseline_benchmark_curve,
+            )
+            results_payload["ensemble_result"] = {
+                "label": "ensemble",
+                "strategy_ref": payload.strategies[0].model_dump(),
+                **ensemble_result,
+            }
+            component_results = []
+            total = max(len(strategy_contexts), 1)
+            for idx, (ref, ctx) in enumerate(zip(payload.strategies, strategy_contexts), start=1):
+                if _job_is_canceled(backtest_id):
+                    return
+                progress = 40 + int((idx - 1) / total * 40)
+                _update_job_state(backtest_id, progress=progress)
+                item = run_single_backtest(
+                    spec_dict, ctx, universe_tickers, benchmark_curve=baseline_benchmark_curve
+                )
+                component_results.append(
+                    {
+                        "label": ctx.label,
+                        "strategy_ref": ref.model_dump(),
+                        **item,
+                    }
+                )
+                result_items.append((ref, ctx, component_results[-1]))
+            results_payload["components"] = component_results
+            _update_job_state(backtest_id, progress=85)
+
+        if _job_is_canceled(backtest_id):
+            return
+
+        if benchmark_refs:
+            _update_job_state(backtest_id, progress=90)
+            results_payload["benchmarks"] = _build_benchmarks_payload(benchmark_refs, spec_dict)
+            _update_job_state(backtest_id, progress=95)
+
+        if result_items:
+            if _job_is_canceled(backtest_id):
+                return
+            runs_repo = BacktestRunsRepository(settings)
+            benchmark_item = None
+            if isinstance(results_payload.get("benchmarks"), dict):
+                benchmark_items = results_payload["benchmarks"].get("items") or []
+                if benchmark_items:
+                    benchmark_item = benchmark_items[0]
+            for ref, ctx, result in result_items:
+                if ref.type != "my":
+                    continue
+                runtime = resolve_runtime(ref)
+                my_row = runtime.get("my_row")
+                public_id = runtime.get("public_strategy_id")
+                entrypoint = runtime.get("entrypoint")
+                code_version = runtime.get("code_version")
+                public_version_snapshot = runtime.get("public_version_snapshot")
+                runs_repo.create(
+                    {
+                        "run_id": f"run_{uuid.uuid4().hex}",
+                        "user_id": user_id,
+                        "my_strategy_id": ref.id,
+                        "public_strategy_id": public_id,
+                        "entrypoint": entrypoint,
+                        "code_version": code_version or "unknown",
+                        "public_version_snapshot": public_version_snapshot,
+                        "params": ctx.params,
+                        "start_date": spec_dict["period_start"],
+                        "end_date": spec_dict["period_end"],
+                        "benchmark_symbol": benchmark_item.get("symbol") if benchmark_item else None,
+                        "initial_cash": spec_dict["initial_cash"],
+                        "fee_bps": spec_dict["fee_bps"],
+                        "slippage_bps": spec_dict["slippage_bps"],
+                        "status": "done",
+                        "metrics": result.get("metrics") or {},
+                        "equity_curve": result.get("equity_curve") or [],
+                        "trade_stats": result.get("trade_stats") or {},
+                        "benchmark": benchmark_item,
+                    }
+                )
+
+        STORE.set_results(backtest_id, results_payload)
+        _update_job_state(backtest_id, status_value="done", progress=100)
+    except APIError as exc:
+        _update_job_state(
+            backtest_id,
+            status_value="failed",
+            progress=100,
+            error={
+                "code": exc.code,
+                "message": exc.message,
+                "detail": exc.detail,
+                "details": exc.details,
+            },
+        )
+    except Exception as exc:
+        _update_job_state(
+            backtest_id,
+            status_value="failed",
+            progress=100,
+            error={
+                "code": "INTERNAL_ERROR",
+                "message": "Unexpected error",
+                "detail": str(exc),
+            },
+        )
 
 
 def _encode_cursor(value: str) -> str:
@@ -286,6 +550,7 @@ async def validate_backtest(
 @router.post("/backtests", status_code=status.HTTP_201_CREATED, response_model=BacktestJob)
 async def create_backtest(
     payload: BacktestCreateRequest,
+    background_tasks: BackgroundTasks,
     authorization: str | None = Header(default=None, alias="Authorization"),
 ):
     settings = get_settings()
@@ -296,83 +561,13 @@ async def create_backtest(
     benchmark_refs = [b.model_dump() for b in payload.benchmarks] if payload.benchmarks else []
     baseline_benchmark_curve = _get_baseline_benchmark_curve(benchmark_refs, spec_dict)
 
-    results_payload: Dict[str, Any] = {}
-    if payload.mode == "single":
-        ctx = strategy_contexts[0]
-        result = run_single_backtest(
-            spec_dict, ctx, universe_tickers, benchmark_curve=baseline_benchmark_curve
-        )
-        results_payload["results"] = [
-            {
-                "label": ctx.label,
-                "strategy_ref": payload.strategies[0].model_dump(),
-                **result,
-            }
-        ]
-    elif payload.mode == "batch":
-        results = []
-        for ref, ctx in zip(payload.strategies, strategy_contexts):
-            item = run_single_backtest(
-                spec_dict, ctx, universe_tickers, benchmark_curve=baseline_benchmark_curve
-            )
-            results.append(
-                {
-                    "label": ctx.label,
-                    "strategy_ref": ref.model_dump(),
-                    **item,
-                }
-            )
-        results_payload["results"] = results
-        comparison_table = []
-        for item in results:
-            metrics = item["metrics"]
-            comparison_table.append(
-                {
-                    "label": item["label"],
-                    "total_return_pct": metrics.get("total_return_pct", 0.0),
-                    "cagr_pct": metrics.get("cagr_pct", 0.0),
-                    "sharpe": metrics.get("sharpe", 0.0),
-                    "max_drawdown_pct": metrics.get("max_drawdown_pct", 0.0),
-                }
-            )
-        results_payload["comparison_table"] = comparison_table
-    else:
-        ensemble_spec = payload.ensemble.model_dump() if payload.ensemble else {}
-        ensemble_result = run_ensemble_backtest(
-            spec_dict,
-            strategy_contexts,
-            universe_tickers,
-            ensemble_spec,
-            benchmark_curve=baseline_benchmark_curve,
-        )
-        results_payload["ensemble_result"] = {
-            "label": "ensemble",
-            "strategy_ref": payload.strategies[0].model_dump(),
-            **ensemble_result,
-        }
-        component_results = []
-        for ref, ctx in zip(payload.strategies, strategy_contexts):
-            item = run_single_backtest(
-                spec_dict, ctx, universe_tickers, benchmark_curve=baseline_benchmark_curve
-            )
-            component_results.append(
-                {
-                    "label": ctx.label,
-                    "strategy_ref": ref.model_dump(),
-                    **item,
-                }
-            )
-        results_payload["components"] = component_results
-
-    if benchmark_refs:
-        results_payload["benchmarks"] = _build_benchmarks_payload(benchmark_refs, spec_dict)
-
     now = now_kst().isoformat()
     job = {
         "backtest_id": f"bt_{uuid.uuid4().hex}",
         "user_id": user_id,
         "mode": payload.mode,
-        "status": "done",
+        "status": "queued",
+        "progress": 0,
         "spec": spec_dict,
         "strategies": [s.model_dump() for s in payload.strategies],
         "benchmarks": benchmark_refs or None,
@@ -380,7 +575,18 @@ async def create_backtest(
         "updated_at": now,
     }
     STORE.create_job(job)
-    STORE.set_results(job["backtest_id"], results_payload)
+
+    background_tasks.add_task(
+        _run_backtest_job,
+        backtest_id=job["backtest_id"],
+        payload=payload,
+        user_id=user_id,
+        universe_tickers=universe_tickers,
+        strategy_contexts=strategy_contexts,
+        spec_dict=spec_dict,
+        benchmark_refs=benchmark_refs,
+        baseline_benchmark_curve=baseline_benchmark_curve,
+    )
 
     return {k: v for k, v in job.items() if k != "user_id"}
 
@@ -494,106 +700,3 @@ async def delete_backtest(
         raise APIError("CONFLICT", "Backtest cannot be deleted", status_code=409)
     STORE.delete(backtest_id)
     return None
-
-
-@router.post("/backtests/run", response_model=BacktestRunResponse)
-async def run_backtest_endpoint(
-    payload: BacktestRunRequest,
-    authorization: str | None = Header(default=None, alias="Authorization"),
-):
-    settings = get_settings()
-    user_id = resolve_my_user_id(settings, authorization)
-    my_repo = MyStrategiesRepository(settings)
-    public_repo = PublicStrategiesRepository(settings)
-
-    my_row = my_repo.get(user_id, payload.my_strategy_id)
-    if not my_row:
-        raise APIError("NOT_FOUND", "My strategy not found", status_code=404)
-
-    public_id = my_row.get("source_public_strategy_id")
-    if not public_id:
-        raise APIError("VALIDATION_ERROR", "Missing public strategy reference", status_code=422)
-
-    public_row = public_repo.get(public_id)
-    if not public_row:
-        raise APIError("NOT_FOUND", "Public strategy not found", status_code=404)
-
-    defaults = public_row.get("default_params", {}) or {}
-    params = {**defaults, **(my_row.get("params") or {})}
-    validate_params(public_row.get("param_schema", {}) or {}, params)
-
-    entrypoint = my_row.get("entrypoint_snapshot") or public_row.get("entrypoint")
-    if not entrypoint:
-        raise APIError("VALIDATION_ERROR", "Missing entrypoint", status_code=422)
-
-    code_version = my_row.get("code_version_snapshot") or public_row.get("code_version") or "unknown"
-
-    result = run_backtest(
-        my_strategy_id=payload.my_strategy_id,
-        user_id=user_id,
-        params=params,
-        entrypoint=entrypoint,
-        code_version=code_version,
-        start_date=payload.start_date,
-        end_date=payload.end_date,
-        benchmark_symbol=payload.benchmark_symbol,
-        initial_cash=payload.initial_cash,
-        fee_bps=payload.fee_bps,
-        slippage_bps=payload.slippage_bps,
-    )
-
-    run_id = f"run_{uuid.uuid4().hex}"
-    BacktestRunsRepository(settings).create(
-        {
-            "run_id": run_id,
-            "user_id": user_id,
-            "my_strategy_id": payload.my_strategy_id,
-            "public_strategy_id": public_id,
-            "entrypoint": entrypoint,
-            "code_version": code_version,
-            "public_version_snapshot": my_row.get("public_version_snapshot"),
-            "params": params,
-            "start_date": payload.start_date,
-            "end_date": payload.end_date,
-            "benchmark_symbol": payload.benchmark_symbol,
-            "initial_cash": payload.initial_cash,
-            "fee_bps": payload.fee_bps,
-            "slippage_bps": payload.slippage_bps,
-            "status": "done",
-            "metrics": result.metrics,
-            "equity_curve": result.equity_curve,
-            "trade_stats": result.trade_stats,
-            "benchmark": result.benchmark,
-        }
-    )
-
-    return BacktestRunResponse(
-        run_id=run_id,
-        my_strategy_id=payload.my_strategy_id,
-        metrics=result.metrics,
-        equity_curve=result.equity_curve,
-        trade_stats=result.trade_stats,
-        benchmark=result.benchmark,
-    )
-
-
-@router.get("/backtests/run/{run_id}", response_model=BacktestRunResponse)
-async def get_backtest_run(
-    run_id: str,
-    authorization: str | None = Header(default=None, alias="Authorization"),
-):
-    settings = get_settings()
-    user_id = resolve_my_user_id(settings, authorization)
-    repo = BacktestRunsRepository(settings)
-    row = repo.get(user_id, run_id)
-    if not row:
-        raise APIError("NOT_FOUND", "Backtest run not found", status_code=404)
-
-    return BacktestRunResponse(
-        run_id=row.get("run_id"),
-        my_strategy_id=row.get("my_strategy_id", ""),
-        metrics=row.get("metrics", {}) or {},
-        equity_curve=row.get("equity_curve", []) or [],
-        trade_stats=row.get("trade_stats", {}) or {},
-        benchmark=row.get("benchmark"),
-    )
