@@ -56,8 +56,9 @@ export default function StrategyCard({
               onAdd(strategy);
             }}
             aria-label="Add strategy"
+            className="p-2.5 rounded hover:bg-gray-800 transition-colors"
           >
-            <Plus size={17} />
+            <Plus size={18} />
           </button>
         )}
         {!onAdd && onRemove && (
@@ -67,8 +68,9 @@ export default function StrategyCard({
               onRemove(strategy);
             }}
             aria-label="Remove strategy"
+            className="p-2.5 rounded hover:bg-gray-800 transition-colors"
           >
-            <Minus size={17} />
+            <Minus size={18} />
           </button>
         )}
       </div>

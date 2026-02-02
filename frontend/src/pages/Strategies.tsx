@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import StrategyCard from "@/components/strategies/StrategyCard";
 import StrategyDetailModal from "@/components/strategies/StrategyDetailModal";
+import PublicStrategyList from "@/components/strategies/PublicStrategyList";
+import MyStrategiesList from "@/components/strategies/MyStrategiesList";
 import {
   addPublicStrategyToMy,
   deleteMyStrategy,
@@ -24,15 +25,21 @@ export default function Strategies() {
   const [myStrategies, setMyStrategies] = useState<MyStrategy[]>([]);
   const [myLoading, setMyLoading] = useState(false);
   const [myError, setMyError] = useState<string | null>(null);
-  const filteredData = useMemo(() => {
-    if (scope === "public") return data ?? [];
-    const byPublicId = new Map(
-      (data ?? []).map((item) => [item.public_strategy_id, item])
-    );
+  const [addingIds, setAddingIds] = useState<Set<string>>(new Set());
+  const publicStrategyById = useMemo(() => {
+    return new Map((data ?? []).map((item) => [item.public_strategy_id, item]));
+  }, [data]);
+
+  const myFromPublic = useMemo(() => {
     return myStrategies
-      .map((myItem) => byPublicId.get(myItem.source_public_strategy_id))
+      .filter((item) => Boolean(item.source_public_strategy_id))
+      .map((myItem) => publicStrategyById.get(myItem.source_public_strategy_id))
       .filter(Boolean) as PublicStrategyListItem[];
-  }, [data, scope, myStrategies]);
+  }, [myStrategies, publicStrategyById]);
+
+  const myCustom = useMemo(() => {
+    return myStrategies.filter((item) => !item.source_public_strategy_id);
+  }, [myStrategies]);
 
   const myStrategyIdByPublicId = useMemo(() => {
     const map = new Map<string, string>();
@@ -45,8 +52,18 @@ export default function Strategies() {
   }, [myStrategies]);
 
   const handleAddToMy = (strategy: PublicStrategyListItem) => {
+    if (myStrategyIdByPublicId.has(strategy.public_strategy_id)) {
+      return;
+    }
     setMyError(null);
-    addPublicStrategyToMy(strategy.public_strategy_id)
+    setAddingIds((prev) => new Set(prev).add(strategy.public_strategy_id));
+    getPublicStrategy(strategy.public_strategy_id)
+      .then((detailResult) =>
+        addPublicStrategyToMy(strategy.public_strategy_id, {
+          name: strategy.name,
+          params: detailResult.default_params ?? {}
+        })
+      )
       .then((created) => {
         setMyStrategies((prev) => {
           if (prev.some((item) => item.my_strategy_id === created.my_strategy_id)) {
@@ -57,12 +74,20 @@ export default function Strategies() {
       })
       .catch((err) => {
         setMyError(err instanceof Error ? err.message : "Failed to add strategy");
+      })
+      .finally(() => {
+        setAddingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(strategy.public_strategy_id);
+          return next;
+        });
       });
   };
 
   const handleRemoveFromMy = (strategy: PublicStrategyListItem) => {
     const myId = myStrategyIdByPublicId.get(strategy.public_strategy_id);
     if (!myId) return;
+    if (!window.confirm("Remove this strategy from My Strategies?")) return;
     setMyError(null);
     deleteMyStrategy(myId)
       .then(() => {
@@ -77,7 +102,22 @@ export default function Strategies() {
       });
   };
 
-  
+  const handleRemoveCustom = (myStrategyId: string) => {
+    if (!window.confirm("Remove this custom strategy?")) return;
+    setMyError(null);
+    deleteMyStrategy(myStrategyId)
+      .then(() => {
+        setMyStrategies((prev) =>
+          prev.filter((item) => item.my_strategy_id !== myStrategyId)
+        );
+      })
+      .catch((err) => {
+        setMyError(
+          err instanceof Error ? err.message : "Failed to remove strategy"
+        );
+      });
+  };
+
   useEffect(() => {
     let isMounted = true;
     setMyLoading(true);
@@ -208,23 +248,31 @@ export default function Strategies() {
         <div className="text-sm text-gray-400">Loading my strategies...</div>
       ) : scope === "private" && myError ? (
         <div className="text-sm text-red-400">{myError}</div>
-      ) : filteredData.length === 0 ? (
+      ) : scope === "private" && myFromPublic.length === 0 && myCustom.length === 0 ? (
         <div className="rounded-lg border border-gray-800 bg-[#0d1117] p-6 text-sm text-gray-400">
-          {scope === "private"
-            ? "No private strategies found."
-            : "No strategies found."}
+          No private strategies found.
         </div>
       ) : (
-        <div className="space-y-4">
-          {filteredData.map((strategy) => (
-            <StrategyCard
-              key={strategy.public_strategy_id}
-              strategy={strategy}
+        <div className="space-y-6">
+          {scope === "public" && (
+            <PublicStrategyList
+              strategies={data ?? []}
+              addedIds={new Set(myStrategyIdByPublicId.keys())}
+              addingIds={addingIds}
               onSelect={(item) => setSelected(item)}
-              onAdd={scope === "public" ? handleAddToMy : undefined}
-              onRemove={scope === "private" ? handleRemoveFromMy : undefined}
+              onAdd={handleAddToMy}
             />
-          ))}
+          )}
+
+          {scope === "private" && (
+            <MyStrategiesList
+              fromPublic={myFromPublic}
+              custom={myCustom}
+              onSelect={(item) => setSelected(item)}
+              onRemovePublic={handleRemoveFromMy}
+              onRemoveCustom={handleRemoveCustom}
+            />
+          )}
         </div>
       )}
 
