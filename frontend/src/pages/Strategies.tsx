@@ -4,6 +4,7 @@ import PublicStrategyList from "@/components/strategies/PublicStrategyList";
 import MyStrategiesList from "@/components/strategies/MyStrategiesList";
 import {
   addPublicStrategyToMy,
+  createMyStrategyCustom,
   deleteMyStrategy,
   getMyStrategies,
   getPublicStrategy
@@ -14,6 +15,7 @@ import type {
   PublicStrategyDetail,
   PublicStrategyListItem
 } from "@/types/strategy";
+import NewStrategyModal from "@/components/strategies/NewStrategyModal";
 
 export default function Strategies() {
   const { data, loading, error } = useStrategies();
@@ -26,6 +28,29 @@ export default function Strategies() {
   const [myLoading, setMyLoading] = useState(false);
   const [myError, setMyError] = useState<string | null>(null);
   const [addingIds, setAddingIds] = useState<Set<string>>(new Set());
+
+  const [showCreate, setShowCreate] = useState(false);
+  const [createLoading, setCreateLoading] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const handleCreateCustom = (body: {
+    name: string;
+    params: Record<string, any>;
+    note?: string
+  }) => {
+    setCreateLoading(true);
+    setCreateError(null);
+    createMyStrategyCustom(body)
+      .then((created) => {
+        setMyStrategies((prev) => [created, ...prev]);
+        setShowCreate(false);
+      })
+      .catch((err) => {
+        setCreateError(err instanceof Error ? err.message : "Failed to create strategy");
+      })
+      .finally(() => setCreateLoading(false));
+  }
+
   const publicStrategyById = useMemo(() => {
     return new Map((data ?? []).map((item) => [item.public_strategy_id, item]));
   }, [data]);
@@ -238,7 +263,10 @@ export default function Strategies() {
               My Strategies
             </button>
           </div>
-          <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm font-medium transition-colors">
+          <button
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm font-medium transition-colors"
+            onClick={() => setShowCreate(true)}
+          >
             + New Strategy
           </button>
         </div>
@@ -284,6 +312,15 @@ export default function Strategies() {
         detail={detail}
         fallbackTitle={selected?.name}
       />
+
+      <NewStrategyModal
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onSubmit={handleCreateCustom}
+        loading={createLoading}
+        error={createError}
+      />
+
     </div>
   );
 }

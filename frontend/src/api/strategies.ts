@@ -4,8 +4,8 @@ import type {
   PublicStrategyListResponse,
   PublicStrategyValidationResponse,
   RiskLevel,
-  MyStrategy,
-  MyStrategyListResponse
+  MyStrategyListResponse,
+  MyStrategy
 } from "@/types/strategy";
 
 export interface PublicStrategiesQuery {
@@ -136,4 +136,26 @@ export async function deleteMyStrategy(myStrategyId: string): Promise<void> {
       payload?.error?.message ?? `Failed to delete strategy (${res.status})`;
     throw new Error(message);
   }
+}
+
+export async function createMyStrategyCustom(body: {
+  name: string;
+  params: Record<string, any>;
+  note?: string;
+}): Promise<MyStrategy> {
+  const res = await fetch(buildApiUrl("/my-strategies"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!res.ok) {
+    const payload = await res.json().catch(() => null);
+    const message = payload?.error?.message ?? `Failed to create strategy (${res.status})`;
+    throw new Error(message);
+  }
+
+  return res.json();
 }
