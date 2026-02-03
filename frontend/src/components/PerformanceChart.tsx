@@ -1,6 +1,7 @@
 import type { Range } from "@/types/dashboard";
 import { useState } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 type Metric = "equity" | "daily_pnl";
 
@@ -16,27 +17,37 @@ interface Props {
 
 export default function PerformanceChart({ data, range, onRangeChange }: Props) {
   const ranges: Range[] = ["1D", "1W", "1M", "3M", "1Y", "ALL"];
+  
+  const rangeLabels: Record<Range, string> = {
+    "1D": "1일",
+    "1W": "1주",
+    "1M": "1개월",
+    "3M": "3개월",
+    "1Y": "1년",
+    "ALL": "전체"
+  };
 
   const [metric, setMetric] = useState<Metric>("equity");
   const metricKey = metric === "equity" ? "equity" : "daily_pnl";
+  const { tr } = useLanguage();
   
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-lg font-semibold">Portfolio Performance</h2>
+        <h2 className="text-lg font-semibold">{tr("Portfolio Performance", "투자 성과")}</h2>
 
         <div className="flex items-center gap-3 text-sm">
           <button
             onClick={() => setMetric("equity")}
             className={metric === "equity" ? "text-blue-400" : "text-gray-400 hover:text-white"}
           >
-            Equity
+            {tr("Equity", "자산")}
           </button>
           <button
             onClick={() => setMetric("daily_pnl")}
             className={metric === "daily_pnl" ? "text-blue-400" : "text-gray-400 hover:text-white"}
           >
-            Daily P&L
+            {tr("Daily P&L", "일별 손익")}
           </button>
         </div>
 
@@ -47,7 +58,7 @@ export default function PerformanceChart({ data, range, onRangeChange }: Props) 
               onClick={() => onRangeChange(r)}
               className={r === range ? "text-blue-400" : "text-gray-400 hover:text-white"}
             >
-              {r}
+              {tr(r, rangeLabels[r])}
             </button>
           ))}
         </div>

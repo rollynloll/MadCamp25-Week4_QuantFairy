@@ -1,4 +1,5 @@
 import type { PublicStrategyDetail } from "@/types/strategy";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface StrategyDetailModalProps {
   open: boolean;
@@ -18,6 +19,7 @@ export default function StrategyDetailModal({
   fallbackTitle
 }: StrategyDetailModalProps) {
   if (!open) return null;
+  const { tr } = useLanguage();
 
   const title = detail?.name ?? fallbackTitle ?? "Strategy detail";
 
@@ -41,13 +43,13 @@ export default function StrategyDetailModal({
             className="text-sm text-gray-400 hover:text-gray-200"
             onClick={onClose}
           >
-            Close
+            {tr("Close", "닫기")}
           </button>
         </div>
 
         <div className="max-h-[70vh] overflow-y-auto px-6 py-5 space-y-5 text-sm">
           {loading && (
-            <div className="text-gray-400">Loading strategy detail...</div>
+            <div className="text-gray-400">{tr("Loading strategy detail...", "전략 상세 불러오는 중...")}</div>
           )}
 
           {error && (
@@ -57,22 +59,22 @@ export default function StrategyDetailModal({
           {!loading && !error && detail && (
             <>
               <section className="space-y-3">
-                <h3 className="text-sm font-semibold">Overview</h3>
+                <h3 className="text-sm font-semibold">{tr("Overview", "개요")}</h3>
                 <div className="grid gap-3 sm:grid-cols-2 text-gray-300">
                   <div>
-                    <div className="text-xs text-gray-500">Author</div>
-                    <div>{detail.author?.name ?? "Unknown"}</div>
+                    <div className="text-xs text-gray-500">{tr("Author", "작성자")}</div>
+                    <div>{detail.author?.name ?? tr("Unknown", "알 수 없음")}</div>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-500">Author Type</div>
-                    <div>{detail.author?.type ?? "N/A"}</div>
+                    <div className="text-xs text-gray-500">{tr("Author Type", "작성자 유형")}</div>
+                    <div>{detail.author?.type ?? tr("N/A", "없음")}</div>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-500">Category</div>
+                    <div className="text-xs text-gray-500">{tr("Category", "카테고리")}</div>
                     <div>{detail.category}</div>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-500">Risk Level</div>
+                    <div className="text-xs text-gray-500">{tr("Risk Level", "리스크 수준")}</div>
                     <div>{detail.risk_level}</div>
                   </div>
                   {/* <div>
@@ -90,7 +92,7 @@ export default function StrategyDetailModal({
                 </div>
                 {detail.tags?.length > 0 && (
                   <div>
-                    <div className="text-xs text-gray-500 mb-1">Tags</div>
+                    <div className="text-xs text-gray-500 mb-1">{tr("Tags", "태그")}</div>
                     <div className="flex flex-wrap gap-2">
                       {detail.tags.map((tag) => (
                         <span
@@ -106,7 +108,7 @@ export default function StrategyDetailModal({
               </section>
 
               <section>
-                <h3 className="text-sm font-semibold mb-2 mt-10">Description</h3>
+                <h3 className="text-sm font-semibold mb-2 mt-10">{tr("Description", "설명")}</h3>
                 <p className="text-gray-300 whitespace-pre-line">
                   {detail.full_description}
                 </p>
@@ -118,80 +120,80 @@ export default function StrategyDetailModal({
               </section>
 
               <section>
-                <h3 className="text-sm font-semibold mb-2 mt-10">Coverage</h3>
+                <h3 className="text-sm font-semibold mb-2 mt-10">{tr("Coverage", "커버리지")}</h3>
                 <div className="grid gap-3 sm:grid-cols-2 text-gray-300">
                   <div>
-                    <div className="text-xs text-gray-500">Assets</div>
+                    <div className="text-xs text-gray-500">{tr("Assets", "자산")}</div>
                     <div>
                       {detail.supported_assets?.length
                         ? detail.supported_assets.join(", ")
-                        : "N/A"}
+                        : tr("N/A", "없음")}
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-500">Timeframes</div>
+                    <div className="text-xs text-gray-500">{tr("Timeframes", "타임프레임")}</div>
                     <div>
                       {detail.supported_timeframes?.length
                         ? detail.supported_timeframes.join(", ")
-                        : "N/A"}
+                        : tr("N/A", "없음")}
                     </div>
                   </div>
                 </div>
               </section>
 
               <section>
-                <h3 className="text-sm font-semibold mb-2 mt-10">Popularity</h3>
+                <h3 className="text-sm font-semibold mb-2 mt-10">{tr("Popularity", "인기도")}</h3>
                 <div className="grid gap-3 sm:grid-cols-3 text-gray-300">
                   <div>
-                    <div className="text-xs text-gray-500">Adds</div>
+                    <div className="text-xs text-gray-500">{tr("Adds", "추가")}</div>
                     <div>{detail.popularity?.adds_count ?? 0}</div>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-500">Likes</div>
+                    <div className="text-xs text-gray-500">{tr("Likes", "좋아요")}</div>
                     <div>{detail.popularity?.likes_count ?? 0}</div>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-500">Runs</div>
+                    <div className="text-xs text-gray-500">{tr("Runs", "실행")}</div>
                     <div>{detail.popularity?.runs_count ?? 0}</div>
                   </div>
                 </div>
               </section>
 
               <section>
-                <h3 className="text-sm font-semibold mb-2 mt-10">Sample Metrics</h3>
+                <h3 className="text-sm font-semibold mb-2 mt-10">{tr("Sample Metrics", "샘플 지표")}</h3>
                 <div className="grid gap-3 sm:grid-cols-2 text-gray-300">
                   <div>
-                    <div className="text-xs text-gray-500">P&L Amount</div>
+                    <div className="text-xs text-gray-500">{tr("P&L Amount", "손익 금액")}</div>
                     <div>{detail.sample_metrics?.pnl_amount ?? 0}</div>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-500">P&L %</div>
+                    <div className="text-xs text-gray-500">{tr("P&L %", "손익 %")}</div>
                     <div>{detail.sample_metrics?.pnl_pct ?? 0}%</div>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-500">Sharpe</div>
+                    <div className="text-xs text-gray-500">{tr("Sharpe", "샤프")}</div>
                     <div>{detail.sample_metrics?.sharpe ?? 0}</div>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-500">Max DD %</div>
+                    <div className="text-xs text-gray-500">{tr("Max DD %", "최대 낙폭 %")}</div>
                     <div>{detail.sample_metrics?.max_drawdown_pct ?? 0}%</div>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-500">Win Rate %</div>
+                    <div className="text-xs text-gray-500">{tr("Win Rate %", "승률 %")}</div>
                     <div>{detail.sample_metrics?.win_rate_pct ?? 0}%</div>
                   </div>
                 </div>
               </section>
 
               <section>
-                <h3 className="text-sm font-semibold mb-2 mt-10">Sample Trade Stats</h3>
+                <h3 className="text-sm font-semibold mb-2 mt-10">{tr("Sample Trade Stats", "샘플 거래 통계")}</h3>
                 <div className="grid gap-3 sm:grid-cols-2 text-gray-300">
                   <div>
-                    <div className="text-xs text-gray-500">Trades</div>
+                    <div className="text-xs text-gray-500">{tr("Trades", "거래 수")}</div>
                     <div>{detail.sample_trade_stats?.trades_count ?? 0}</div>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-500">Avg Hold (h)</div>
+                    <div className="text-xs text-gray-500">{tr("Avg Hold (h)", "평균 보유 (h)")}</div>
                     <div>{detail.sample_trade_stats?.avg_hold_hours ?? 0}</div>
                   </div>
                 </div>

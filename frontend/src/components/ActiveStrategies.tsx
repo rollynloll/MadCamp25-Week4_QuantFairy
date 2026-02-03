@@ -1,4 +1,5 @@
 import type { StrategyState } from "@/types/dashboard";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface ActiveStrategy {
   strategy_id: string;
@@ -12,9 +13,10 @@ interface ActiveStrategy {
 }
 
 export default function ActiveStrategies({ data }: { data: ActiveStrategy[] }) {
+  const { tr } = useLanguage();
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
-      <h2 className="text-lg font-semibold mb-4">Active Strategies</h2>
+      <h2 className="text-lg font-semibold mb-4">{tr("Active Strategies", "운용 중인 전략")}</h2>
       <div className="space-y-3">
         {data.map((strategy) => (
           <div 
@@ -53,7 +55,9 @@ export default function ActiveStrategies({ data }: { data: ActiveStrategy[] }) {
               </span>
             </div>
             <div className="flex items-center justify-between text-xs text-gray-500">
-              <span>{strategy.positions_count} positions</span>
+              <span>
+                {strategy.positions_count} {tr("positions", "종목 수")}
+              </span>
               <span
                 className={
                   strategy.state === "running"
@@ -66,12 +70,12 @@ export default function ActiveStrategies({ data }: { data: ActiveStrategy[] }) {
                 }
               >
                 {strategy.state === "running"
-                  ? "Running"
+                  ? tr("Running", "실행 중")
                   : strategy.state === "paused"
-                  ? "Paused"
+                  ? tr("Paused", "일시정지")
                   : strategy.state === "idle"
-                  ? "Idle"
-                  : "Error"}
+                  ? tr("Idle", "대기")
+                  : tr("Error", "오류")}
               </span>
             </div>
           </div>

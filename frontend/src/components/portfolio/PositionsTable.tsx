@@ -1,22 +1,24 @@
 import type { Position } from "@/types/portfolio";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function PositionsTable({ positions }: { positions: Position[] }) {
+  const { tr } = useLanguage();
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded">
       <div className="px-4 py-3 border-b border-gray-800">
-        <h2 className="font-semibold">Positions</h2>
+        <h2 className="font-semibold">{tr("Positions", "포지션")}</h2>
       </div>
       <div className="overflow-auto max-h-[400px]">
         <table className="w-full text-sm">
           <thead className="sticky top-0 bg-[#0d1117] border-b border-gray-800">
             <tr className="text-xs text-gray-500">
-              <th className="text-left py-2 px-4 font-medium">Symbol</th>
-              <th className="text-right py-2 px-4 font-medium">Quantity</th>
-              <th className="text-right py-2 px-4 font-medium">Avg Price</th>
-              <th className="text-right py-2 px-4 font-medium">Current Price</th>
-              <th className="text-right py-2 px-4 font-medium">P&L</th>
-              <th className="text-right py-2 px-4 font-medium">P&L %</th>
-              <th className="text-left py-2 px-4 font-medium">Strategy</th>
+              <th className="text-left py-2 px-4 font-medium">{tr("Symbol", "종목 코드")}</th>
+              <th className="text-right py-2 px-4 font-medium">{tr("Quantity", "수량")}</th>
+              <th className="text-right py-2 px-4 font-medium">{tr("Avg Price", "평균 매입가")}</th>
+              <th className="text-right py-2 px-4 font-medium">{tr("Current Price", "현재가")}</th>
+              <th className="text-right py-2 px-4 font-medium">{tr("P&L", "손익")}</th>
+              <th className="text-right py-2 px-4 font-medium">{tr("P&L %", "손익률")}</th>
+              <th className="text-left py-2 px-4 font-medium">{tr("Strategy", "전략")}</th>
             </tr>
           </thead>
           <tbody>

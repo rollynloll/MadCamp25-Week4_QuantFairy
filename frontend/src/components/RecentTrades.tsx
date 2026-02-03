@@ -1,4 +1,5 @@
 import type { TradeSide } from "@/types/dashboard";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface RecentTrade {
   fill_id: string;
@@ -12,9 +13,10 @@ interface RecentTrade {
 }
 
 export default function RecentTrades({ data }: { data: RecentTrade[] }) {
+  const { tr } = useLanguage();
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
-      <h2 className="text-lg font-semibold mb-4">Recent Trades</h2>
+      <h2 className="text-lg font-semibold mb-4">{tr("Recent Trades", "최근 거래 내역")}</h2>
       <div className="space-y-2">
         {data.map((trade) => (
           <div

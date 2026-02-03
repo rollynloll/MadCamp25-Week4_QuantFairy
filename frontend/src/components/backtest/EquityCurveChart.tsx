@@ -1,5 +1,6 @@
 import { Download } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 type EquitySeries = {
   key: string;
@@ -17,13 +18,15 @@ export default function EquityCurveChart({
   series: EquitySeries[];
   height?: number;
 }) {
+  const { tr } = useLanguage();
+  
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-lg font-semibold">Equity Curve</h2>
         <button className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors">
           <Download className="w-4 h-4" />
-          Export Results
+          {tr("Export Results", "결과 내보내기")}
         </button>
       </div>
       <ResponsiveContainer width="100%" height={height}>

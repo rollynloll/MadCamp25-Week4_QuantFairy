@@ -9,6 +9,7 @@ import StrategyEditDrawer from "@/components/portfolio/StrategyEditDrawer";
 import { usePortfolioPageData } from "@/hooks/usePortfolio";
 import type { Env, Range } from "@/types/portfolio";
 import { useState } from "react";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function Portfolio() {
   const [env] = useState<Env>("paper");
@@ -26,8 +27,9 @@ export default function Portfolio() {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const { data, view, loading, error } = usePortfolioPageData(env, range, showBenchmark);
+  const { tr } = useLanguage();
 
-  if (loading) return <div className="text-gray-400">Lodaing...</div>;
+  if (loading) return <div className="text-sm text-gray-400">{tr("Loading Portfolio...", "포트폴리오 불러오는 중...")}</div>;
   if (error) return <div className="text-red-400">{error}</div>;
   if (!data || !view) return null;
 
@@ -51,8 +53,10 @@ export default function Portfolio() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-semibold">Portfolio</h1>
-        <p className="text-sm text-gray-500 mt-1">Current positions, performance, and strategy control</p>
+        <h1 className="text-2xl font-semibold">{tr("Portfolio", "포트폴리오")}</h1>
+        <p className="text-sm text-gray-500 mt-1">
+          {tr("Current positions, performance, and strategy control", "보유 종목 수, 성과 및 전략 관리")}
+        </p>
       </div>
 
       {/* KPI Cards */}

@@ -1,3 +1,5 @@
+import { useLanguage } from "@/contexts/LanguageContext";
+
 type StrategyOption = {
   value: string;
   label: string;
@@ -28,6 +30,7 @@ export default function BacktestConfig({
   slippage: string;
   onSlippageChange: (value: string) => void;
 }) {
+  const { tr } = useLanguage();
   const hasStrategies = strategies.length > 0;
   const selectedValues = selectedStrategyIds.length
     ? selectedStrategyIds.map((value) =>
@@ -42,14 +45,14 @@ export default function BacktestConfig({
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">Configuration</h2>
+        <h2 className="text-lg font-semibold mb-4">{tr("Configuration", "\uC124\uC815")}</h2>
         <button
           type="button"
           className="text-xs text-gray-300 border border-gray-800 px-2 py-1 rounded hover:text-white hover:border-gray-600 transition-colors disabled:opacity-50"
           onClick={onAddStrategy}
           disabled={!hasStrategies}
         >
-          + Add Strategy
+          {tr("+ Add Strategy", "+ 전략 생성")}
         </button>
       </div>
       <div className="space-y-4">
@@ -58,7 +61,7 @@ export default function BacktestConfig({
             <div key={`${value}-${index}`} className="col-span-4 grid grid-cols-4 gap-4">
               <div className="col-span-3">
                 <label className="text-sm text-gray-400 mb-2 block">
-                  Strategy {index + 1}
+                  Strategy {index + 1} 
                 </label>
                 <select
                   className="w-full bg-[#0a0d14] border border-gray-800 rounded px-3 py-2 text-sm"
@@ -73,7 +76,7 @@ export default function BacktestConfig({
                       </option>
                     ))
                   ) : (
-                    <option value="">No user strategies</option>
+                    <option value="">{tr("No user strategies", "\uB0B4 \uC804\uB7B5\uC774 \uC5C6\uC2B5\uB2C8\uB2E4")}</option>
                   )}
                 </select>
               </div>
@@ -93,7 +96,7 @@ export default function BacktestConfig({
         <div className="grid grid-cols-4 gap-4">
         <div>
           <label className="text-sm text-gray-400 mb-2 block">
-            Initial Capital
+            {tr("Initial Capital", "\uCD08\uAE30 \uC790\uBCF8")}
           </label>
           <input
             type="text"
@@ -104,7 +107,7 @@ export default function BacktestConfig({
         </div>
         <div>
           <label className="text-sm text-gray-400 mb-2 block">
-            Commission
+            {tr("Commission", "\uC218\uC218\uB8CC")}
           </label>
           <input
             type="text"
@@ -114,7 +117,9 @@ export default function BacktestConfig({
           />
         </div>
         <div>
-          <label className="text-sm text-gray-400 mb-2 block">Slippage</label>
+          <label className="text-sm text-gray-400 mb-2 block">
+            {tr("Slippage", "\uC2AC\uB9AC\uD53C\uC9C0")}
+          </label>
           <input
             type="text"
             value={slippage}

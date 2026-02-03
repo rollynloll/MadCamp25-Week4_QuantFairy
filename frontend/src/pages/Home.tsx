@@ -6,23 +6,25 @@ import RecentTrades from "@/components/RecentTrades";
 import { useDashboard } from "@/hooks/useDashboard";
 import { useState } from "react";
 import type { Range } from "@/types/dashboard";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function Home() {
   const [range, setRange] = useState<Range>("1M");
   const { data, loading, error } = useDashboard(range);
+  const { tr } = useLanguage();
 
   const fmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
   const money = (v: number) => `$${fmt.format(v)}`;
   const pct = (v: number) => `${v >= 0 ? "+" : ""}${fmt.format(v)}%`;
 
   if (loading) {
-    return <div className="text-sm text-gray-400">Loading dashboard...</div>;
+    return <div className="text-sm text-gray-400">{tr("Loading dashboard...", "대시보드 불러오는 중...")}</div>;
   }
 
   if (error || !data) {
     return (
       <div className="text-sm text-red-400">
-        {error ?? "Failed to load dashboard"}
+        {error ?? tr("Failed to load dashboard", "대시보드를 불러오지 못했습니다")}
       </div>
     );
   }
@@ -31,30 +33,30 @@ export default function Home() {
     <div className="space-y-6">
       <div className="grid grid-cols-4 gap-4">
         <MetricCard
-          title="Equity"
+          title={tr("Equity", "총 자산")}
           value={money(data.account.equity)}
-          change={`Today P&L ${pct(data.account.today_pnl.pct)}`}
+          change={`${tr("Today P&L", "금일 손익")} ${pct(data.account.today_pnl.pct)}`}
           isPositive={data.account.today_pnl.value >= 0}
           icon={<DollarSign className="w-5 h-5" />}
         />
         <MetricCard
-          title="Cash"
+          title={tr("Cash", "예수금")}
           value={money(data.account.cash)}
-          change={`${data.account.active_positions.count} positions`}
+          change={`${data.account.active_positions.count} ${tr("positions", "종목 수")}`}
           isPositive={data.account.cash >= 0}
           icon={<DollarSign className="w-5 h-5" />}
         />
         <MetricCard
-          title="Today P&L"
+          title={tr("Today P&L", "금일 손익")}
           value={money(data.account.today_pnl.value)}
           change={pct(data.account.today_pnl.pct)}
           isPositive={data.account.today_pnl.value >= 0}
           icon={<Activity className="w-5 h-5" />}
         />
         <MetricCard
-          title="Active Positions"
+          title={tr("Active Positions", "보유 종목 수")}
           value={`${data.account.active_positions.count}`}
-          change={`${data.account.active_positions.new_today} new today`}
+          change={`${data.account.active_positions.new_today} ${tr("new today", "금일 신규")}`}
           isPositive={data.account.active_positions.new_today > 0}
           icon={<Target className="w-5 h-5" />}
         />

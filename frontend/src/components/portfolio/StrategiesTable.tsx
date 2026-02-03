@@ -1,6 +1,7 @@
 import StateToggle from "./StateToggle";
 import { Pause, Play, Settings, Square } from "lucide-react";
 import type { UserStrategyListItem } from "@/types/portfolio";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 
 interface StrategiesProps {
@@ -18,20 +19,21 @@ export default function StrategiesTable({
   onPause,
   onStop
 }: StrategiesProps) {
+  const { tr } = useLanguage();
 
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded">
       <div className="px-4 py-3 border-b border-gray-800">
-        <h2 className="font-semibold">My Strategies</h2>
+        <h2 className="font-semibold">{tr("My Strategies", "내 전략")}</h2>
       </div>
       <table className="w-full text-sm">
         <thead className="border-b border-gray-800">
           <tr className="text-xs text-gray-500">
-            <th className="text-left py-2 px-4 font-medium">Strategy Name</th>
-            <th className="text-left py-2 px-4 font-medium">State</th>
-            <th className="text-right py-2 px-4 font-medium">Positions</th>
-            <th className="text-left py-2 px-4 font-medium">Last Run</th>
-            <th className="text-right py-2 px-4 font-medium">Actions</th>
+            <th className="text-left py-2 px-4 font-medium">{tr("Strategy Name", "전략명")}</th>
+            <th className="text-left py-2 px-4 font-medium">{tr("State", "상태")}</th>
+            <th className="text-right py-2 px-4 font-medium">{tr("Positions", "종목 수")}</th>
+            <th className="text-left py-2 px-4 font-medium">{tr("Last Run", "최근 실행")}</th>
+            <th className="text-right py-2 px-4 font-medium">{tr("Actions", "작업")}</th>
           </tr>
         </thead>
 
