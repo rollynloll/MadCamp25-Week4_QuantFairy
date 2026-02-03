@@ -1,13 +1,20 @@
 import type { OrderBook as OrderBookData } from "@/types/trading";
 import { useLanguage } from "@/contexts/LanguageContext";
 
-export default function OrderBook({ orderBook }: { orderBook: OrderBookData }) {
+interface OrderBookProps {
+  orderBook: OrderBookData;
+  symbol: string;
+  midPrice?: number;
+  spread?: number;
+}
+
+export default function OrderBook({ orderBook, symbol, midPrice, spread }: OrderBookProps) {
   const { tr } = useLanguage();
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold">{tr("Order Book", "호가")}</h2>
-        <div className="text-sm text-gray-400 font-mono">AAPL</div>
+        <div className="text-sm text-gray-400 font-mono">{symbol}</div>
       </div>
       <div className="space-y-4">
         <div>
@@ -31,8 +38,12 @@ export default function OrderBook({ orderBook }: { orderBook: OrderBookData }) {
         </div>
 
         <div className="py-2 bg-gray-800/50 rounded text-center">
-          <div className="text-lg font-mono font-semibold">178.25</div>
-          <div className="text-xs text-gray-500">{tr("Spread", "스프레드")}: $0.01</div>
+          <div className="text-lg font-mono font-semibold">
+            {midPrice ? midPrice.toFixed(2) : "-"}
+          </div>
+          <div className="text-xs text-gray-500">
+            {tr("Spread", "스프레드")}: {spread ? `$${spread.toFixed(2)}` : "-"}
+          </div>
         </div>
 
         <div>

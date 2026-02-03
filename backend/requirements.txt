@@ -8,3 +8,4 @@ asyncpg
 jsonschema
 yfinance
 pandas
+websockets

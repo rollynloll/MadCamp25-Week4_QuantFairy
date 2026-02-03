@@ -22,7 +22,7 @@ export default function RecentTrades({ trades }: { trades: RecentTrade[] }) {
             }`}
           >
             <span className="font-mono text-xs text-gray-500">
-              {trade.time.split(".")[1]}
+              {new Date(trade.time).toLocaleTimeString()}
             </span>
             <span
               className={`font-mono font-semibold ${
