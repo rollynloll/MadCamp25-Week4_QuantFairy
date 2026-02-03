@@ -31,8 +31,8 @@ export default function BacktestHeader({
           {tr("Test strategies against historical data", "과거 데이터를 기준으로 전략을 테스트합니다")}
         </p>
       </div>
-      <div className="flex items-center gap-3">
-        <div className="px-3 py-2 bg-gray-800 rounded text-sm font-medium flex items-center gap-2">
+      <div className="flex items-center gap-5">
+        <div className="px-3 py-2 bg-gray-800 rounded text-sm font-medium flex items-center gap-3">
           <input
             type="date"
             value={startDate ?? ""}

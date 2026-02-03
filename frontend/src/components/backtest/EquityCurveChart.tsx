@@ -19,11 +19,12 @@ export default function EquityCurveChart({
   height?: number;
 }) {
   const { tr } = useLanguage();
+  const formatYAxis = (value: number) => new Intl.NumberFormat("en-US").format(value);
   
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-lg font-semibold">Equity Curve</h2>
+        <h2 className="text-lg font-semibold">{tr("Equity Curve", "자산 곡선")}</h2>
         <button className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors">
           <Download className="w-4 h-4" />
           {tr("Export Results", "결과 내보내기")}
@@ -33,7 +34,7 @@ export default function EquityCurveChart({
         <LineChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
           <XAxis dataKey="date" stroke="#6b7280" style={{ fontSize: 12 }} />
-          <YAxis stroke="#6b7280" style={{ fontSize: 12 }} />
+          <YAxis stroke="#6b7280" style={{ fontSize: 12 }} tickFormatter={formatYAxis} />
           <Tooltip
             contentStyle={{
               backgroundColor: "#1f2937",

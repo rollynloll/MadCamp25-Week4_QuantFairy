@@ -27,6 +27,8 @@ export default function PerformanceChart({ data, range, onRangeChange }: Props) 
     "ALL": "전체"
   };
 
+  const formatYAxis = (value: number) => new Intl.NumberFormat("en-US").format(value);
+
   const [metric, setMetric] = useState<Metric>("equity");
   const metricKey = metric === "equity" ? "equity" : "daily_pnl";
   const { tr } = useLanguage();
@@ -34,7 +36,7 @@ export default function PerformanceChart({ data, range, onRangeChange }: Props) 
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-lg font-semibold">{tr("Portfolio Performance", "투자 성과")}</h2>
+        <h2 className="text-lg font-semibold">{tr("Portfolio Performance", "포트폴리오 성과")}</h2>
 
         <div className="flex items-center gap-3 text-sm">
           <button
@@ -74,7 +76,7 @@ export default function PerformanceChart({ data, range, onRangeChange }: Props) 
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
           <XAxis dataKey="t" stroke="#6b7280" style={{ fontSize: 12 }} />
-          <YAxis stroke="#6b7280" style={{ fontSize: 12 }} />
+          <YAxis stroke="#6b7280" style={{ fontSize: 12 }} tickFormatter={formatYAxis} />
           <Tooltip
             contentStyle={{
               backgroundColor: "#1f2937",
