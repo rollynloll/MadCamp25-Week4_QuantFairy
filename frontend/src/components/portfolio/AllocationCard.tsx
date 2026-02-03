@@ -10,10 +10,10 @@ interface AllocationProps {
   onTabChange: (tab: tab) => void;
   strategies: Strategy[];
   sectorAllocation: SectorAllocationItem[];
-  targetWeights: Record<number, number>;
-  onTargetWeightChange: (id: number, value: number) => void;
-  targetCash: number;
-  onTargetCashChange: (value: number) => void;
+  targetWeights: Record<string, number>;
+  onTargetWeightChange: (id: string, value: number) => void;
+  derivedCash: number;
+  totalTarget: number;
 
   hasUnsavedChanges: boolean;
   onReset: () => void;
@@ -21,24 +21,43 @@ interface AllocationProps {
   
   showAdvanced: boolean;
   onToggleAdvanced: () => void;
+  saveError?: string | null;
+  isSaving?: boolean;
 }
 
-export default function AllocationCard({ 
+// AllocationCard.tsx
+
+export default function AllocationCard({
   tab,
   onTabChange,
   strategies,
   sectorAllocation,
   targetWeights,
   onTargetWeightChange,
-  targetCash,
-  onTargetCashChange,
+  derivedCash,        // HEAD 버전에서 추가
+  totalTarget,        // HEAD 버전에서 추가
+  targetCash,         // main 버전에서 추가
+  onTargetCashChange, // main 버전에서 추가
   hasUnsavedChanges,
   onReset,
   onSave,
   showAdvanced,
-  onToggleAdvanced
+  onToggleAdvanced,
+  saveError,          // HEAD 버전에서 추가
+  isSaving            // HEAD 버전에서 추가
 }: AllocationProps) {
+  // 번역 훅 (main 버전에서 추가)
   const { tr } = useLanguage();
+
+  // HEAD 버전 로직 유지
+  const overAllocatedBy = Math.max(0, totalTarget - 100);
+  const canSave = hasUnsavedChanges && overAllocatedBy <= 0 && !isSaving;
+  const trackStyle = (value: number, max: number) => ({
+    background: `linear-gradient(to right, #2563eb 0%, #2563eb ${
+      (value / max) * 100
+    }%, #1f2937 ${(value / max) * 100}%, #1f2937 100%)`,
+  });
+
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded flex flex-col h-fit max-h-[600px]">
       {/* Tabs */}

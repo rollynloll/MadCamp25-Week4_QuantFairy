@@ -57,4 +57,4 @@ class Strategy(Protocol):
         dt: pd.Timestamp,
     ) -> Dict[str, float]:
         """Preferred interface: compute weights for a given rebalance date."""
-        ...
+        raise NotImplementedError
