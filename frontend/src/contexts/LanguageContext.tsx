@@ -75,7 +75,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
       language,
       setLanguage,
       t: (key) => resolve(key, language),
-      tr: (en, ko) => (language === "ko" ? ko : en),
+      tr: (en, ko) => (language === "en" ? en : ko),
     };
   }, [language]);
 
