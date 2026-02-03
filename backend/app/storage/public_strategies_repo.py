@@ -203,6 +203,221 @@ DEFAULT_PUBLIC_STRATEGIES = [
         "entrypoint": "strategies.rsi_mean_reversion_v1:RSIMeanReversionStrategy",
         "code_version": "seed",
     },
+    {
+        "public_strategy_id": "low_volatility_v1",
+        "name": "Low Volatility",
+        "one_liner": "Select low-volatility assets, monthly rebalance",
+        "category": "defensive",
+        "tags": ["low_volatility", "defensive", "risk_control"],
+        "risk_level": "low",
+        "version": "1.0.0",
+        "author_name": "QuantFairy",
+        "author_type": "official",
+        "sample_metrics": {
+            "pnl_amount": 7200.0,
+            "pnl_pct": 7.2,
+            "sharpe": 1.1,
+            "max_drawdown_pct": -6.1,
+            "win_rate_pct": 56.4,
+        },
+        "sample_trade_stats": {"trades_count": 36, "avg_hold_hours": 240},
+        "adds_count": 22,
+        "likes_count": 9,
+        "runs_count": 60,
+        "supported_assets": ["US_Equity"],
+        "supported_timeframes": ["1D"],
+        "full_description": "Low volatility selection with inverse-vol or equal weighting.",
+        "thesis": "Lower vol assets tend to defend in drawdowns.",
+        "rules": {
+            "signal_definition": "Rank by trailing volatility.",
+            "entry_rules": "Buy lowest volatility assets.",
+            "exit_rules": "Sell on rebalance.",
+            "rebalance_rule": "Monthly.",
+            "position_sizing": "Inverse-vol or equal weight.",
+        },
+        "param_schema": {
+            "type": "object",
+            "properties": {
+                "lookback_days": {"type": "integer", "minimum": 20, "maximum": 252, "default": 60},
+                "top_k": {"type": "integer", "minimum": 3, "maximum": 50, "default": 10},
+                "weighting": {"type": "string", "enum": ["inverse_vol", "equal"], "default": "inverse_vol"},
+                "rebalance": {"type": "string", "enum": ["monthly"], "default": "monthly"},
+            },
+            "required": ["lookback_days", "top_k"],
+        },
+        "default_params": {
+            "lookback_days": 60,
+            "top_k": 10,
+            "weighting": "inverse_vol",
+            "rebalance": "monthly",
+        },
+        "recommended_presets": [],
+        "requirements": {
+            "universe": {"min_symbols": 10, "max_symbols": 500, "supports_custom_tickers": True},
+            "data": {"required_fields": ["adj_close"], "warmup_lookback_days": 60},
+        },
+        "sample_backtest_spec": {
+            "period_start": "2012-01-01",
+            "period_end": "2024-12-31",
+            "timeframe": "1D",
+            "universe_used": "US_CORE_20",
+            "initial_cash": 100000,
+            "fee_bps": 1,
+            "slippage_bps": 2,
+        },
+        "sample_performance": {
+            "metrics": {"cagr_pct": 8.4, "volatility_pct": 9.2, "sortino": 1.1},
+            "equity_curve": [{"date": "2024-12-31", "equity": 107200}],
+        },
+        "known_failure_modes": ["Strong bull markets", "Volatility regime shifts"],
+        "risk_disclaimer": "Backtests are illustrative and not investment advice.",
+        "entrypoint": "strategies.low_volatility:LowVolatilityStrategy",
+        "code_version": "seed",
+    },
+    {
+        "public_strategy_id": "vol_adj_momentum_v1",
+        "name": "Volatility-Adjusted Momentum",
+        "one_liner": "Rank by return/volatility, monthly rebalance",
+        "category": "momentum",
+        "tags": ["momentum", "volatility_adjusted"],
+        "risk_level": "mid",
+        "version": "1.0.0",
+        "author_name": "QuantFairy",
+        "author_type": "official",
+        "sample_metrics": {
+            "pnl_amount": 13800.0,
+            "pnl_pct": 13.8,
+            "sharpe": 1.3,
+            "max_drawdown_pct": -9.5,
+            "win_rate_pct": 57.9,
+        },
+        "sample_trade_stats": {"trades_count": 84, "avg_hold_hours": 120},
+        "adds_count": 30,
+        "likes_count": 12,
+        "runs_count": 80,
+        "supported_assets": ["US_Equity"],
+        "supported_timeframes": ["1D"],
+        "full_description": "Momentum ranked by return/volatility to reduce crash risk.",
+        "thesis": "Risk-adjusted momentum improves robustness.",
+        "rules": {
+            "signal_definition": "Return divided by volatility.",
+            "entry_rules": "Buy top-K scores.",
+            "exit_rules": "Sell on rebalance.",
+            "rebalance_rule": "Monthly.",
+            "position_sizing": "Equal weight.",
+        },
+        "param_schema": {
+            "type": "object",
+            "properties": {
+                "lookback_days": {"type": "integer", "minimum": 60, "maximum": 504, "default": 252},
+                "vol_window": {"type": "integer", "minimum": 20, "maximum": 252, "default": 60},
+                "top_k": {"type": "integer", "minimum": 3, "maximum": 50, "default": 10},
+                "rebalance": {"type": "string", "enum": ["monthly"], "default": "monthly"},
+            },
+            "required": ["lookback_days", "vol_window", "top_k"],
+        },
+        "default_params": {
+            "lookback_days": 252,
+            "vol_window": 60,
+            "top_k": 10,
+            "rebalance": "monthly",
+        },
+        "recommended_presets": [],
+        "requirements": {
+            "universe": {"min_symbols": 20, "max_symbols": 500, "supports_custom_tickers": True},
+            "data": {"required_fields": ["adj_close"], "warmup_lookback_days": 252},
+        },
+        "sample_backtest_spec": {
+            "period_start": "2010-01-01",
+            "period_end": "2024-12-31",
+            "timeframe": "1D",
+            "universe_used": "US_CORE_20",
+            "initial_cash": 100000,
+            "fee_bps": 1,
+            "slippage_bps": 2,
+        },
+        "sample_performance": {
+            "metrics": {"cagr_pct": 11.3, "volatility_pct": 14.5, "sortino": 1.15},
+            "equity_curve": [{"date": "2024-12-31", "equity": 113800}],
+        },
+        "known_failure_modes": ["Momentum crashes", "High-volatility reversals"],
+        "risk_disclaimer": "Backtests are illustrative and not investment advice.",
+        "entrypoint": "strategies.vol_adj_momentum:VolatilityAdjustedMomentumStrategy",
+        "code_version": "seed",
+    },
+    {
+        "public_strategy_id": "risk_on_off_v1",
+        "name": "Risk-On / Risk-Off Rotation",
+        "one_liner": "Rotate to cash when benchmark falls below SMA",
+        "category": "regime",
+        "tags": ["regime", "trend", "risk_on_off"],
+        "risk_level": "low",
+        "version": "1.0.0",
+        "author_name": "QuantFairy",
+        "author_type": "official",
+        "sample_metrics": {
+            "pnl_amount": 9100.0,
+            "pnl_pct": 9.1,
+            "sharpe": 1.0,
+            "max_drawdown_pct": -7.4,
+            "win_rate_pct": 53.2,
+        },
+        "sample_trade_stats": {"trades_count": 40, "avg_hold_hours": 240},
+        "adds_count": 26,
+        "likes_count": 10,
+        "runs_count": 70,
+        "supported_assets": ["US_Equity"],
+        "supported_timeframes": ["1D"],
+        "full_description": "Risk-on basket when benchmark above SMA, otherwise cash.",
+        "thesis": "Regime filter reduces large drawdowns.",
+        "rules": {
+            "signal_definition": "Benchmark vs SMA.",
+            "entry_rules": "Risk-on when above SMA.",
+            "exit_rules": "Move to cash when below SMA.",
+            "rebalance_rule": "Monthly.",
+            "position_sizing": "Equal weight basket.",
+        },
+        "param_schema": {
+            "type": "object",
+            "properties": {
+                "benchmark_symbol": {"type": "string", "default": "SPY"},
+                "sma_window": {"type": "integer", "minimum": 100, "maximum": 300, "default": 200},
+                "lookback_days": {"type": "integer", "minimum": 60, "maximum": 252, "default": 126},
+                "top_k": {"type": "integer", "minimum": 3, "maximum": 50, "default": 10},
+                "rebalance": {"type": "string", "enum": ["monthly"], "default": "monthly"},
+            },
+            "required": ["benchmark_symbol", "sma_window", "lookback_days", "top_k"],
+        },
+        "default_params": {
+            "benchmark_symbol": "SPY",
+            "sma_window": 200,
+            "lookback_days": 126,
+            "top_k": 10,
+            "rebalance": "monthly",
+        },
+        "recommended_presets": [],
+        "requirements": {
+            "universe": {"min_symbols": 10, "max_symbols": 500, "supports_custom_tickers": True},
+            "data": {"required_fields": ["adj_close"], "warmup_lookback_days": 200},
+        },
+        "sample_backtest_spec": {
+            "period_start": "2008-01-01",
+            "period_end": "2024-12-31",
+            "timeframe": "1D",
+            "universe_used": "US_CORE_20",
+            "initial_cash": 100000,
+            "fee_bps": 1,
+            "slippage_bps": 2,
+        },
+        "sample_performance": {
+            "metrics": {"cagr_pct": 9.4, "volatility_pct": 10.2, "sortino": 1.05},
+            "equity_curve": [{"date": "2024-12-31", "equity": 109100}],
+        },
+        "known_failure_modes": ["Whipsaws in sideways markets"],
+        "risk_disclaimer": "Backtests are illustrative and not investment advice.",
+        "entrypoint": "strategies.risk_on_off:RiskOnOffStrategy",
+        "code_version": "seed",
+    },
 ]
 
 
@@ -217,14 +432,14 @@ class PublicStrategiesRepository:
             result = (
                 self.supabase.table("public_strategies")
                 .select("public_strategy_id")
-                .limit(1)
                 .execute()
             )
-            if getattr(result, "data", None):
-                return
+            existing = {row["public_strategy_id"] for row in (getattr(result, "data", None) or [])}
             now = now_kst().isoformat()
             rows = []
             for item in DEFAULT_PUBLIC_STRATEGIES:
+                if item["public_strategy_id"] in existing:
+                    continue
                 rows.append(
                     {
                         **item,
@@ -232,7 +447,8 @@ class PublicStrategiesRepository:
                         "updated_at": now,
                     }
                 )
-            self.supabase.table("public_strategies").insert(rows).execute()
+            if rows:
+                self.supabase.table("public_strategies").insert(rows).execute()
         except Exception:
             return
 

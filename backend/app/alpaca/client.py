@@ -7,8 +7,10 @@ from app.core.config import Settings
 
 try:
     from alpaca.trading.client import TradingClient
+    from alpaca.trading.requests import GetPortfolioHistoryRequest
 except Exception:  # pragma: no cover - optional dependency
     TradingClient = None
+    GetPortfolioHistoryRequest = None
 
 
 LIVE_BASE_URL = "https://api.alpaca.markets"
@@ -44,17 +46,21 @@ class AlpacaClient:
         if TradingClient is None:
             return None
         if self._client is None:
-            base_url = (
-                self.settings.alpaca_base_url
-                if self.environment == "paper"
-                else LIVE_BASE_URL
-            )
-            self._client = TradingClient(
-                self.settings.alpaca_api_key,
-                self.settings.alpaca_secret_key,
-                paper=self.environment == "paper",
-                base_url=base_url,
-            )
+            try:
+                self._client = TradingClient(
+                    self.settings.alpaca_api_key,
+                    self.settings.alpaca_secret_key,
+                    paper=self.environment == "paper",
+                    base_url=self.settings.alpaca_base_url
+                    if self.environment == "paper"
+                    else LIVE_BASE_URL,
+                )
+            except TypeError:
+                self._client = TradingClient(
+                    self.settings.alpaca_api_key,
+                    self.settings.alpaca_secret_key,
+                    paper=self.environment == "paper",
+                )
         return self._client
 
     def get_account(self) -> AlpacaAccountResult:
@@ -84,11 +90,34 @@ class AlpacaClient:
                 account=None, latency_ms=latency_ms, error=str(exc)
             )
 
-    def get_portfolio_history(self, timeframe: str):
+    def get_portfolio_history(
+        self,
+        period: str | None = None,
+        timeframe: str | None = None,
+    ):
         client = self._get_client()
         if client is None:
             return None
         try:  # pragma: no cover - depends on Alpaca
-            return client.get_portfolio_history(timeframe=timeframe)
+            if GetPortfolioHistoryRequest is not None:
+                payload = {}
+                if period:
+                    payload["period"] = period
+                if timeframe:
+                    payload["timeframe"] = timeframe
+                request = GetPortfolioHistoryRequest(**payload)
+                return client.get_portfolio_history(request)
+            if period or timeframe:
+                return client.get_portfolio_history(period=period, timeframe=timeframe)
+            return client.get_portfolio_history()
+        except Exception:
+            return None
+
+    def get_positions(self):
+        client = self._get_client()
+        if client is None:
+            return None
+        try:  # pragma: no cover - depends on Alpaca
+            return client.get_all_positions()
         except Exception:
             return None

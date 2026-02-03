@@ -46,6 +46,19 @@ export interface BacktestJob {
   mode: "single" | "batch" | "ensemble";
   status: "queued" | "running" | "done" | "failed" | "canceled";
   progress?: number;
+  progress_stage?: string;
+  progress_message?: string;
+  progress_detail?: Record<string, unknown> | null;
+  eta_seconds?: number;
+  started_at?: string | null;
+  progress_log?: {
+    at: string;
+    stage: string;
+    message: string;
+    progress?: number;
+    eta_seconds?: number;
+    detail?: Record<string, unknown> | null;
+  }[];
   error?: {
     code: string;
     message: string;
@@ -82,6 +95,9 @@ export interface StrategyRef {
 export interface BenchmarkRef {
   symbol: string;
   label?: string;
+  initial_cash?: number;
+  fee_bps?: number;
+  slippage_bps?: number;
 }
 
 export interface ApiMetrics {
@@ -121,10 +137,12 @@ export interface ApiResultItem {
   equity_curve?: ApiEquityPoint[];
   returns?: ApiReturnPoint[];
   drawdown?: ApiDrawdownPoint[];
+  holdings_history?: { month: string; weights: Record<string, number> }[];
 }
 
 export interface BenchmarkItem {
   symbol: string;
+  label?: string;
   metrics?: ApiMetrics;
   equity_curve?: ApiEquityPoint[];
   returns?: ApiReturnPoint[];
@@ -136,7 +154,7 @@ export interface BacktestResultsResponse {
   status: "queued" | "running" | "done" | "failed" | "canceled";
   mode: "single" | "batch" | "ensemble";
   spec: BacktestSpec;
-  benchmarks?: BenchmarkItem[];
+  benchmarks?: BenchmarkItem[] | { items: BenchmarkItem[] };
   results?: ApiResultItem[];
   ensemble_result?: ApiResultItem;
   components?: ApiResultItem[];

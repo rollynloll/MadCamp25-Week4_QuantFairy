@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Callable, Dict, List
 
 import pandas as pd
 from jsonschema import Draft7Validator
 
 from app.core.errors import APIError
 from app.services.data_provider import load_price_series
+from app.strategies.validation import StrategyValidationError, validate_target_weights
 from app.services.metrics import compute_drawdown, compute_metrics, compute_returns
-from app.strategies.base import StrategyContext
+from app.strategies.base import StrategyContext, StrategySignal
 from app.strategies.registry import get_strategy
 from app.universes.presets import UNIVERSE_PRESETS
 
@@ -20,6 +21,10 @@ class BacktestRunResult:
     equity_curve: List[Dict[str, float]]
     trade_stats: Dict[str, float]
     benchmark: Dict[str, object] | None
+    holdings_history: List[Dict[str, object]]
+
+
+ProgressCallback = Callable[[str, float | None], None]
 
 
 def resolve_universe(params: Dict, benchmark_symbol: str | None) -> List[str]:
@@ -66,16 +71,29 @@ def build_price_frame(price_series: Dict[str, Dict[str, float]]) -> pd.DataFrame
     return df
 
 
+def _apply_entry_cost(
+    initial_cash: float,
+    fee_bps: float | None,
+    slippage_bps: float | None,
+) -> float:
+    total_bps = (fee_bps or 0.0) + (slippage_bps or 0.0)
+    if total_bps <= 0:
+        return initial_cash
+    return initial_cash * (1 - total_bps / 10000)
+
+
 def _compute_benchmark_curve(
     price_series: Dict[str, Dict[str, float]],
     symbol: str,
     initial_cash: float,
+    fee_bps: float | None = None,
+    slippage_bps: float | None = None,
 ) -> List[Dict[str, float]]:
     series = price_series.get(symbol, {})
     if not series:
         return []
     dates = sorted(series.keys())
-    equity = initial_cash
+    equity = _apply_entry_cost(initial_cash, fee_bps, slippage_bps)
     curve: List[Dict[str, float]] = []
     prev_price = None
     for date in dates:
@@ -100,13 +118,47 @@ def run_backtest(
     initial_cash: float,
     fee_bps: float,
     slippage_bps: float,
+    benchmark_initial_cash: float | None = None,
+    benchmark_fee_bps: float | None = None,
+    benchmark_slippage_bps: float | None = None,
+    progress_cb: ProgressCallback | None = None,
 ) -> BacktestRunResult:
-    universe = resolve_universe(params, benchmark_symbol)
+    params = dict(params or {})
+    if isinstance(params.get("symbol"), str):
+        params["symbol"] = params["symbol"].strip().upper()
+    benchmark_symbol_norm = benchmark_symbol.strip().upper() if benchmark_symbol else None
+    if benchmark_symbol_norm == "CASH":
+        benchmark_symbol_norm = None
+    benchmark_param = params.get("benchmark_symbol")
+    if isinstance(benchmark_param, str):
+        benchmark_param = benchmark_param.strip().upper()
+        params["benchmark_symbol"] = benchmark_param
+    universe = resolve_universe(params, benchmark_symbol_norm)
     if not universe:
         raise APIError("VALIDATION_ERROR", "Universe is empty", status_code=422)
 
-    symbols = list({*universe, *( [benchmark_symbol] if benchmark_symbol else [] )})
-    price_series = load_price_series(symbols, start_date, end_date, "adj_close")
+    target_symbol = params.get("symbol")
+    if isinstance(target_symbol, str):
+        target_symbol = target_symbol.strip().upper()
+    symbols = list(
+        {
+            *universe,
+            *([benchmark_symbol_norm] if benchmark_symbol_norm else []),
+            *([benchmark_param] if benchmark_param else []),
+            *([target_symbol] if target_symbol else []),
+        }
+    )
+    if progress_cb:
+        progress_cb("load_data", None)
+    try:
+        price_series = load_price_series(symbols, start_date, end_date, "adj_close")
+    except Exception as exc:  # noqa: BLE001
+        raise APIError(
+            "DATA_SOURCE_UNAVAILABLE",
+            "Failed to load market prices",
+            detail=str(exc),
+            status_code=503,
+        ) from exc
     if not price_series or all(not series for series in price_series.values()):
         raise APIError(
             "DATA_NOT_FOUND",
@@ -114,7 +166,14 @@ def run_backtest(
             detail=f"{start_date} to {end_date}",
             status_code=404,
         )
-    target_symbol = params.get("symbol")
+    missing_symbols = [s for s, series in price_series.items() if not series]
+    if missing_symbols:
+        raise APIError(
+            "DATA_NOT_FOUND",
+            "No market prices for some symbols",
+            details=[{"field": "symbols", "reason": s} for s in missing_symbols],
+            status_code=404,
+        )
     if target_symbol and not price_series.get(str(target_symbol).upper(), {}):
         raise APIError(
             "DATA_NOT_FOUND",
@@ -130,6 +189,27 @@ def run_backtest(
             detail=f"{start_date} to {end_date}",
             status_code=404,
         )
+    available_symbols = (
+        prices_df.index.get_level_values("symbol").unique().tolist()
+        if "symbol" in prices_df.index.names
+        else []
+    )
+    if target_symbol and target_symbol not in available_symbols:
+        preview = ", ".join(available_symbols[:10])
+        raise APIError(
+            "DATA_NOT_FOUND",
+            "Target symbol not in price data",
+            detail=f"{target_symbol} not in prices for {start_date} to {end_date}",
+            details=[
+                {"field": "symbol", "reason": target_symbol},
+                {"field": "available_symbols", "reason": preview or "none"},
+            ],
+            status_code=404,
+        )
+
+    price_matrix = prices_df.reset_index().pivot(index="date", columns="symbol", values="adj_close")
+    price_matrix = price_matrix.sort_index()
+    dates = list(price_matrix.index)
 
     strategy = get_strategy(entrypoint)
     ctx = StrategyContext(
@@ -138,19 +218,123 @@ def run_backtest(
         params=params,
         code_version=code_version or "unknown",
     )
+    ctx.params = ctx.resolved_params()
 
-    signals = list(strategy.generate_signals(prices_df, ctx, universe))
+    def _rebalance_dates(dates: List[pd.Timestamp], freq: str) -> List[pd.Timestamp]:
+        if not dates:
+            return []
+        if freq == "daily":
+            return dates
+        selected: List[pd.Timestamp] = []
+        prev_marker = None
+        for dt in dates:
+            marker = None
+            if freq == "weekly":
+                marker = dt.isocalendar().week
+            elif freq == "monthly":
+                marker = (dt.year, dt.month)
+            else:
+                marker = dt
+            if marker != prev_marker:
+                selected.append(dt)
+                prev_marker = marker
+        return selected
+
+    def _validation_universe() -> List[str]:
+        allowed = set(universe)
+        symbol = ctx.params.get("symbol")
+        if isinstance(symbol, str) and symbol:
+            allowed.add(symbol.upper())
+        benchmark = ctx.params.get("benchmark_symbol")
+        if isinstance(benchmark, str) and benchmark:
+            allowed.add(benchmark.upper())
+        return list(allowed)
+
+    def _risk_settings() -> tuple[bool, float, float]:
+        if ctx.spec and ctx.spec.risk:
+            return (
+                ctx.spec.risk.long_only,
+                ctx.spec.risk.cash_buffer,
+                ctx.spec.risk.max_weight_per_asset,
+            )
+        return True, 0.0, 1.0
+
+    try:
+        if progress_cb:
+            progress_cb("signals", None)
+        signals: List[StrategySignal] = []
+        used_compute_target = False
+        if hasattr(strategy, "compute_target_weights") and callable(
+            getattr(strategy, "compute_target_weights")
+        ):
+            used_compute_target = True
+            try:
+                freq = ctx.params.get("rebalance", "daily")
+                if ctx.spec and ctx.spec.rebalance:
+                    freq = ctx.spec.rebalance.freq
+                rebalance_dates = _rebalance_dates(list(price_matrix.index), str(freq))
+                long_only, cash_buffer, max_weight = _risk_settings()
+                universe_for_validation = _validation_universe()
+                for dt in rebalance_dates:
+                    weights = strategy.compute_target_weights(prices_df, ctx, universe, dt)
+                    if weights is None:
+                        continue
+                    try:
+                        weights = validate_target_weights(
+                            weights,
+                            universe_for_validation,
+                            long_only=long_only,
+                            cash_buffer=cash_buffer,
+                            max_weight_per_asset=max_weight,
+                        )
+                    except StrategyValidationError as exc:
+                        raise APIError("VALIDATION_ERROR", str(exc), status_code=422) from exc
+                    signals.append(StrategySignal(date=str(dt.date()), target_weights=weights))
+            except NotImplementedError:
+                used_compute_target = False
+        if not used_compute_target:
+            long_only, cash_buffer, max_weight = _risk_settings()
+            universe_for_validation = _validation_universe()
+            for signal in strategy.generate_signals(prices_df, ctx, universe):
+                try:
+                    cleaned = validate_target_weights(
+                        signal.target_weights,
+                        universe_for_validation,
+                        long_only=long_only,
+                        cash_buffer=cash_buffer,
+                        max_weight_per_asset=max_weight,
+                    )
+                except StrategyValidationError as exc:
+                    raise APIError("VALIDATION_ERROR", str(exc), status_code=422) from exc
+                signals.append(StrategySignal(date=signal.date, target_weights=cleaned))
+    except KeyError as exc:
+        missing = str(exc.args[0]) if exc.args else "unknown"
+        preview = ", ".join(available_symbols[:10])
+        raise APIError(
+            "DATA_NOT_FOUND",
+            "Price data missing for symbol",
+            detail=f"{missing} not found in price frame",
+            details=[
+                {"field": "symbol", "reason": missing},
+                {"field": "available_symbols", "reason": preview or "none"},
+            ],
+            status_code=404,
+        ) from exc
     weights: Dict[str, float] = {}
     equity = initial_cash
     equity_curve: List[Dict[str, float]] = []
     turnover_days: List[str] = []
 
-    price_matrix = prices_df.reset_index().pivot(index="date", columns="symbol", values="adj_close")
-    dates = list(price_matrix.index)
+    # price_matrix and dates already computed above
     signal_map = {pd.to_datetime(s.date): s.target_weights for s in signals}
 
     prev_prices = None
-    for dt in dates:
+    holdings_history: List[Dict[str, object]] = []
+    total = len(dates)
+    stride = max(total // 50, 1)
+    if progress_cb and total:
+        progress_cb("simulate", 0.0)
+    for idx, dt in enumerate(dates, start=1):
         if dt in signal_map:
             new_weights = signal_map[dt]
             turnover = sum(abs(new_weights.get(k, 0.0) - weights.get(k, 0.0)) for k in set(new_weights) | set(weights))
@@ -173,16 +357,33 @@ def run_backtest(
 
         equity_curve.append({"date": str(dt.date()), "equity": equity})
         prev_prices = price_matrix.loc[dt]
+        if total:
+            is_month_end = idx == total or dates[idx].to_period("M") != dt.to_period("M")
+            if is_month_end:
+                snapshot = {k: v for k, v in weights.items() if v != 0}
+                holdings_history.append({"month": dt.strftime("%Y-%m"), "weights": snapshot})
+        if progress_cb and total:
+            if idx % stride == 0 or idx == total:
+                progress_cb("simulate", idx / total)
 
+    if progress_cb:
+        progress_cb("metrics", None)
     returns = compute_returns(equity_curve)
     drawdown = compute_drawdown(equity_curve)
 
     benchmark_curve = None
     benchmark_payload = None
-    if benchmark_symbol:
-        benchmark_curve = _compute_benchmark_curve(price_series, benchmark_symbol, initial_cash)
+    if benchmark_symbol_norm:
+        benchmark_cash = benchmark_initial_cash if benchmark_initial_cash is not None else initial_cash
+        benchmark_curve = _compute_benchmark_curve(
+            price_series,
+            benchmark_symbol_norm,
+            benchmark_cash,
+            fee_bps=benchmark_fee_bps,
+            slippage_bps=benchmark_slippage_bps,
+        )
         benchmark_payload = {
-            "symbol": benchmark_symbol,
+            "symbol": benchmark_symbol_norm,
             "metrics": compute_metrics(benchmark_curve),
             "equity_curve": benchmark_curve,
             "returns": compute_returns(benchmark_curve),
@@ -209,4 +410,5 @@ def run_backtest(
         equity_curve=equity_curve,
         trade_stats=trade_stats,
         benchmark=benchmark_payload,
+        holdings_history=holdings_history,
     )

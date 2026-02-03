@@ -58,6 +58,9 @@ class BenchmarkRef(BaseModel):
 
     symbol: str
     label: Optional[str] = None
+    initial_cash: Optional[float] = None
+    fee_bps: Optional[float] = None
+    slippage_bps: Optional[float] = None
 
 
 class EnsembleConstraints(BaseModel):
@@ -110,6 +113,13 @@ class SeriesPoint(BaseModel):
     value: float
 
 
+class HoldingsSnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    month: str
+    weights: Dict[str, float]
+
+
 class BacktestResultItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -119,7 +129,19 @@ class BacktestResultItem(BaseModel):
     equity_curve: List[Dict[str, Any]]
     returns: List[Dict[str, Any]]
     drawdown: List[Dict[str, Any]]
+    holdings_history: Optional[List[HoldingsSnapshot]] = None
     positions_summary: Dict[str, Any]
+
+
+class ProgressLogEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    at: str
+    stage: str
+    message: str
+    progress: Optional[int] = Field(default=None, ge=0, le=100)
+    eta_seconds: Optional[int] = Field(default=None, ge=0)
+    detail: Optional[Dict[str, Any]] = None
 
 
 class BacktestJob(BaseModel):
@@ -129,6 +151,12 @@ class BacktestJob(BaseModel):
     mode: Literal["single", "batch", "ensemble"]
     status: Literal["queued", "running", "done", "failed", "canceled"]
     progress: Optional[int] = Field(default=None, ge=0, le=100)
+    progress_stage: Optional[str] = None
+    progress_message: Optional[str] = None
+    progress_detail: Optional[Dict[str, Any]] = None
+    eta_seconds: Optional[int] = Field(default=None, ge=0)
+    started_at: Optional[str] = None
+    progress_log: Optional[List[ProgressLogEntry]] = None
     error: Optional[JobError] = None
     spec: BacktestSpec
     strategies: List[StrategyRef]
