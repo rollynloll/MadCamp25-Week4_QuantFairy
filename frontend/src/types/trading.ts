@@ -84,3 +84,19 @@ export interface OpenOrder {
   status: OrderStatus;
   strategy: string;
 }
+
+export type TradingBarItem = {
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+};
+
+export type TradingBarsResponse = {
+  symbol: string;
+  timeframe: string;
+  feed: string | null;
+  bars: TradingBarItem[];
+};
