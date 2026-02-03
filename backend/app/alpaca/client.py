@@ -4,21 +4,25 @@ import time
 from dataclasses import dataclass
 
 from app.core.config import Settings
+import logging
 
 try:
     from alpaca.trading.client import TradingClient
     from alpaca.trading.requests import GetPortfolioHistoryRequest
+    from alpaca.trading.requests import GetOrdersRequest
     from alpaca.trading.requests import MarketOrderRequest
     from alpaca.trading.enums import OrderSide, TimeInForce
 except Exception:  # pragma: no cover - optional dependency
     TradingClient = None
     GetPortfolioHistoryRequest = None
+    GetOrdersRequest = None
     MarketOrderRequest = None
     OrderSide = None
     TimeInForce = None
 
 
 LIVE_BASE_URL = "https://api.alpaca.markets"
+logger = logging.getLogger("uvicorn.error")
 
 
 @dataclass
@@ -47,11 +51,18 @@ class AlpacaClient:
 
     def _get_client(self):
         if not self._configured():
+            logger.warning("alpaca.client not configured (missing keys)")
             return None
         if TradingClient is None:
+            logger.error("alpaca.client dependency not available (alpaca-py)")
             return None
         if self._client is None:
             try:
+                logger.info(
+                    "alpaca.client init env=%s base_url=%s",
+                    self.environment,
+                    self.settings.alpaca_base_url if self.environment == "paper" else LIVE_BASE_URL,
+                )
                 self._client = TradingClient(
                     self.settings.alpaca_api_key,
                     self.settings.alpaca_secret_key,
@@ -61,6 +72,10 @@ class AlpacaClient:
                     else LIVE_BASE_URL,
                 )
             except TypeError:
+                logger.info(
+                    "alpaca.client init fallback env=%s (no base_url param)",
+                    self.environment,
+                )
                 self._client = TradingClient(
                     self.settings.alpaca_api_key,
                     self.settings.alpaca_secret_key,
@@ -80,6 +95,7 @@ class AlpacaClient:
         try:
             account = client.get_account()
             latency_ms = int((time.monotonic() - start) * 1000)
+            logger.info("alpaca.get_account ok latency_ms=%s", latency_ms)
             return AlpacaAccountResult(
                 account=AlpacaAccount(
                     equity=float(account.equity),
@@ -91,6 +107,7 @@ class AlpacaClient:
             )
         except Exception as exc:  # pragma: no cover - depends on Alpaca
             latency_ms = int((time.monotonic() - start) * 1000)
+            logger.error("alpaca.get_account failed latency_ms=%s error=%s", latency_ms, exc)
             return AlpacaAccountResult(
                 account=None, latency_ms=latency_ms, error=str(exc)
             )
@@ -111,11 +128,18 @@ class AlpacaClient:
                 if timeframe:
                     payload["timeframe"] = timeframe
                 request = GetPortfolioHistoryRequest(**payload)
-                return client.get_portfolio_history(request)
+                result = client.get_portfolio_history(request)
+                logger.info("alpaca.get_portfolio_history ok period=%s timeframe=%s", period, timeframe)
+                return result
             if period or timeframe:
-                return client.get_portfolio_history(period=period, timeframe=timeframe)
-            return client.get_portfolio_history()
+                result = client.get_portfolio_history(period=period, timeframe=timeframe)
+                logger.info("alpaca.get_portfolio_history ok period=%s timeframe=%s", period, timeframe)
+                return result
+            result = client.get_portfolio_history()
+            logger.info("alpaca.get_portfolio_history ok period=%s timeframe=%s", period, timeframe)
+            return result
         except Exception:
+            logger.error("alpaca.get_portfolio_history failed period=%s timeframe=%s", period, timeframe)
             return None
 
     def get_positions(self):
@@ -123,8 +147,41 @@ class AlpacaClient:
         if client is None:
             return None
         try:  # pragma: no cover - depends on Alpaca
-            return client.get_all_positions()
-        except Exception:
+            result = client.get_all_positions()
+            logger.info("alpaca.get_positions ok count=%s", len(result) if result is not None else 0)
+            return result
+        except Exception as exc:
+            logger.error("alpaca.get_positions failed error=%s", exc)
+            return None
+
+    def get_orders(self, status: str | None = None, limit: int | None = None):
+        client = self._get_client()
+        if client is None:
+            return None
+        try:  # pragma: no cover - depends on Alpaca
+            if GetOrdersRequest is not None:
+                payload = {}
+                if status:
+                    payload["status"] = status
+                if limit:
+                    payload["limit"] = limit
+                request = GetOrdersRequest(**payload)
+                result = client.get_orders(request)
+            else:
+                kwargs = {}
+                if status:
+                    kwargs["status"] = status
+                if limit:
+                    kwargs["limit"] = limit
+                result = client.get_orders(**kwargs)
+            logger.info(
+                "alpaca.get_orders ok count=%s status=%s",
+                len(result) if result is not None else 0,
+                status,
+            )
+            return result
+        except Exception as exc:
+            logger.error("alpaca.get_orders failed status=%s error=%s", status, exc)
             return None
 
     def submit_market_order(
@@ -138,11 +195,14 @@ class AlpacaClient:
     ):
         client = self._get_client()
         if client is None or MarketOrderRequest is None or OrderSide is None or TimeInForce is None:
-            return None
+            logger.error("alpaca.submit_order failed: client not configured")
+            return {"ok": False, "error": "Alpaca client not configured", "order": None}
         if qty is None and notional is None:
-            return None
+            logger.error("alpaca.submit_order failed: qty or notional required")
+            return {"ok": False, "error": "qty or notional required", "order": None}
         if qty is not None and notional is not None:
-            return None
+            logger.error("alpaca.submit_order failed: qty and notional are mutually exclusive")
+            return {"ok": False, "error": "qty and notional are mutually exclusive", "order": None}
         try:  # pragma: no cover - depends on Alpaca
             order = MarketOrderRequest(
                 symbol=symbol,
@@ -151,6 +211,9 @@ class AlpacaClient:
                 notional=notional,
                 time_in_force=TimeInForce(time_in_force),
             )
-            return client.submit_order(order)
-        except Exception:
-            return None
+            result = client.submit_order(order)
+            logger.info("alpaca.submit_order ok symbol=%s side=%s qty=%s notional=%s", symbol, side, qty, notional)
+            return {"ok": True, "error": None, "order": result}
+        except Exception as exc:
+            logger.error("alpaca.submit_order failed symbol=%s side=%s error=%s", symbol, side, exc)
+            return {"ok": False, "error": str(exc), "order": None}

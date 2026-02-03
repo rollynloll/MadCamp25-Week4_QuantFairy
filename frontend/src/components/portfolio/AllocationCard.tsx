@@ -23,6 +23,7 @@ interface AllocationProps {
   onToggleAdvanced: () => void;
   saveError?: string | null;
   isSaving?: boolean;
+  saveStatus?: string | null;
 }
 
 export default function AllocationCard({
@@ -40,7 +41,8 @@ export default function AllocationCard({
   showAdvanced,
   onToggleAdvanced,
   saveError,
-  isSaving
+  isSaving,
+  saveStatus
 }: AllocationProps) {
   const { tr } = useLanguage();
 
@@ -240,6 +242,12 @@ export default function AllocationCard({
             <div className="flex items-center gap-2 text-xs text-red-400 mb-2">
               <AlertCircle className="w-3 h-3" />
               {saveError}
+            </div>
+          )}
+          {saveStatus && !saveError && (
+            <div className="flex items-center gap-2 text-xs text-green-400 mb-2">
+              <AlertCircle className="w-3 h-3" />
+              {saveStatus}
             </div>
           )}
           <div className="flex gap-2">

@@ -191,6 +191,7 @@ export type PortfolioRebalanceRequest = {
   strategy_ids?: string[];
   target_weights?: Record<string, number>;
   target_cash_pct?: number;
+  allow_new_positions?: boolean;
   overrides?: { cash_buffer?: number };
 };
 
@@ -205,6 +206,26 @@ export type PortfolioRebalanceResponse = {
     qty: number;
     notional: number;
     estimated_price: number;
+  }>;
+  submitted?: Array<{
+    symbol: string;
+    side: "buy" | "sell";
+    qty: number;
+    notional: number;
+    estimated_price: number;
+    order_id?: string | null;
+    status: "submitted" | "failed";
+    error?: string | null;
+  }>;
+  alpaca_positions?: Array<{
+    symbol: string;
+    qty: number;
+    side: "long" | "short";
+    avg_entry_price: number;
+    current_price: number;
+    market_value: number;
+    unrealized_pnl: { value: number; pct: number };
+    strategy?: { user_strategy_id: string; name: string };
   }>;
 };
 

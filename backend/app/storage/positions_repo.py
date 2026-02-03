@@ -87,3 +87,25 @@ class PositionsRepository:
                     return []
             return []
         return []
+
+    def replace_all(
+        self,
+        user_id: str,
+        environment: str,
+        rows: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        if self.supabase is None:
+            return rows
+        try:
+            (
+                self.supabase.table("positions")
+                .delete()
+                .eq("user_id", user_id)
+                .eq("environment", environment)
+                .execute()
+            )
+            if rows:
+                self.supabase.table("positions").insert(rows).execute()
+        except Exception:
+            return rows
+        return rows
