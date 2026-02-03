@@ -20,7 +20,7 @@ export default function PortfolioSummary({
   const { tr } = useLanguage();
 
   return (
-    <div className="grid grid-cols-6 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
         <KPICard 
           label={tr("Total Value", "총 자산")} 
           value={formatUSD(account.equity)} 

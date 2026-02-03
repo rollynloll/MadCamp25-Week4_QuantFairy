@@ -1534,48 +1534,84 @@ async def get_portfolio_activity(
 ):
     _ = cursor
     now = now_kst()
-    items: List[ActivityItem] = [
-        {
-            "type": "order",
-            "id": "ord_1",
-            "t": (now - timedelta(minutes=2)).isoformat(),
-            "data": {
-                "symbol": "AAPL",
-                "side": "buy",
-                "qty": 3,
-                "status": "submitted",
-                "user_strategy_id": "us_123",
-            },
-        },
-        {
-            "type": "alert",
-            "id": "al_9",
-            "t": (now - timedelta(minutes=1)).isoformat(),
-            "data": {
-                "severity": "warning",
-                "title": "Broker latency high",
-                "message": "latency_ms=850",
-            },
-        },
-        {
-            "type": "bot_run",
-            "id": "run_44",
-            "t": now.isoformat(),
-            "data": {"state": "running", "orders_created": 2},
-        },
-    ]
+    settings = get_settings()
+    user_id = _resolve_user_id()
 
+    requested: Optional[set[str]] = None
     if types:
-        allowed = {t.strip() for t in types.split(",") if t.strip()}
-        map_type = {"orders": "order", "trades": "trade", "alerts": "alert", "bot_runs": "bot_run"}
-        allowed_internal = {map_type.get(t, t) for t in allowed}
-        items = [item for item in items if item["type"] in allowed_internal]
+        tokens = {t.strip().lower() for t in types.split(",") if t.strip()}
+        map_type = {
+            "order": "orders",
+            "orders": "orders",
+            "trade": "trades",
+            "trades": "trades",
+            "alert": "alerts",
+            "alerts": "alerts",
+            "bot_run": "bot_runs",
+            "bot_runs": "bot_runs",
+        }
+        requested = {map_type.get(t, t) for t in tokens}
+
+    def wants(kind: str) -> bool:
+        return requested is None or kind in requested
+
+    items: List[ActivityItem] = []
+
+    if wants("orders"):
+        order_rows = OrdersRepository(settings).list_recent(user_id, env, limit=limit)
+        for row in order_rows:
+            symbol_value = str(row.get("symbol", "")).upper()
+            if symbol and symbol_value != symbol.upper():
+                continue
+            strategy_value = row.get("user_strategy_id") or row.get("strategy_id")
+            strategy_value_str = str(strategy_value) if strategy_value is not None else None
+            if user_strategy_id and str(strategy_value or "") != user_strategy_id:
+                continue
+            items.append(
+                {
+                    "type": "order",
+                    "id": str(row.get("order_id") or row.get("id") or f"ord_{len(items)}"),
+                    "t": str(row.get("submitted_at") or row.get("filled_at") or now.isoformat()),
+                    "data": {
+                        "symbol": symbol_value or "-",
+                        "side": row.get("side") or "buy",
+                        "qty": _to_float(row.get("qty"), 0.0),
+                        "status": row.get("status") or "pending",
+                        "user_strategy_id": strategy_value_str,
+                        "order_type": row.get("type"),
+                    },
+                }
+            )
+
+    if wants("alerts"):
+        items.append(
+            {
+                "type": "alert",
+                "id": "al_9",
+                "t": (now - timedelta(minutes=1)).isoformat(),
+                "data": {
+                    "severity": "warning",
+                    "title": "Broker latency high",
+                    "message": "latency_ms=850",
+                },
+            }
+        )
+
+    if wants("bot_runs"):
+        items.append(
+            {
+                "type": "bot_run",
+                "id": "run_44",
+                "t": now.isoformat(),
+                "data": {"state": "running", "orders_created": 2},
+            }
+        )
 
     if symbol:
         items = [
             item
             for item in items
-            if item.get("data", {}).get("symbol", "") == symbol
+            if item.get("data", {}).get("symbol", "").upper() == symbol.upper()
         ]
     if user_strategy_id:
         items = [
@@ -1584,6 +1620,7 @@ async def get_portfolio_activity(
             if item.get("data", {}).get("user_strategy_id", "") == user_strategy_id
         ]
 
+    items.sort(key=lambda item: item["t"], reverse=True)
     items = items[:limit]
     next_cursor = None
     if len(items) == limit:
