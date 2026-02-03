@@ -142,6 +142,10 @@ export async function createMyStrategyCustom(body: {
   name: string;
   params: Record<string, any>;
   note?: string;
+  python?: {
+    entrypoint: string;
+    code: string;
+  };
 }): Promise<MyStrategy> {
   const res = await fetch(buildApiUrl("/my-strategies"), {
     method: "POST",

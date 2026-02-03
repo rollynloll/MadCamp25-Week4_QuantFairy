@@ -4,6 +4,7 @@ import Portfolio from "./pages/Portfolio";
 import Strategies from "./pages/Strategies";
 import Backtest from "./pages/Backtest";
 import Trading from "./pages/Trading";
+import StrategyPage from "./pages/StrategyPage";
 import AppLayout from "./Layout/AppLayout";
 import { LanguageProvider } from "./contexts/LanguageContext";
 
@@ -15,6 +16,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/strategies" element={<Strategies />} />
+            <Route path="/builder" element={<StrategyPage />} />
             <Route path="/portfolio" element={<Portfolio />} />
             <Route path="/backtest" element={<Backtest />} />
             <Route path="/trading" element={<Trading />} />

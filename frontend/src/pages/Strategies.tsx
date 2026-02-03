@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import StrategyDetailModal from "@/components/strategies/StrategyDetailModal";
 import PublicStrategyList from "@/components/strategies/PublicStrategyList";
 import MyStrategiesList from "@/components/strategies/MyStrategiesList";
@@ -21,6 +22,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 export default function Strategies() {
   const { data, loading, error } = useStrategies();
   const { tr } = useLanguage();
+  const navigate = useNavigate();
   const [scope, setScope] = useState<"public" | "private">("public");
   const [selected, setSelected] = useState<PublicStrategyListItem | null>(null);
   const [detail, setDetail] = useState<PublicStrategyDetail | null>(null);
@@ -38,7 +40,11 @@ export default function Strategies() {
   const handleCreateCustom = (body: {
     name: string;
     params: Record<string, any>;
-    note?: string
+    note?: string;
+    python?: {
+      entrypoint: string;
+      code: string;
+    };
   }) => {
     setCreateLoading(true);
     setCreateError(null);
@@ -269,7 +275,7 @@ export default function Strategies() {
           </div>
           <button
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm font-medium transition-colors"
-            onClick={() => setShowCreate(true)}
+            onClick={() => navigate("/builder")}
           >
             {tr("+ New Strategy", "+ 새 전략")}
           </button>

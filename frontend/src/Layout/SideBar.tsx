@@ -4,6 +4,7 @@ import {
   Briefcase,
   LayoutDashboard,
   LineChart,
+  Layers,
   TrendingUp,
 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -17,6 +18,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { path: "/", labelKey: "nav.dashboard", icon: LayoutDashboard },
   { path: "/strategies", labelKey: "nav.strategies", icon: TrendingUp },
+  { path: "/builder", labelKey: "nav.builder", icon: Layers },
   { path: "/portfolio", labelKey: "nav.portfolio", icon: Briefcase },
   { path: "/backtest", labelKey: "nav.backtest", icon: LineChart },
   { path: "/trading", labelKey: "nav.trading", icon: Activity },

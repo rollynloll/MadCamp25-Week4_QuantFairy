@@ -9,6 +9,13 @@ from jsonschema import Draft7Validator
 from app.core.errors import APIError
 from app.services.data_provider import load_price_series
 from app.strategies.validation import StrategyValidationError, validate_target_weights
+from app.strategies.sandbox import (
+    PYTHON_ENTRYPOINT,
+    PYTHON_META_KEY,
+    extract_python_body,
+    run_python_strategy_for_dates,
+    StrategySandboxError,
+)
 from app.services.metrics import compute_drawdown, compute_metrics, compute_returns
 from app.strategies.base import StrategyContext, StrategySignal
 from app.strategies.registry import get_strategy
@@ -124,6 +131,16 @@ def run_backtest(
     progress_cb: ProgressCallback | None = None,
 ) -> BacktestRunResult:
     params = dict(params or {})
+    python_body = None
+    if entrypoint == PYTHON_ENTRYPOINT or PYTHON_META_KEY in params:
+        params, python_body = extract_python_body(params)
+        if not python_body:
+            raise APIError(
+                "VALIDATION_ERROR",
+                "Python strategy spec missing",
+                status_code=422,
+            )
+        entrypoint = PYTHON_ENTRYPOINT
     if isinstance(params.get("symbol"), str):
         params["symbol"] = params["symbol"].strip().upper()
     benchmark_symbol_norm = benchmark_symbol.strip().upper() if benchmark_symbol else None
@@ -211,7 +228,6 @@ def run_backtest(
     price_matrix = price_matrix.sort_index()
     dates = list(price_matrix.index)
 
-    strategy = get_strategy(entrypoint)
     ctx = StrategyContext(
         my_strategy_id=my_strategy_id,
         user_id=user_id,
@@ -263,42 +279,43 @@ def run_backtest(
         if progress_cb:
             progress_cb("signals", None)
         signals: List[StrategySignal] = []
-        used_compute_target = False
-        if hasattr(strategy, "compute_target_weights") and callable(
-            getattr(strategy, "compute_target_weights")
-        ):
-            used_compute_target = True
-            try:
-                freq = ctx.params.get("rebalance", "daily")
-                if ctx.spec and ctx.spec.rebalance:
-                    freq = ctx.spec.rebalance.freq
-                rebalance_dates = _rebalance_dates(list(price_matrix.index), str(freq))
-                long_only, cash_buffer, max_weight = _risk_settings()
-                universe_for_validation = _validation_universe()
-                for dt in rebalance_dates:
-                    weights = strategy.compute_target_weights(prices_df, ctx, universe, dt)
-                    if weights is None:
-                        continue
-                    try:
-                        weights = validate_target_weights(
-                            weights,
-                            universe_for_validation,
-                            long_only=long_only,
-                            cash_buffer=cash_buffer,
-                            max_weight_per_asset=max_weight,
-                        )
-                    except StrategyValidationError as exc:
-                        raise APIError("VALIDATION_ERROR", str(exc), status_code=422) from exc
-                    signals.append(StrategySignal(date=str(dt.date()), target_weights=weights))
-            except NotImplementedError:
-                used_compute_target = False
-        if not used_compute_target:
+        if entrypoint == PYTHON_ENTRYPOINT:
+            if not python_body:
+                raise APIError(
+                    "VALIDATION_ERROR",
+                    "Python strategy spec missing",
+                    status_code=422,
+                )
+            freq = ctx.params.get("rebalance", "daily")
+            if ctx.spec and ctx.spec.rebalance:
+                freq = ctx.spec.rebalance.freq
+            rebalance_dates = _rebalance_dates(list(price_matrix.index), str(freq))
             long_only, cash_buffer, max_weight = _risk_settings()
             universe_for_validation = _validation_universe()
-            for signal in strategy.generate_signals(prices_df, ctx, universe):
+            try:
+                timeout_s = max(12.0, min(60.0, len(rebalance_dates) * 0.05))
+                payloads = run_python_strategy_for_dates(
+                    code=python_body.code,
+                    entrypoint=python_body.entrypoint,
+                    prices=prices_df,
+                    ctx=ctx,
+                    universe=universe,
+                    rebalance_dates=rebalance_dates,
+                    timeout_s=timeout_s,
+                )
+            except StrategySandboxError as exc:
+                raise APIError(
+                    "STRATEGY_EXECUTION_ERROR",
+                    str(exc),
+                    status_code=422,
+                ) from exc
+            for item in payloads:
+                weights = item.get("target_weights") or {}
+                if not weights:
+                    continue
                 try:
                     cleaned = validate_target_weights(
-                        signal.target_weights,
+                        weights,
                         universe_for_validation,
                         long_only=long_only,
                         cash_buffer=cash_buffer,
@@ -306,7 +323,53 @@ def run_backtest(
                     )
                 except StrategyValidationError as exc:
                     raise APIError("VALIDATION_ERROR", str(exc), status_code=422) from exc
-                signals.append(StrategySignal(date=signal.date, target_weights=cleaned))
+                signals.append(StrategySignal(date=str(item.get("date")), target_weights=cleaned))
+        else:
+            strategy = get_strategy(entrypoint)
+            used_compute_target = False
+            if hasattr(strategy, "compute_target_weights") and callable(
+                getattr(strategy, "compute_target_weights")
+            ):
+                used_compute_target = True
+                try:
+                    freq = ctx.params.get("rebalance", "daily")
+                    if ctx.spec and ctx.spec.rebalance:
+                        freq = ctx.spec.rebalance.freq
+                    rebalance_dates = _rebalance_dates(list(price_matrix.index), str(freq))
+                    long_only, cash_buffer, max_weight = _risk_settings()
+                    universe_for_validation = _validation_universe()
+                    for dt in rebalance_dates:
+                        weights = strategy.compute_target_weights(prices_df, ctx, universe, dt)
+                        if weights is None:
+                            continue
+                        try:
+                            weights = validate_target_weights(
+                                weights,
+                                universe_for_validation,
+                                long_only=long_only,
+                                cash_buffer=cash_buffer,
+                                max_weight_per_asset=max_weight,
+                            )
+                        except StrategyValidationError as exc:
+                            raise APIError("VALIDATION_ERROR", str(exc), status_code=422) from exc
+                        signals.append(StrategySignal(date=str(dt.date()), target_weights=weights))
+                except NotImplementedError:
+                    used_compute_target = False
+            if not used_compute_target:
+                long_only, cash_buffer, max_weight = _risk_settings()
+                universe_for_validation = _validation_universe()
+                for signal in strategy.generate_signals(prices_df, ctx, universe):
+                    try:
+                        cleaned = validate_target_weights(
+                            signal.target_weights,
+                            universe_for_validation,
+                            long_only=long_only,
+                            cash_buffer=cash_buffer,
+                            max_weight_per_asset=max_weight,
+                        )
+                    except StrategyValidationError as exc:
+                        raise APIError("VALIDATION_ERROR", str(exc), status_code=422) from exc
+                    signals.append(StrategySignal(date=signal.date, target_weights=cleaned))
     except KeyError as exc:
         missing = str(exc.args[0]) if exc.args else "unknown"
         preview = ", ".join(available_symbols[:10])

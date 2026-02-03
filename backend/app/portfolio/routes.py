@@ -18,6 +18,12 @@ from app.services.data_provider import load_price_series
 from app.strategies.base import StrategyContext
 from app.strategies.registry import get_strategy
 from app.strategies.validation import StrategyValidationError, validate_target_weights
+from app.strategies.sandbox import (
+    PYTHON_ENTRYPOINT,
+    extract_python_body,
+    run_python_strategy_for_dates,
+    StrategySandboxError,
+)
 from app.schemas.portfolio import (
     ActivityItem,
     PortfolioActivityResponse,
@@ -637,6 +643,21 @@ def _resolve_strategy_payload(
             f"Strategy not found: {strategy_id}",
             status_code=404,
         )
+    params, python_body = extract_python_body(row.get("params") or {})
+    entrypoint_snapshot = row.get("entrypoint_snapshot")
+    if entrypoint_snapshot == PYTHON_ENTRYPOINT or python_body:
+        if not python_body:
+            raise APIError(
+                "VALIDATION_ERROR",
+                "Python strategy spec missing",
+                status_code=422,
+            )
+        return {
+            "entrypoint": PYTHON_ENTRYPOINT,
+            "params": params,
+            "python_body": python_body,
+            "code_version": row.get("code_version_snapshot") or "python",
+        }
     public_id = (
         row.get("source_public_strategy_id")
         or row.get("public_strategy_id")
@@ -680,6 +701,7 @@ def _compute_live_strategy_targets(
     )
     entrypoint = payload["entrypoint"]
     params = payload["params"]
+    python_body = payload.get("python_body")
 
     benchmark_symbol = params.get("benchmark_symbol")
     if isinstance(benchmark_symbol, str):
@@ -748,30 +770,57 @@ def _compute_live_strategy_targets(
         _estimate_lookback_days(params),
         period_start,
     )
-    strategy = get_strategy(entrypoint)
     ctx = StrategyContext(
         my_strategy_id=strategy_id,
         user_id=user_id,
         params=params,
         code_version=payload["code_version"],
     )
+    ctx.params = ctx.resolved_params()
 
     weights: Dict[str, float] = {}
     used_compute = False
-    if hasattr(strategy, "compute_target_weights") and callable(
-        getattr(strategy, "compute_target_weights")
-    ):
+    if entrypoint == PYTHON_ENTRYPOINT:
+        if not python_body:
+            raise APIError(
+                "VALIDATION_ERROR",
+                "Python strategy spec missing",
+                status_code=422,
+            )
         try:
-            weights = strategy.compute_target_weights(prices_df, ctx, universe, dt) or {}
-            used_compute = True
-        except NotImplementedError:
-            weights = {}
-            used_compute = False
-    if not weights and not used_compute:
-        latest = {}
-        for signal in strategy.generate_signals(prices_df, ctx, universe):
-            latest = signal.target_weights or {}
-        weights = latest
+            payloads = run_python_strategy_for_dates(
+                code=python_body.code,
+                entrypoint=python_body.entrypoint,
+                prices=prices_df,
+                ctx=ctx,
+                universe=universe,
+                rebalance_dates=[dt],
+                timeout_s=6.0,
+            )
+        except StrategySandboxError as exc:
+            raise APIError(
+                "STRATEGY_EXECUTION_ERROR",
+                str(exc),
+                status_code=422,
+            ) from exc
+        if payloads:
+            weights = payloads[-1].get("target_weights") or {}
+    else:
+        strategy = get_strategy(entrypoint)
+        if hasattr(strategy, "compute_target_weights") and callable(
+            getattr(strategy, "compute_target_weights")
+        ):
+            try:
+                weights = strategy.compute_target_weights(prices_df, ctx, universe, dt) or {}
+                used_compute = True
+            except NotImplementedError:
+                weights = {}
+                used_compute = False
+        if not weights and not used_compute:
+            latest = {}
+            for signal in strategy.generate_signals(prices_df, ctx, universe):
+                latest = signal.target_weights or {}
+            weights = latest
 
     try:
         weights = validate_target_weights(
@@ -1116,6 +1165,7 @@ async def list_user_strategies(
     for row in rows:
         if row.get("environment") and row.get("environment") != env:
             continue
+        cleaned_params, _ = extract_python_body(row.get("params") or {})
         risk = row.get("risk_limits") or {}
         state = row.get("state", "stopped")
         if state not in {"running", "paused", "stopped"}:
@@ -1132,7 +1182,7 @@ async def list_user_strategies(
                     "pct": float(row.get("pnl_today_pct", 0) or 0),
                 },
                 "last_run_at": row.get("last_run_at") or row.get("updated_at") or now_kst().isoformat(),
-                "params": row.get("params") or {},
+                "params": cleaned_params,
                 "risk_limits": {
                     "max_weight_per_asset": float(risk.get("max_weight_per_asset", 0) or 0),
                     "cash_buffer": float(risk.get("cash_buffer", 0) or 0),
@@ -1164,6 +1214,7 @@ async def get_user_strategy(
     state = row.get("state", "stopped")
     if state not in {"running", "paused", "stopped"}:
         state = "stopped"
+    cleaned_params, _ = extract_python_body(row.get("params") or {})
     return {
         "env": env,
         "user_strategy_id": row.get("strategy_id") or user_strategy_id,
@@ -1175,7 +1226,7 @@ async def get_user_strategy(
             "one_liner": row.get("one_liner", ""),
             "param_schema": row.get("param_schema", {}) or {},
         },
-        "params": row.get("params") or {},
+        "params": cleaned_params,
         "risk_limits": {
             "max_weight_per_asset": float(risk.get("max_weight_per_asset", 0) or 0),
             "cash_buffer": float(risk.get("cash_buffer", 0) or 0),

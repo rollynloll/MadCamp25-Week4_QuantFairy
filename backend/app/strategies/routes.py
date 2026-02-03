@@ -27,6 +27,13 @@ from app.schemas.strategies_v1 import (
 )
 from app.storage.my_strategies_repo import MyStrategiesRepository
 from app.storage.public_strategies_repo import PublicStrategiesRepository
+from app.strategies.sandbox import (
+    PYTHON_ENTRYPOINT,
+    PYTHON_META_KEY,
+    extract_python_body,
+    hash_code,
+    validate_python_strategy,
+)
 
 
 router = APIRouter()
@@ -148,12 +155,13 @@ def _format_public_detail(row: dict) -> dict:
 
 
 def _format_my_strategy(row: dict) -> dict:
+    cleaned_params, _ = extract_python_body(row.get("params", {}) or {})
     return {
         "my_strategy_id": row["strategy_id"],
         "name": row.get("name", ""),
         "source_public_strategy_id": row.get("source_public_strategy_id", ""),
         "public_version_snapshot": row.get("public_version_snapshot", ""),
-        "params": row.get("params", {}) or {},
+        "params": cleaned_params,
         "note": row.get("note"),
         "created_at": row.get("created_at"),
         "updated_at": row.get("updated_at"),
@@ -308,6 +316,35 @@ async def create_my_strategy(
     public_repo = PublicStrategiesRepository(settings)
     my_repo = MyStrategiesRepository(settings)
 
+    if payload.python:
+        if payload.source_public_strategy_id:
+            raise APIError(
+                "VALIDATION_ERROR",
+                "source_public_strategy_id is not allowed for python strategies",
+                status_code=422,
+            )
+        validate_python_strategy(payload.python.code, payload.python.entrypoint)
+        my_strategy_id = f"my_{uuid.uuid4().hex}"
+        params = dict(payload.params or {})
+        params[PYTHON_META_KEY] = payload.python.model_dump()
+        row = my_repo.create(
+            user_id,
+            {
+                "strategy_id": my_strategy_id,
+                "name": payload.name or "Python Strategy",
+                "source_public_strategy_id": "",
+                "public_version_snapshot": "",
+                "entrypoint_snapshot": PYTHON_ENTRYPOINT,
+                "code_version_snapshot": hash_code(payload.python.code),
+                "params": params,
+                "note": payload.note,
+                "state": "idle",
+            },
+        )
+        return _format_my_strategy(row)
+
+    if not payload.source_public_strategy_id:
+        raise APIError("VALIDATION_ERROR", "source_public_strategy_id is required", status_code=422)
     public_row = public_repo.get(payload.source_public_strategy_id)
     if not public_row:
         raise APIError("NOT_FOUND", "Public strategy not found", status_code=404)
@@ -427,11 +464,27 @@ async def update_my_strategy(
         raise APIError("NOT_FOUND", "My strategy not found", status_code=404)
 
     updates: dict[str, Any] = {}
+    current_params, current_python = extract_python_body(current.get("params", {}) or {})
+    is_python = current.get("entrypoint_snapshot") == PYTHON_ENTRYPOINT or current_python is not None
+
     if payload.name is not None:
         updates["name"] = payload.name
     if payload.note is not None:
         updates["note"] = payload.note
-    if payload.params is not None:
+    if is_python:
+        if payload.python is not None:
+            validate_python_strategy(payload.python.code, payload.python.entrypoint)
+            current_python = payload.python
+        if payload.params is not None:
+            current_params = payload.params
+        if current_python is not None:
+            updates["params"] = {
+                **(current_params or {}),
+                PYTHON_META_KEY: current_python.model_dump(),
+            }
+            updates["entrypoint_snapshot"] = PYTHON_ENTRYPOINT
+            updates["code_version_snapshot"] = hash_code(current_python.code)
+    elif payload.params is not None:
         public_row = public_repo.get(current.get("source_public_strategy_id"))
         if not public_row:
             raise APIError("NOT_FOUND", "Public strategy not found", status_code=404)
@@ -445,6 +498,12 @@ async def update_my_strategy(
                 status_code=422,
             )
         updates["params"] = payload.params
+    elif payload.python is not None:
+        raise APIError(
+            "VALIDATION_ERROR",
+            "Python code is only allowed for python strategies",
+            status_code=422,
+        )
 
     updated = my_repo.update(user_id, my_strategy_id, updates)
     if not updated:
