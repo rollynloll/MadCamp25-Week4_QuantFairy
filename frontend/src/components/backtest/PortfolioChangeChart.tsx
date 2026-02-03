@@ -1,3 +1,4 @@
+import { useLanguage } from "@/contexts/LanguageContext";
 import {
   BarChart,
   Bar,
@@ -30,6 +31,7 @@ export default function PortfolioChangeChart({
   data: PortfolioChangePoint[];
   series: PortfolioHoldingsSeries[];
 }) {
+  const { tr } = useLanguage();
   const renderLabel = (props: any) => {
     const { x, y, width, payload } = props;
     const symbol = payload?.top_symbol;
@@ -70,7 +72,7 @@ export default function PortfolioChangeChart({
 
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
-      <h2 className="text-lg font-semibold mb-6">Portfolio Holdings (All)</h2>
+      <h2 className="text-lg font-semibold mb-6">{tr("Portfolio Holdings (All)", "포트폴리오 보유 내역 (전체)")}</h2>
       <ResponsiveContainer width="100%" height={200}>
         <BarChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />

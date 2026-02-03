@@ -167,18 +167,19 @@ function buildMonthlyHoldingsAll(
   return { data, series };
 }
 
-function buildMetrics(
-  payload: BacktestResultsResponse,
-  tr: (en: string, ko: string) => string
+function buildMetricsFromResult(
+  result?: ApiResultItem, 
+  tr?: (en: string, ko: string) => string
 ): BacktestMetric[] {
-  const result = pickPrimaryResult(payload);
   const m = result?.metrics ?? {};
+  const t = tr || ((en: string) => en);
+  
   return [
-    { label: tr("Total Return", "총 수익률"), value: formatPct(m.total_return_pct), isPositive: (m.total_return_pct ?? 0) >= 0 },
+    { label: t("Total Return", "총 수익률"), value: formatPct(m.total_return_pct), isPositive: (m.total_return_pct ?? 0) >= 0 },
     { label: "CAGR", value: formatPct(m.cagr_pct), isPositive: (m.cagr_pct ?? 0) >= 0 },
-    { label: tr("Sharpe", "샤프"), value: m.sharpe?.toFixed(2) ?? "-", isPositive: (m.sharpe ?? 0) >= 0 },
-    { label: tr("Max Drawdown", "최대 낙폭"), value: formatPct(m.max_drawdown_pct), isPositive: (m.max_drawdown_pct ?? 0) >= 0 },
-    { label: tr("Volatility", "변동성"), value: formatPct(m.volatility_pct), isPositive: (m.volatility_pct ?? 0) >= 0 },
+    { label: t("Sharpe", "샤프 지수"), value: m.sharpe?.toFixed(2) ?? "-", isPositive: (m.sharpe ?? 0) >= 0 },
+    { label: t("Max Drawdown", "최대 낙폭"), value: formatPct(m.max_drawdown_pct), isPositive: (m.max_drawdown_pct ?? 0) >= 0 },
+    { label: t("Volatility", "변동성"), value: formatPct(m.volatility_pct), isPositive: (m.volatility_pct ?? 0) >= 0 },
   ];
 }
 
@@ -186,6 +187,7 @@ export default function Backtest() {
   const [searchParams] = useSearchParams();
   const backtestIdParam = searchParams.get("id");
   const [resolvedId, setResolvedId] = useState<string | null>(null);
+
   const { tr } = useLanguage();
 
   const [job, setJob] = useState<BacktestJob | null>(null);
@@ -272,7 +274,7 @@ export default function Backtest() {
         setResolvedId(latestId);
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : tr("Failed to load backtests", "백테스트 목록을 불러오지 못했습니다"));
+          setError(err instanceof Error ? err.message : "Failed to load backtests");
           setLoading(false);
         }
       }
@@ -310,7 +312,7 @@ export default function Backtest() {
         timer = window.setTimeout(poll, POLL_MS);
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : tr("Failed to load backtest", "백테스트를 불러오지 못했습니다"));
+          setError(err instanceof Error ? err.message : "Failed to load backtest");
           setLoading(false);
         }
       }
@@ -377,33 +379,19 @@ export default function Backtest() {
     );
   }
 
-  if (error && !job && !results) {
-    return (
-      <div className="space-y-6">
-        <BacktestHeader
-          rangeLabel={`${DEFAULT_PERIOD.start} to ${DEFAULT_PERIOD.end}`}
-          startDate={periodStart}
-          endDate={periodEnd}
-          onStartDateChange={(value) => setPeriodStart(value)}
-          onEndDateChange={(value) => setPeriodEnd(value)}
-          rangeDisabled
-        />
-        <div className="text-sm text-red-400">{error}</div>
-      </div>
-    );
-  }
-
-  const metrics = results ? buildMetrics(results, tr) : [];
   const strategyResults = getStrategyResults(results);
   const hasMultipleStrategies = strategyResults.length > 1 || selectedStrategyIds.length > 1;
+
   const metricsByStrategy = strategyResults.map((item) => ({
     label: item.label,
     metrics: buildMetricsFromResult(item)
   }));
+
   const strategyOptions = myStrategies.map((strategy) => ({
     value: strategy.my_strategy_id,
     label: strategy.name
   }));
+
   const isRunning = job?.status === "queued" || job?.status === "running";
   const progressLabel =
     job?.progress !== undefined && job?.progress !== null
@@ -429,15 +417,13 @@ export default function Backtest() {
   };
 
   const handleRunBacktest = async () => {
-    if (!selectedStrategyId) {
-      setError(tr("Please select a strategy.", "전략을 선택해주세요."));
     const uniqueStrategyIds = Array.from(new Set(selectedStrategyIds.filter(Boolean)));
     if (uniqueStrategyIds.length === 0) {
-      setError("전략을 선택해주세요.");
+      setError(tr("Please select a strategy.", "전략을 선택해주세요."));
       return;
     }
     if (periodStart && periodEnd && periodStart > periodEnd) {
-      setError(tr("Please check the period.", "기간을 확인해주세요."));
+      setError("기간을 확인해주세요.");
       return;
     }
 
@@ -490,7 +476,7 @@ export default function Backtest() {
       setResolvedId(created.backtest_id);
       setJob(created);
     } catch (err) {
-      setError(err instanceof Error ? err.message : tr("Failed to start backtest", "백테스트 시작에 실패했습니다"));
+      setError(err instanceof Error ? err.message : "Failed to start backtest");
     } finally {
       setIsSubmitting(false);
       setLoading(false);
@@ -547,12 +533,10 @@ export default function Backtest() {
       )}
       {isRunning && (
         <div className="text-sm text-gray-400 space-y-1">
-          {tr("Backtest", "백테스트")} {job?.status} {progressLabel && `· ${progressLabel}`}
           <div>
-            Backtest {job?.status}
+            {tr("Backtest", "백테스트")} {job?.status} 
             {progressLabel && ` · ${progressLabel}`}
-            {remainingLabel && ` · ${remainingLabel}`}
-            {etaLabel && ` · ${etaLabel}`}
+            {remainingLabel && ` · ${tr(remainingLabel, "남음")}`}
           </div>
           {progressMessage && (
             <div className="text-xs text-gray-500">{progressMessage}</div>
@@ -591,7 +575,9 @@ export default function Backtest() {
         </div>
       )}
       {job?.status === "canceled" && (
-        <div className="text-sm text-gray-400">{tr("Backtest canceled.", "백테스트가 취소되었습니다.")}</div>
+        <div className="text-sm text-gray-400">
+          {tr("Backtest canceled.", "백테스트가 취소되었습니다.")}
+        </div>
       )}
       <BacktestConfig
         strategies={strategyOptions}
@@ -707,7 +693,10 @@ export default function Backtest() {
       <EquityCurveChart data={equityCurve} series={equitySeries} height={hasMultipleStrategies ? 420 : 300} />
       {hasMultipleStrategies ? (
         <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6 text-sm text-gray-400">
-          Monthly Returns는 여러 전략 비교 시 비활성화됩니다. 전략이 하나일 때만 표시됩니다.
+          {tr(
+            "Monthly Returns are disabled when comparing multiple strategies.", 
+            "Monthly Returns는 여러 전략 비교 시 비활성화됩니다. 전략이 하나일 때만 표시됩니다."
+          )}
         </div>
       ) : (
         <>

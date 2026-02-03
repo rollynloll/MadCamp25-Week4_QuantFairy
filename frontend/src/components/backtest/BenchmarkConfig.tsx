@@ -1,3 +1,5 @@
+import { useLanguage } from "@/contexts/LanguageContext";
+
 type BenchmarkOption = {
   value: string;
   label: string;
@@ -27,6 +29,7 @@ export default function BenchmarkConfig({
   onAddBenchmark: () => void;
   onRemoveBenchmark: (index: number) => void;
 }) {
+  const { tr } = useLanguage();
   const hasBenchmarks = benchmarks.length > 0;
   const resolvedConfigs = benchmarkConfigs.length
     ? benchmarkConfigs
@@ -42,14 +45,14 @@ export default function BenchmarkConfig({
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">Benchmark</h2>
+        <h2 className="text-lg font-semibold">{tr("Benchmark", "벤치마크")}</h2>
         <button
           type="button"
           className="text-xs text-gray-300 border border-gray-800 px-2 py-1 rounded hover:text-white hover:border-gray-600 transition-colors disabled:opacity-50"
           onClick={onAddBenchmark}
           disabled={!hasBenchmarks}
         >
-          + Add Benchmark
+          + {tr("Add Benchmark", "벤치마크 추가")}
         </button>
       </div>
       <div className="grid grid-cols-4 gap-4">
@@ -57,7 +60,7 @@ export default function BenchmarkConfig({
           <div key={`${config.symbol}-${index}`} className="col-span-4 grid grid-cols-4 gap-4">
             <div>
               <label className="text-sm text-gray-400 mb-2 block">
-                Benchmark {index + 1}
+                {tr("Benchmark", "벤치마크")} {index + 1}
               </label>
               <div className="flex gap-2">
                 <select
@@ -73,7 +76,7 @@ export default function BenchmarkConfig({
                       </option>
                     ))
                   ) : (
-                    <option value="">No benchmarks</option>
+                    <option value="">{tr("No benchmarks", "벤치마크 없음")}</option>
                   )}
                 </select>
                 <button
@@ -82,13 +85,13 @@ export default function BenchmarkConfig({
                   onClick={() => onRemoveBenchmark(index)}
                   disabled={resolvedConfigs.length <= 1}
                 >
-                  Remove
+                  {tr("Remove", "삭제")}
                 </button>
               </div>
             </div>
             <div>
               <label className="text-sm text-gray-400 mb-2 block">
-                Initial Capital
+                {tr("Initial Capital", "초기 자본")}
               </label>
               <input
                 type="text"
@@ -99,7 +102,7 @@ export default function BenchmarkConfig({
             </div>
             <div>
               <label className="text-sm text-gray-400 mb-2 block">
-                Commission
+                {tr("Commission", "수수료")}
               </label>
               <input
                 type="text"
@@ -109,7 +112,9 @@ export default function BenchmarkConfig({
               />
             </div>
             <div>
-              <label className="text-sm text-gray-400 mb-2 block">Slippage</label>
+              <label className="text-sm text-gray-400 mb-2 block">
+                {tr("Slippage", "슬리피지")}
+              </label>
               <input
                 type="text"
                 value={config.slippage}
