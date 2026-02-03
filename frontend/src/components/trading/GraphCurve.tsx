@@ -2,7 +2,6 @@ import { useMemo } from "react";
 import { TrendingDown, TrendingUp } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import CustomTooltip from "@/components/trading/CustomTooltip";
-import type { OpenOrder } from "@/types/trading";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 
