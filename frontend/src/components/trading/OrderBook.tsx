@@ -4,17 +4,20 @@ import { useLanguage } from "@/contexts/LanguageContext";
 type Props = {
   orderBook: OrderBookData;
   symbol?: string;
+  midPrice?: number;
+  spread?: number;
 };
 
-export default function OrderBook({ orderBook, symbol }: Props) {
+export default function OrderBook({ orderBook, symbol, midPrice, spread }: Props) {
   const { tr } = useLanguage();
   const bestBid = orderBook.bids[0]?.price ?? null;
   const bestAsk = orderBook.asks[0]?.price ?? null;
-  const mid =
+  const computedMid =
     bestBid !== null && bestAsk !== null ? (bestBid + bestAsk) / 2 : bestBid ?? bestAsk ?? null;
-  const spread =
+  const computedSpread =
     bestBid !== null && bestAsk !== null ? bestAsk - bestBid : null;
-
+  const displayMid = midPrice ?? computedMid;
+  const displaySpread = spread ?? computedSpread;
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
       <div className="flex items-center justify-between mb-4">
@@ -44,10 +47,13 @@ export default function OrderBook({ orderBook, symbol }: Props) {
 
         <div className="py-2 bg-gray-800/50 rounded text-center">
           <div className="text-lg font-mono font-semibold">
-            {mid !== null ? mid.toFixed(2) : "--"}
+            {displayMid !== null && displayMid !== undefined ? displayMid.toFixed(2) : "--"}
           </div>
           <div className="text-xs text-gray-500">
-            {tr("Spread", "호가 차이")}: {spread !== null ? `$${spread.toFixed(2)}` : "--"}
+            {tr("Spread", "스프레드")}:{" "}
+            {displaySpread !== null && displaySpread !== undefined
+              ? `$${displaySpread.toFixed(2)}`
+              : "--"}
           </div>
         </div>
 

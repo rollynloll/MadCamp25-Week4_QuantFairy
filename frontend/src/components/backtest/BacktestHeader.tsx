@@ -1,4 +1,4 @@
-import { Calendar, Play } from "lucide-react";
+import { Play } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 interface BacktestHeaderProps {

@@ -16,6 +16,8 @@ class Settings:
     alpaca_api_key: str | None
     alpaca_secret_key: str | None
     alpaca_base_url: str
+    alpaca_data_stream_url: str | None
+    alpaca_data_feed: str
     supabase_url: str | None
     supabase_service_role_key: str | None
     default_user_id: str | None
@@ -52,6 +54,8 @@ def get_settings() -> Settings:
         alpaca_api_key=_get_env("ALPACA_API_KEY", "ALPACA_API_KEY_ID"),
         alpaca_secret_key=_get_env("ALPACA_SECRET_KEY", "ALPACA_API_SECRET_KEY"),
         alpaca_base_url=os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets"),
+        alpaca_data_stream_url=os.getenv("ALPACA_DATA_STREAM_URL"),
+        alpaca_data_feed=os.getenv("ALPACA_DATA_FEED", "iex"),
         supabase_url=os.getenv("SUPABASE_URL"),
         supabase_service_role_key=os.getenv("SUPABASE_SERVICE_ROLE_KEY"),
         default_user_id=os.getenv("DEFAULT_USER_ID"),

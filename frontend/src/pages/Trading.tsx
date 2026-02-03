@@ -1,18 +1,19 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import TradingHeader from "@/components/trading/TradingHeader";
 import OrderBook from "@/components/trading/OrderBook";
 import OpenOrders from "@/components/trading/OpenOrders";
-import GraphCurve from "@/components/trading/GraphCurve";
 import PositionsTrade from "@/components/trading/PositionsTrade";
-
+import PriceChart from "@/components/trading/PriceChart";
+import RecentTrades from "@/components/trading/RecentTrades";
 import { useTradingOrders } from "@/hooks/useTradingOrders";
 import { useTradingPositions } from "@/hooks/useTradingPositions";
+import { useMarketStream } from "@/hooks/useMarketStream";
 import { mapOrder } from "@/utils/tradingOrderUtils";
 import { mapPosition } from "@/utils/tradingPositionUtils";
-
-import { orderBook } from "@/data/trading.mock";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function Trading() {
+  const { tr } = useLanguage();
   const [orderScope, setOrderScope] = useState<"open" | "filled">("open");
   const { items: openOrderItems } = useTradingOrders("open");
   const { items: filledOrderItems } = useTradingOrders("filled");
@@ -26,38 +27,19 @@ export default function Trading() {
     positionsForTable[0]?.symbol ?? "AAPL"
   );
 
+  useEffect(() => {
+    if (!positionsForTable.length) return;
+    if (!positionsForTable.find((pos) => pos.symbol === selectedSymbol)) {
+      setSelectedSymbol(positionsForTable[0].symbol);
+    }
+  }, [positionsForTable, selectedSymbol]);
+
   const selectedPosition = useMemo(
     () => positionsForTable.find((pos) => pos.symbol === selectedSymbol),
     [positionsForTable, selectedSymbol]
   );
 
-  const basePriceBySymbol: Record<string, number> = {
-    AAPL: 177.5,
-    MSFT: 413.0,
-    GOOGL: 143.0,
-    TSLA: 245.2,
-    NVDA: 621.4,
-    AMD: 132.75,
-  };
-
-  const orderBookForSymbol = useMemo(() => {
-    const basePrice = basePriceBySymbol[selectedSymbol] ?? 100;
-    const bestBid = orderBook.bids[0]?.price ?? 0;
-    const bestAsk = orderBook.asks[0]?.price ?? 0;
-    const mid = bestBid && bestAsk ? (bestBid + bestAsk) / 2 : bestBid || bestAsk || 1;
-    const scale = mid ? basePrice / mid : 1;
-
-    return {
-      bids: orderBook.bids.map((bid) => ({
-        ...bid,
-        price: +(bid.price * scale).toFixed(2),
-      })),
-      asks: orderBook.asks.map((ask) => ({
-        ...ask,
-        price: +(ask.price * scale).toFixed(2),
-      })),
-    };
-  }, [orderBook, selectedSymbol]);
+  const { orderBook, trades, bars, midPrice, spread, status } = useMarketStream(selectedSymbol);
 
   return (
     <div className="space-y-6">
@@ -70,9 +52,34 @@ export default function Trading() {
         onViewChange={setOrderScope}
       />
 
-      <div className="grid grid-cols-[1fr_3fr] gap-6">
-        <OrderBook orderBook={orderBookForSymbol} symbol={selectedSymbol} />
-        <GraphCurve symbol={selectedSymbol} name={selectedPosition?.name} />
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="text-xs text-gray-500">{tr("Symbol", "종목")}</label>
+        <input
+          value={selectedSymbol}
+          onChange={(e) => setSelectedSymbol(e.target.value.toUpperCase())}
+          className="bg-[#0a0d14] border border-gray-800 rounded px-3 py-1.5 text-sm font-mono w-32"
+        />
+        <span className="text-xs text-gray-500">
+          {tr("Stream", "스트림")}: {status}
+        </span>
+        {selectedPosition?.name && (
+          <span className="text-xs text-gray-500">{selectedPosition.name}</span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-12 gap-6">
+        <div className="col-span-12 xl:col-span-7">
+          <PriceChart symbol={selectedSymbol} bars={bars} lastPrice={midPrice} status={status} />
+        </div>
+        <div className="col-span-12 xl:col-span-5 space-y-6">
+          <OrderBook
+            orderBook={orderBook}
+            symbol={selectedSymbol}
+            midPrice={midPrice}
+            spread={spread}
+          />
+          <RecentTrades trades={trades} />
+        </div>
       </div>
 
       <PositionsTrade

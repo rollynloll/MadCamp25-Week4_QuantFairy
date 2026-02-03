@@ -13,6 +13,10 @@ def _get_dsn() -> str:
     dsn = os.getenv("DATABASE_URL")
     if not dsn:
         raise RuntimeError("DATABASE_URL is not set")
+    if dsn.startswith("postgresql+asyncpg://"):
+        return dsn.replace("postgresql+asyncpg://", "postgresql://", 1)
+    if dsn.startswith("postgres+asyncpg://"):
+        return dsn.replace("postgres+asyncpg://", "postgresql://", 1)
     return dsn
 
 
