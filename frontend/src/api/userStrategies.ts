@@ -36,3 +36,19 @@ export async function patchUserStrategy(
   if (!res.ok) throw new Error(await parseErrorMessage(res, `Failed to save strategy (${res.status})`));
   return res.json();
 }
+
+export async function setUserStrategyState(
+  env: Env,
+  userStrategyId: string,
+  action: "start" | "pause" | "stop"
+): Promise<{ ok: true; user_strategy_id: string; state: "running" | "paused" | "stopped" }> {
+  const res = await fetch(buildApiUrl(`/user-strategies/${userStrategyId}/state`, { env }), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action }),
+  });
+  if (!res.ok) {
+    throw new Error(await parseErrorMessage(res, `Failed to update strategy state (${res.status})`));
+  }
+  return res.json();
+}

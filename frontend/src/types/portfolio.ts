@@ -93,6 +93,13 @@ export type PortfolioSummaryResponse = {
   };
 };
 
+export type PortfolioOverviewResponse = {
+  env: Env;
+  as_of: string;
+  summary: PortfolioSummaryResponse;
+  allocation: PortfolioAllocationResponse;
+};
+
 export type PortfolioPerformanceResponse = {
   env: Env;
   range: Range;

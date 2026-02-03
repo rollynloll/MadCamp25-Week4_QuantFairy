@@ -82,6 +82,15 @@ class PortfolioSummaryResponse(BaseModel):
     exposure: ExposureBlock
 
 
+class PortfolioOverviewResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    env: EnvLiteral
+    as_of: str
+    summary: PortfolioSummaryResponse
+    allocation: "PortfolioAllocationResponse"
+
+
 class EquityPoint(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -365,3 +374,6 @@ class PortfolioActivityResponse(BaseModel):
     env: EnvLiteral
     items: List[ActivityItem]
     next_cursor: Optional[str] = None
+
+
+PortfolioOverviewResponse.model_rebuild()

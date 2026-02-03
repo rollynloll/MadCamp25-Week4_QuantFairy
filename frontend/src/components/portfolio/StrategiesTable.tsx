@@ -58,28 +58,46 @@ export default function StrategiesTable({
               <td className="text-right py-3 px-4">
                 <div className="flex items-center justify-end gap-2">
                   <button
-                    className="p-1.5 hover:bg-gray-800 rounded transition-colors"
+                    className={`p-1.5 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                      strategy.state === "running"
+                        ? "bg-green-600/20"
+                        : "hover:bg-gray-800"
+                    }`}
                     title="Start"
                     type="button"
                     onClick={() => onStart?.(strategy.user_strategy_id)}
+                    disabled={strategy.state === "running"}
+                    aria-pressed={strategy.state === "running"}
                   >
                     <Play className="w-3.5 h-3.5 text-green-500" />
                   </button>
 
                   <button
-                    className="p-1.5 hover:bg-gray-800 rounded transition-colors"
+                    className={`p-1.5 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                      strategy.state === "paused"
+                        ? "bg-yellow-600/20"
+                        : "hover:bg-gray-800"
+                    }`}
                     title="Pause"
                     type="button"
                     onClick={() => onPause?.(strategy.user_strategy_id)}
+                    disabled={strategy.state === "paused"}
+                    aria-pressed={strategy.state === "paused"}
                   >
                     <Pause className="w-3.5 h-3.5 text-yellow-500" />
                   </button>
 
                   <button
-                    className="p-1.5 hover:bg-gray-800 rounded transition-colors"
+                    className={`p-1.5 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                      strategy.state === "stopped"
+                        ? "bg-red-600/20"
+                        : "hover:bg-gray-800"
+                    }`}
                     title="Stop"
                     type="button"
                     onClick={() => onStop?.(strategy.user_strategy_id)}
+                    disabled={strategy.state === "stopped"}
+                    aria-pressed={strategy.state === "stopped"}
                   >
                     <Square className="w-3.5 h-3.5 text-red-500" />
                   </button>

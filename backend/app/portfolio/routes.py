@@ -6,9 +6,10 @@ from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Query
 
-from app.alpaca.client import AlpacaClient
+from app.alpaca.client import AlpacaAccount, AlpacaClient
 from app.core.config import get_settings
 from app.core.errors import APIError
+from app.core.ttl_cache import TTLCache
 from app.core.time import now_kst
 from app.schemas.portfolio import (
     ActivityItem,
@@ -17,6 +18,7 @@ from app.schemas.portfolio import (
     PortfolioAttributionResponse,
     PortfolioDrawdownResponse,
     PortfolioKpiResponse,
+    PortfolioOverviewResponse,
     PortfolioPerformanceResponse,
     PortfolioPositionsResponse,
     PortfolioRebalanceRequest,
@@ -44,6 +46,11 @@ SideLiteral = Literal["all", "long", "short"]
 SortLiteral = Literal["pnl", "pnl_pct", "value", "symbol"]
 OrderLiteral = Literal["asc", "desc"]
 AttributionByLiteral = Literal["strategy", "sector"]
+
+ACCOUNT_CACHE_TTL = 10.0
+POSITIONS_CACHE_TTL = 10.0
+HISTORY_CACHE_TTL = 15.0
+ALPACA_CACHE = TTLCache(default_ttl=10.0, maxsize=256)
 
 
 def _resolve_user_id() -> str:
@@ -99,8 +106,51 @@ def _format_timestamp(ts: Any) -> str:
     return str(ts)
 
 
-def _require_account(client: AlpacaClient):
+def _cache_key(prefix: str, env: str, *parts: str) -> str:
+    suffix = ":".join(parts) if parts else ""
+    return f"{prefix}:{env}:{suffix}"
+
+
+def _get_account_cached(client: AlpacaClient):
+    key = _cache_key("alpaca:account", client.environment)
+    cached = ALPACA_CACHE.get(key)
+    if cached is not None:
+        return cached
     result = client.get_account()
+    if result.account is not None:
+        ALPACA_CACHE.set(key, result, ttl=ACCOUNT_CACHE_TTL)
+    return result
+
+
+def _get_positions_cached(client: AlpacaClient):
+    key = _cache_key("alpaca:positions", client.environment)
+    cached = ALPACA_CACHE.get(key)
+    if cached is not None:
+        return cached
+    result = client.get_positions()
+    if result is not None:
+        ALPACA_CACHE.set(key, result, ttl=POSITIONS_CACHE_TTL)
+    return result
+
+
+def _get_history_cached(client: AlpacaClient, period: str | None, timeframe: str | None):
+    key = _cache_key(
+        "alpaca:history",
+        client.environment,
+        period or "default",
+        timeframe or "default",
+    )
+    cached = ALPACA_CACHE.get(key)
+    if cached is not None:
+        return cached
+    result = client.get_portfolio_history(period=period, timeframe=timeframe)
+    if result is not None:
+        ALPACA_CACHE.set(key, result, ttl=HISTORY_CACHE_TTL)
+    return result
+
+
+def _require_account(client: AlpacaClient):
+    result = _get_account_cached(client)
     if result.account is None:
         raise APIError(
             "ALPACA_UNAVAILABLE",
@@ -435,28 +485,21 @@ def _kpi_from_equity(equity_curve: List[Dict[str, Any]]) -> Dict[str, float]:
 
 
 def _load_alpaca_positions(client: AlpacaClient) -> List[Dict[str, Any]]:
-    raw_positions = client.get_positions()
+    raw_positions = _get_positions_cached(client)
     if raw_positions is None:
         return []
     return _normalize_positions(raw_positions)
 
 
-@router.get(
-    "/portfolio/summary",
-    response_model=PortfolioSummaryResponse,
-    summary="Portfolio summary",
-)
-async def get_portfolio_summary(
-    env: EnvLiteral = Query(..., description="paper or live"),
-):
-    settings = get_settings()
-    client = AlpacaClient(settings, env)
-    account, latency_ms = _require_account(client)
-    raw_positions = client.get_positions() or []
-    positions = _normalize_positions(raw_positions)
-    settings_repo = UserSettingsRepository(settings)
-    user_settings = settings_repo.get_or_create(_resolve_user_id())
-
+def _build_summary_response(
+    *,
+    env: EnvLiteral,
+    account: AlpacaAccount,
+    latency_ms: int,
+    raw_positions: List[Any],
+    positions: List[Dict[str, Any]],
+    user_settings: Dict[str, Any],
+) -> Dict[str, Any]:
     today_pnl_value = 0.0
     for pos in raw_positions:
         today_pnl_value += _to_float(_get_field(pos, "unrealized_intraday_pl", 0))
@@ -466,8 +509,8 @@ async def get_portfolio_summary(
     short_count = len([p for p in positions if p.get("side") == "short"])
 
     exposure = _positions_exposure(positions, account.equity, account.cash)
-
     now = now_kst().isoformat()
+
     return {
         "env": env,
         "as_of": now,
@@ -497,6 +540,78 @@ async def get_portfolio_summary(
     }
 
 
+def _build_allocation_response(
+    *,
+    env: EnvLiteral,
+    account: AlpacaAccount,
+    positions: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    exposure = _positions_exposure(positions, account.equity, account.cash)
+    return {
+        "env": env,
+        "by_sector": [],
+        "by_strategy": [],
+        "exposure": exposure,
+    }
+
+
+@router.get(
+    "/portfolio/summary",
+    response_model=PortfolioSummaryResponse,
+    summary="Portfolio summary",
+)
+async def get_portfolio_summary(
+    env: EnvLiteral = Query(..., description="paper or live"),
+):
+    settings = get_settings()
+    client = AlpacaClient(settings, env)
+    account, latency_ms = _require_account(client)
+    raw_positions = _get_positions_cached(client) or []
+    positions = _normalize_positions(raw_positions)
+    settings_repo = UserSettingsRepository(settings)
+    user_settings = settings_repo.get_or_create(_resolve_user_id())
+    return _build_summary_response(
+        env=env,
+        account=account,
+        latency_ms=latency_ms,
+        raw_positions=raw_positions,
+        positions=positions,
+        user_settings=user_settings,
+    )
+
+
+@router.get(
+    "/portfolio/overview",
+    response_model=PortfolioOverviewResponse,
+    summary="Portfolio overview",
+)
+async def get_portfolio_overview(
+    env: EnvLiteral = Query(..., description="paper or live"),
+):
+    settings = get_settings()
+    client = AlpacaClient(settings, env)
+    account, latency_ms = _require_account(client)
+    raw_positions = _get_positions_cached(client) or []
+    positions = _normalize_positions(raw_positions)
+    settings_repo = UserSettingsRepository(settings)
+    user_settings = settings_repo.get_or_create(_resolve_user_id())
+
+    summary = _build_summary_response(
+        env=env,
+        account=account,
+        latency_ms=latency_ms,
+        raw_positions=raw_positions,
+        positions=positions,
+        user_settings=user_settings,
+    )
+    allocation = _build_allocation_response(
+        env=env,
+        account=account,
+        positions=positions,
+    )
+    return {"env": env, "as_of": summary["as_of"], "summary": summary, "allocation": allocation}
+
+
 @router.get(
     "/portfolio/performance",
     response_model=PortfolioPerformanceResponse,
@@ -513,7 +628,8 @@ async def get_portfolio_performance(
     client = AlpacaClient(settings, env)
     _require_account(client)
 
-    history = client.get_portfolio_history(
+    history = _get_history_cached(
+        client,
         period=_range_to_alpaca_period(range),
         timeframe="1D",
     )
@@ -549,7 +665,8 @@ async def get_portfolio_drawdown(
     client = AlpacaClient(settings, env)
     _require_account(client)
 
-    history = client.get_portfolio_history(
+    history = _get_history_cached(
+        client,
         period=_range_to_alpaca_period(range),
         timeframe="1D",
     )
@@ -590,7 +707,8 @@ async def get_portfolio_kpi(
     client = AlpacaClient(settings, env)
     _require_account(client)
 
-    history = client.get_portfolio_history(
+    history = _get_history_cached(
+        client,
         period=_range_to_alpaca_period(range),
         timeframe="1D",
     )
@@ -675,14 +793,7 @@ async def get_portfolio_allocation(
     client = AlpacaClient(settings, env)
     account, _ = _require_account(client)
     positions = _load_alpaca_positions(client)
-
-    exposure = _positions_exposure(positions, account.equity, account.cash)
-    return {
-        "env": env,
-        "by_sector": [],
-        "by_strategy": [],
-        "exposure": exposure,
-    }
+    return _build_allocation_response(env=env, account=account, positions=positions)
 
 
 @router.get(

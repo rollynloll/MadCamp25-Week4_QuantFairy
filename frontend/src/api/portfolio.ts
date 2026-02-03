@@ -4,6 +4,7 @@ import type {
   Env,
   Range,
   PortfolioSummaryResponse,
+  PortfolioOverviewResponse,
   PortfolioPerformanceResponse,
   PortfolioDrawdownResponse,
   PortfolioKpiResponse,
@@ -28,6 +29,18 @@ export async function getPortfolioSummary(env: Env): Promise<PortfolioSummaryRes
 
   if (!res.ok) {
     throw new Error(await parseErrorMessage(res, `Failed to load portfolio summary (${res.status})`));
+  }
+  return res.json();
+}
+
+// 0.2 overview
+export async function getPortfolioOverview(env: Env): Promise<PortfolioOverviewResponse> {
+  const res = await fetch(buildApiUrl("/portfolio/overview", { env }), {
+    headers: { "Content-Type": "application/json" },
+  });
+
+  if (!res.ok) {
+    throw new Error(await parseErrorMessage(res, `Failed to load portfolio overview (${res.status})`));
   }
   return res.json();
 }
