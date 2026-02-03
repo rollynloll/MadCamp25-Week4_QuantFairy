@@ -8,9 +8,14 @@ from app.core.config import Settings
 try:
     from alpaca.trading.client import TradingClient
     from alpaca.trading.requests import GetPortfolioHistoryRequest
+    from alpaca.trading.requests import MarketOrderRequest
+    from alpaca.trading.enums import OrderSide, TimeInForce
 except Exception:  # pragma: no cover - optional dependency
     TradingClient = None
     GetPortfolioHistoryRequest = None
+    MarketOrderRequest = None
+    OrderSide = None
+    TimeInForce = None
 
 
 LIVE_BASE_URL = "https://api.alpaca.markets"
@@ -119,5 +124,33 @@ class AlpacaClient:
             return None
         try:  # pragma: no cover - depends on Alpaca
             return client.get_all_positions()
+        except Exception:
+            return None
+
+    def submit_market_order(
+        self,
+        *,
+        symbol: str,
+        side: str,
+        qty: float | None = None,
+        notional: float | None = None,
+        time_in_force: str = "day",
+    ):
+        client = self._get_client()
+        if client is None or MarketOrderRequest is None or OrderSide is None or TimeInForce is None:
+            return None
+        if qty is None and notional is None:
+            return None
+        if qty is not None and notional is not None:
+            return None
+        try:  # pragma: no cover - depends on Alpaca
+            order = MarketOrderRequest(
+                symbol=symbol,
+                side=OrderSide.BUY if side == "buy" else OrderSide.SELL,
+                qty=qty,
+                notional=notional,
+                time_in_force=TimeInForce(time_in_force),
+            )
+            return client.submit_order(order)
         except Exception:
             return None

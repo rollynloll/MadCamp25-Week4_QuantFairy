@@ -82,6 +82,15 @@ class PortfolioSummaryResponse(BaseModel):
     exposure: ExposureBlock
 
 
+class PortfolioOverviewResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    env: EnvLiteral
+    as_of: str
+    summary: PortfolioSummaryResponse
+    allocation: "PortfolioAllocationResponse"
+
+
 class EquityPoint(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -325,6 +334,8 @@ class PortfolioRebalanceRequest(BaseModel):
     mode: Literal["dry_run", "execute"]
     target_source: Literal["combined", "strategy"]
     strategy_ids: Optional[List[str]] = None
+    target_weights: Optional[Dict[str, float]] = None
+    target_cash_pct: Optional[float] = Field(default=None, ge=0, le=100)
     overrides: Optional[RebalanceOverrides] = None
 
 
@@ -363,3 +374,6 @@ class PortfolioActivityResponse(BaseModel):
     env: EnvLiteral
     items: List[ActivityItem]
     next_cursor: Optional[str] = None
+
+
+PortfolioOverviewResponse.model_rebuild()

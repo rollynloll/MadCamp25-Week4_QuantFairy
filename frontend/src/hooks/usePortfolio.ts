@@ -10,28 +10,30 @@ import type {
   PortfolioKpiResponse,
   PortfolioActivityResponse,
   PortfolioAttributionResponse,
+  UserStrategiesResponse,
 } from "@/types/portfolio";
 
 import {
-  getPortfolioSummary,
+  getPortfolioOverview,
   getPortfolioPositions,
-  getPortfolioAllocation,
   getPortfolioPerformance,
   getPortfolioDrawdown,
   getPortfolioKpi,
   getPortfolioActivity,
   getPortfolioAttribution,
 } from "@/api/portfolio";
+import { getUserStrategies } from "@/api/userStrategies";
 
 type PortfolioPageData = {
   summary: PortfolioSummaryResponse;
   positions: PortfolioPositionsResponse;
   allocation: PortfolioAllocationResponse;
-  performance: PortfolioPerformanceResponse;
-  drawdown: PortfolioDrawdownResponse;
-  kpi: PortfolioKpiResponse;
-  activity: PortfolioActivityResponse;
-  attribution: PortfolioAttributionResponse;
+  userStrategies: UserStrategiesResponse;
+  performance?: PortfolioPerformanceResponse;
+  drawdown?: PortfolioDrawdownResponse;
+  kpi?: PortfolioKpiResponse;
+  activity?: PortfolioActivityResponse;
+  attribution?: PortfolioAttributionResponse;
 };
 
 type PortfolioViewData = {
@@ -59,6 +61,11 @@ export function usePortfolioPageData(env: Env, range: Range, showBenchmark: bool
   const [data, setData] = useState<PortfolioPageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [extrasLoading, setExtrasLoading] = useState({
+    analytics: false,
+    activity: false,
+  });
+  const [extrasError, setExtrasError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -68,47 +75,20 @@ export function usePortfolioPageData(env: Env, range: Range, showBenchmark: bool
       setError(null);
 
       try {
-        const benchmark = showBenchmark ? "SPY" : undefined;
-
-        // 병렬 로딩
-        const [
-          summary,
-          positions,
-          allocation,
-          performance,
-          drawdown,
-          kpi,
-          attribution,
-        ] = await Promise.all([
-          getPortfolioSummary(env),
+        // 병렬 로딩 (overview + positions + strategies)
+        const [overview, positions, userStrategies] = await Promise.all([
+          getPortfolioOverview(env),
           getPortfolioPositions(env),
-          getPortfolioAllocation(env),
-          getPortfolioPerformance({ env, range, benchmark }),
-          getPortfolioDrawdown(env, range),
-          getPortfolioKpi(env, range),
-          getPortfolioAttribution({ env, by: "strategy", range }),
+          getUserStrategies(env),
         ]);
-
-        const activityResult = await getPortfolioActivity({
-          env,
-          types: "orders,trades,alerts,bot_runs",
-          limit: 50,
-        }).catch(() => ({
-          env,
-          items: [],
-        }));
 
         if (!isMounted) return;
 
         setData({
-          summary,
+          summary: overview.summary,
           positions,
-          allocation,
-          performance,
-          drawdown,
-          kpi,
-          attribution,
-          activity: activityResult,
+          allocation: overview.allocation,
+          userStrategies,
         });
       } catch (err) {
         if (!isMounted) return;
@@ -124,6 +104,58 @@ export function usePortfolioPageData(env: Env, range: Range, showBenchmark: bool
       isMounted = false;
     };
   }, [env, range, showBenchmark]);
+
+  const loadAnalytics = async () => {
+    if (!data) return;
+    if (data.performance && data.drawdown && data.kpi && data.attribution) return;
+    if (extrasLoading.analytics) return;
+    setExtrasLoading((prev) => ({ ...prev, analytics: true }));
+    setExtrasError(null);
+    try {
+      const benchmark = showBenchmark ? "SPY" : undefined;
+      const [performance, drawdown, kpi, attribution] = await Promise.all([
+        getPortfolioPerformance({ env, range, benchmark }),
+        getPortfolioDrawdown(env, range),
+        getPortfolioKpi(env, range),
+        getPortfolioAttribution({ env, by: "strategy", range }),
+      ]);
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              performance,
+              drawdown,
+              kpi,
+              attribution,
+            }
+          : prev
+      );
+    } catch (err) {
+      setExtrasError(err instanceof Error ? err.message : "Failed to load analytics");
+    } finally {
+      setExtrasLoading((prev) => ({ ...prev, analytics: false }));
+    }
+  };
+
+  const loadActivity = async () => {
+    if (!data) return;
+    if (data.activity) return;
+    if (extrasLoading.activity) return;
+    setExtrasLoading((prev) => ({ ...prev, activity: true }));
+    setExtrasError(null);
+    try {
+      const activity = await getPortfolioActivity({
+        env,
+        types: "orders,trades,alerts,bot_runs",
+        limit: 50,
+      });
+      setData((prev) => (prev ? { ...prev, activity } : prev));
+    } catch (err) {
+      setExtrasError(err instanceof Error ? err.message : "Failed to load activity");
+    } finally {
+      setExtrasLoading((prev) => ({ ...prev, activity: false }));
+    }
+  };
 
   const view = useMemo<PortfolioViewData | null>(() => {
     if (!data) return null;
@@ -146,12 +178,12 @@ export function usePortfolioPageData(env: Env, range: Range, showBenchmark: bool
       value: s.value,
     }));
 
-    const equityCurve = (data.performance.equity_curve ?? []).map((x) => ({
+    const equityCurve = (data.performance?.equity_curve ?? []).map((x) => ({
       date: x.t,
       value: x.equity,
     }));
 
-    const drawdownData = (data.drawdown.drawdown_curve ?? []).map((x) => ({
+    const drawdownData = (data.drawdown?.drawdown_curve ?? []).map((x) => ({
       date: x.t,
       value: x.drawdown_pct,
     }));
@@ -159,5 +191,14 @@ export function usePortfolioPageData(env: Env, range: Range, showBenchmark: bool
     return { positions, sectorAllocation, equityCurve, drawdownData };
   }, [data]);
 
-  return { data, view, loading, error };
+  return {
+    data,
+    view,
+    loading,
+    error,
+    extrasLoading,
+    extrasError,
+    loadAnalytics,
+    loadActivity,
+  };
 }
