@@ -21,6 +21,7 @@ from app.schemas.backtests import (
 )
 from app.services.backtest_engine import StrategyContext, run_ensemble_backtest, run_single_backtest
 from app.services.backtest_runner import run_backtest
+from app.strategies.sandbox import PYTHON_ENTRYPOINT, PYTHON_META_KEY, extract_python_body
 from app.services.data_provider import load_price_series, parse_date, trading_days
 from app.services.metrics import compute_drawdown, compute_metrics, compute_returns
 from app.storage.backtests_store import STORE
@@ -300,6 +301,20 @@ def _run_backtest_job(
             if not my_row:
                 raise APIError("NOT_FOUND", "My strategy not found", status_code=404)
             public_id = my_row.get("source_public_strategy_id")
+            cleaned_params, python_body = extract_python_body(my_row.get("params", {}) or {})
+            entrypoint_snapshot = my_row.get("entrypoint_snapshot")
+            if entrypoint_snapshot == PYTHON_ENTRYPOINT or python_body:
+                if not python_body:
+                    raise APIError("VALIDATION_ERROR", "Python strategy spec missing", status_code=422)
+                return {
+                    "entrypoint": PYTHON_ENTRYPOINT,
+                    "code_version": my_row.get("code_version_snapshot") or "python",
+                    "public_strategy_id": public_id,
+                    "public_version_snapshot": None,
+                    "default_params": cleaned_params,
+                    "python_body": python_body,
+                    "my_row": my_row,
+                }
             public_row = public_repo.get(public_id) if public_id else None
             entrypoint = my_row.get("entrypoint_snapshot") or (public_row.get("entrypoint") if public_row else None)
             if not entrypoint:
@@ -326,6 +341,8 @@ def _run_backtest_job(
                 **(runtime.get("default_params") or {}),
                 **(ctx.params or {}),
             }
+            if runtime.get("entrypoint") == PYTHON_ENTRYPOINT and runtime.get("python_body"):
+                run_params[PYTHON_META_KEY] = runtime["python_body"].model_dump()
             if (
                 "universe" not in run_params
                 and "universe_preset" not in run_params
@@ -754,12 +771,21 @@ def _resolve_strategy_contexts(
             my_row = my_repo.get(user_id, ref.id)
             if not my_row:
                 raise APIError("NOT_FOUND", "My strategy not found", status_code=404)
-            public_row = public_repo.get(my_row.get("source_public_strategy_id", ""))
-            if not public_row:
-                raise APIError("NOT_FOUND", "Public strategy not found", status_code=404)
-            schema = public_row.get("param_schema", {}) or {}
-            base_params = my_row.get("params", {}) or {}
-            label = ref.label or my_row.get("name", ref.id)
+            cleaned_params, python_body = extract_python_body(my_row.get("params", {}) or {})
+            entrypoint_snapshot = my_row.get("entrypoint_snapshot")
+            if entrypoint_snapshot == PYTHON_ENTRYPOINT or python_body:
+                if not python_body:
+                    raise APIError("VALIDATION_ERROR", "Python strategy spec missing", status_code=422)
+                schema = {}
+                base_params = cleaned_params
+                label = ref.label or my_row.get("name", ref.id)
+            else:
+                public_row = public_repo.get(my_row.get("source_public_strategy_id", ""))
+                if not public_row:
+                    raise APIError("NOT_FOUND", "Public strategy not found", status_code=404)
+                schema = public_row.get("param_schema", {}) or {}
+                base_params = cleaned_params
+                label = ref.label or my_row.get("name", ref.id)
 
         params = {**base_params, **(ref.params_override or {})}
         if schema:

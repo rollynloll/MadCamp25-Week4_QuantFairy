@@ -137,6 +137,22 @@ class ValidateParamsResponse(BaseModel):
     errors: List[ErrorDetail]
 
 
+class PythonPermissions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    network: bool = False
+    filesystem: bool = False
+
+
+class PythonStrategyBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    entrypoint: str
+    code: str
+    requirements: List[str] = Field(default_factory=list)
+    permissions: PythonPermissions = Field(default_factory=PythonPermissions)
+
+
 class MyStrategy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -161,10 +177,11 @@ class AddPublicStrategyRequest(BaseModel):
 class CreateMyStrategyRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    source_public_strategy_id: str
+    source_public_strategy_id: Optional[str] = None
     name: Optional[str] = None
-    params: Dict[str, Any]
+    params: Dict[str, Any] = Field(default_factory=dict)
     note: Optional[str] = None
+    python: Optional[PythonStrategyBody] = None
 
 
 class UpdateMyStrategyRequest(BaseModel):
@@ -173,6 +190,7 @@ class UpdateMyStrategyRequest(BaseModel):
     name: Optional[str] = None
     params: Optional[Dict[str, Any]] = None
     note: Optional[str] = None
+    python: Optional[PythonStrategyBody] = None
 
 
 class MyStrategyDetailResponse(BaseModel):
