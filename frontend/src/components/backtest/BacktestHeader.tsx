@@ -1,4 +1,4 @@
-import { Calendar, Play } from "lucide-react";
+import { Play } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 interface BacktestHeaderProps {
@@ -33,7 +33,6 @@ export default function BacktestHeader({
       </div>
       <div className="flex items-center gap-3">
         <div className="px-3 py-2 bg-gray-800 rounded text-sm font-medium flex items-center gap-2">
-          <Calendar className="w-4 h-4 text-gray-300" />
           <input
             type="date"
             value={startDate ?? ""}
