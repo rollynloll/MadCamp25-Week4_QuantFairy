@@ -3,6 +3,7 @@ import type {
   Env,
   Range,
   PortfolioSummaryResponse,
+  PortfolioOverviewResponse,
   PortfolioPerformanceResponse,
   PortfolioDrawdownResponse,
   PortfolioKpiResponse,
@@ -10,6 +11,8 @@ import type {
   PortfolioAllocationResponse,
   PortfolioActivityResponse,
   PortfolioAttributionResponse,
+  PortfolioRebalanceRequest,
+  PortfolioRebalanceResponse,
 } from "@/types/portfolio";
 
 async function parseErrorMessage(res: Response, fallback: string) {
@@ -25,6 +28,18 @@ export async function getPortfolioSummary(env: Env): Promise<PortfolioSummaryRes
 
   if (!res.ok) {
     throw new Error(await parseErrorMessage(res, `Failed to load portfolio summary (${res.status})`));
+  }
+  return res.json();
+}
+
+// 0.2 overview
+export async function getPortfolioOverview(env: Env): Promise<PortfolioOverviewResponse> {
+  const res = await fetch(buildApiUrl("/portfolio/overview", { env }), {
+    headers: { "Content-Type": "application/json" },
+  });
+
+  if (!res.ok) {
+    throw new Error(await parseErrorMessage(res, `Failed to load portfolio overview (${res.status})`));
   }
   return res.json();
 }
@@ -122,6 +137,23 @@ export async function getPortfolioActivity(params: {
 
   if (!res.ok) {
     throw new Error(await parseErrorMessage(res, `Failed to load activity (${res.status})`));
+  }
+  return res.json();
+}
+
+// 5.1 rebalance
+export async function rebalancePortfolio(
+  params: PortfolioRebalanceRequest & { env: Env }
+): Promise<PortfolioRebalanceResponse> {
+  const { env, ...body } = params;
+  const res = await fetch(buildApiUrl("/portfolio/rebalance", { env }), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    throw new Error(await parseErrorMessage(res, `Failed to rebalance (${res.status})`));
   }
   return res.json();
 }

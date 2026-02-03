@@ -13,7 +13,7 @@ export interface Position {
 export type StrategyState = "running" | "paused" | "stopped";
 
 export interface Strategy {
-  id: number;
+  id: string;
   name: string;
   state: StrategyState;
   currentWeight: number;
@@ -91,6 +91,13 @@ export type PortfolioSummaryResponse = {
     cash_pct: number;
     top5_concentration_pct: number;
   };
+};
+
+export type PortfolioOverviewResponse = {
+  env: Env;
+  as_of: string;
+  summary: PortfolioSummaryResponse;
+  allocation: PortfolioAllocationResponse;
 };
 
 export type PortfolioPerformanceResponse = {
@@ -175,6 +182,29 @@ export type PortfolioAttributionResponse = {
     exposure_pct: number;
     unrealized_pnl_value: number;
     period_contribution_pct?: number;
+  }>;
+};
+
+export type PortfolioRebalanceRequest = {
+  mode: "dry_run" | "execute";
+  target_source: "combined" | "strategy";
+  strategy_ids?: string[];
+  target_weights?: Record<string, number>;
+  target_cash_pct?: number;
+  overrides?: { cash_buffer?: number };
+};
+
+export type PortfolioRebalanceResponse = {
+  env: Env;
+  mode: "dry_run" | "execute";
+  rebalance_id: string;
+  status: "preview" | "submitted";
+  orders: Array<{
+    symbol: string;
+    side: "buy" | "sell";
+    qty: number;
+    notional: number;
+    estimated_price: number;
   }>;
 };
 
