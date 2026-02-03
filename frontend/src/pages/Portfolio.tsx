@@ -198,8 +198,10 @@ export default function Portfolio() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-semibold">Portfolio</h1>
-        <p className="text-sm text-gray-500 mt-1">Current positions, performance, and strategy control</p>
+        <h1 className="text-2xl font-semibold">{tr("Portfolio", "포트폴리오")}</h1>
+        <p className="text-sm text-gray-500 mt-1">
+          {tr("Current positions, performance, and strategy control", "보유 종목 수, 성과 및 전략 관리")}
+        </p>
       </div>
 
       {/* KPI Cards */}

@@ -5,21 +5,24 @@ import Strategies from "./pages/Strategies";
 import Backtest from "./pages/Backtest";
 import Trading from "./pages/Trading";
 import AppLayout from "./Layout/AppLayout";
+import { LanguageProvider } from "./contexts/LanguageContext";
 
 function App() {
   return (
-    <Router>
-      <AppLayout>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/strategies" element={<Strategies />} />
-          <Route path="/portfolio" element={<Portfolio />} />
-          <Route path="/backtest" element={<Backtest />} />
-          <Route path="/trading" element={<Trading />} />
-          <Route path="*" element={<h1>404 Not Found</h1>} />
-        </Routes>
-      </AppLayout>
-    </Router>
+    <LanguageProvider>
+      <Router>
+        <AppLayout>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/strategies" element={<Strategies />} />
+            <Route path="/portfolio" element={<Portfolio />} />
+            <Route path="/backtest" element={<Backtest />} />
+            <Route path="/trading" element={<Trading />} />
+            <Route path="*" element={<h1>404 Not Found</h1>} />
+          </Routes>
+        </AppLayout>
+      </Router>
+    </LanguageProvider>
   );
 }
 

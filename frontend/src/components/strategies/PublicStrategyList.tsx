@@ -1,6 +1,7 @@
 import { Check } from "lucide-react";
 import StrategyCard from "@/components/strategies/StrategyCard";
 import type { PublicStrategyListItem } from "@/types/strategy";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface PublicStrategyListProps {
   strategies: PublicStrategyListItem[];
@@ -17,6 +18,7 @@ export default function PublicStrategyList({
   onSelect,
   onAdd,
 }: PublicStrategyListProps) {
+  const { tr } = useLanguage();
   return (
     <div className="space-y-4">
       {strategies.map((strategy) => {
@@ -39,7 +41,7 @@ export default function PublicStrategyList({
               {(isAdding || isAdded) && (
                 <div className="absolute top-4 right-4 flex items-center gap-1 rounded-full bg-green-600/20 px-2 py-1 text-xs text-green-300">
                   <Check className="w-3 h-3" />
-                  {isAdding ? "Adding" : "Added"}
+                  {isAdding ? tr("Adding", "추가 중") : tr("Added", "추가됨")}
                 </div>
               )}
             </div>

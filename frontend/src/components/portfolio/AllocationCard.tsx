@@ -2,6 +2,7 @@ import { AlertCircle, ChevronDown, ChevronUp } from "lucide-react";
 import MetricItem from "./MetricItem";
 import type { SectorAllocationItem, Strategy } from "@/types/portfolio";
 import StateToggle from "./StateToggle";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 type tab = "strategy" | "sector" | "exposure";
 interface AllocationProps {
@@ -24,23 +25,31 @@ interface AllocationProps {
   isSaving?: boolean;
 }
 
-export default function AllocationCard({ 
+// AllocationCard.tsx
+
+export default function AllocationCard({
   tab,
   onTabChange,
   strategies,
   sectorAllocation,
   targetWeights,
   onTargetWeightChange,
-  derivedCash,
-  totalTarget,
+  derivedCash,        // HEAD 버전에서 추가
+  totalTarget,        // HEAD 버전에서 추가
+  targetCash,         // main 버전에서 추가
+  onTargetCashChange, // main 버전에서 추가
   hasUnsavedChanges,
   onReset,
   onSave,
   showAdvanced,
   onToggleAdvanced,
-  saveError,
-  isSaving
+  saveError,          // HEAD 버전에서 추가
+  isSaving            // HEAD 버전에서 추가
 }: AllocationProps) {
+  // 번역 훅 (main 버전에서 추가)
+  const { tr } = useLanguage();
+
+  // HEAD 버전 로직 유지
   const overAllocatedBy = Math.max(0, totalTarget - 100);
   const canSave = hasUnsavedChanges && overAllocatedBy <= 0 && !isSaving;
   const trackStyle = (value: number, max: number) => ({
@@ -48,6 +57,7 @@ export default function AllocationCard({
       (value / max) * 100
     }%, #1f2937 ${(value / max) * 100}%, #1f2937 100%)`,
   });
+
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded flex flex-col h-fit max-h-[600px]">
       {/* Tabs */}
@@ -58,7 +68,7 @@ export default function AllocationCard({
             tab === "strategy" ? "text-white border-b-2 border-blue-500" : "text-gray-500"
           }`}
         >
-          Strategy
+          {tr("Strategy", "전략")}
         </button>
         <button
           onClick={() => onTabChange("sector")}
@@ -66,7 +76,7 @@ export default function AllocationCard({
             tab === "sector" ? "text-white border-b-2 border-blue-500" : "text-gray-500"
           }`}
         >
-          Sector
+          {tr("Sector", "섹터")}
         </button>
         <button
           onClick={() => onTabChange("exposure")}
@@ -74,7 +84,7 @@ export default function AllocationCard({
             tab === "exposure" ? "text-white border-b-2 border-blue-500" : "text-gray-500"
           }`}
         >
-          Exposure
+          {tr("Exposure", "노출 비중")}
         </button>
       </div>
 
@@ -84,28 +94,34 @@ export default function AllocationCard({
           <div className="p-4 space-y-4">
             {/* Portfolio Constraints */}
             <div className="p-3 bg-gray-900/30 rounded border border-gray-800">
-              <div className="text-xs font-semibold text-gray-400 mb-3">Portfolio Constraints</div>
+              <div className="text-xs font-semibold text-gray-400 mb-3">
+                {tr("Portfolio Constraints", "포트폴리오 제약 조건")}
+              </div>
               <div className="space-y-3">
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs text-gray-400">Cash (auto)</label>
-                    <div className="text-xs font-mono text-gray-200">
-                      {derivedCash.toFixed(1)}%
-                    </div>
+                    <label className="text-xs text-gray-400">{tr("Target Cash %", "목표 현금 비중")}</label>
+                    <input
+                      type="number"
+                      value={targetCash}
+                      onChange={(e) => {
+                        onTargetCashChange(Number(e.target.value));
+                      }}
+                      className="w-16 bg-[#0a0d14] border border-gray-800 rounded px-2 py-1 text-xs text-right font-mono"
+                      step="0.5"
+                    />
                   </div>
                   <input
                     type="range"
                     min="0"
-                    max="100"
+                    max="50"
                     step="0.5"
-                    value={derivedCash}
-                    disabled
-                    style={trackStyle(derivedCash, 100)}
-                    className="w-full h-1.5 rounded appearance-none cursor-not-allowed accent-blue-600 disabled:opacity-100"
+                    value={targetCash}
+                    onChange={(e) => {
+                      onTargetCashChange(Number(e.target.value));
+                    }}
+                    className="w-full h-1.5 bg-gray-800 rounded appearance-none cursor-pointer accent-blue-600"
                   />
-                  <div className="text-[11px] text-gray-500">
-                    Total strategy allocation: {totalTarget.toFixed(1)}%
-                  </div>
                 </div>
 
                 {/* Advanced Constraints */}
@@ -114,13 +130,13 @@ export default function AllocationCard({
                   className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 transition-colors"
                 >
                   {showAdvanced ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                  Advanced
+                  {tr("Advanced", "고급 설정")}
                 </button>
                 {showAdvanced && (
                   <div className="pl-4 space-y-2 text-xs text-gray-500">
-                    <div>Max strategy weight: 35%</div>
-                    <div>Min strategy weight: 5%</div>
-                    <div>Rebalance tolerance: 2%</div>
+                    <div>{tr("Max strategy weight: 35%", "전략 최대 비중: 35%")}</div>
+                    <div>{tr("Min strategy weight: 5%", "전략 최소 비중: 5%")}</div>
+                    <div>{tr("Rebalance tolerance: 2%", "리밸런스 허용 오차: 2%")}</div>
                   </div>
                 )}
               </div>
@@ -129,29 +145,15 @@ export default function AllocationCard({
             {/* Strategy List */}
             <div className="space-y-2">
               {strategies.map((strategy) => (
-                <div
-                  key={strategy.id}
-                  className={`p-3 bg-gray-900/20 rounded border border-gray-800 ${
-                    strategy.state === "paused" ? "opacity-70" : ""
-                  }`}
-                >
+                <div key={strategy.id} className="p-3 bg-gray-900/20 rounded border border-gray-800">
                   <div className="flex items-center justify-between mb-2">
                     <div className="font-medium text-sm">{strategy.name}</div>
                     <StateToggle state={strategy.state} />
                   </div>
 
-                  {(() => {
-                    const isPaused = strategy.state === "paused";
-                    const targetValue = isPaused
-                      ? strategy.currentWeight
-                      : (targetWeights[strategy.id] ?? strategy.currentWeight);
-                    return (
-                      <>
-                        <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
-                    <span>Current: {strategy.currentWeight.toFixed(1)}%</span>
-                    <span>
-                      Target: {targetValue.toFixed(1)}%
-                    </span>
+                  <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
+                    <span>{tr("Current", "현재")}: {strategy.currentWeight.toFixed(1)}%</span>
+                    <span>{tr("Target", "목표")}: {targetWeights[strategy.id]?.toFixed(1) ?? "—"}%</span>
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -160,34 +162,25 @@ export default function AllocationCard({
                       min="0"
                       max="40"
                       step="0.5"
-                      value={targetValue}
-                      disabled={isPaused}
+                      value={targetWeights[strategy.id] ?? 0}
                       onChange={(e) => onTargetWeightChange(strategy.id, Number(e.target.value))}
-                      style={trackStyle(
-                        targetValue,
-                        40
-                      )}
-                      className="flex-1 h-1.5 rounded appearance-none cursor-pointer accent-blue-600 disabled:cursor-not-allowed"
+                      className="flex-1 h-1.5 bg-gray-800 rounded appearance-none cursor-pointer accent-blue-600"
                     />
 
                     <input
                       type="number"
-                      value={targetValue}
-                      disabled={isPaused}
+                      value={targetWeights[strategy.id] ?? 0}
                       onChange={(e) => onTargetWeightChange(strategy.id, Number(e.target.value))}
-                      className="w-14 bg-[#0a0d14] border border-gray-800 rounded px-2 py-1 text-xs text-right font-mono disabled:cursor-not-allowed"
+                      className="w-14 bg-[#0a0d14] border border-gray-800 rounded px-2 py-1 text-xs text-right font-mono"
                       step="0.5"
                     />
                   </div>
-                      </>
-                    );
-                  })()}
                 </div>
               ))}
             </div>
 
             <div className="text-xs text-gray-500 pt-2">
-              Changes will be applied at the next scheduled rebalance
+              {tr("Changes will be applied at the next scheduled rebalance", "변경 사항은 다음 리밸런싱 시 적용됩니다")}
             </div>
           </div>
         )}
@@ -216,10 +209,10 @@ export default function AllocationCard({
         {tab === "exposure" && (
           <div className="p-4 space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <MetricItem label="Net Exposure" value="87.5%" />
-              <MetricItem label="Gross Exposure" value="97.7%" />
-              <MetricItem label="Cash" value="12.5%" />
-              <MetricItem label="Top 5 Concentration" value="76.8%" />
+              <MetricItem label={tr("Net Exposure", "순 노출도")} value="87.5%" />
+              <MetricItem label={tr("Gross Exposure", "총 노출도")} value="97.7%" />
+              <MetricItem label={tr("Cash", "현금")} value="12.5%" />
+              <MetricItem label={tr("Top 5 Concentration", "상위 5종목 집중도")} value="76.8%" />
             </div>
           </div>
         )}
@@ -231,35 +224,23 @@ export default function AllocationCard({
           {hasUnsavedChanges && (
             <div className="flex items-center gap-2 text-xs text-yellow-500 mb-2">
               <AlertCircle className="w-3 h-3" />
-              Unsaved changes
-            </div>
-          )}
-          {overAllocatedBy > 0 && (
-            <div className="flex items-center gap-2 text-xs text-red-400 mb-2">
-              <AlertCircle className="w-3 h-3" />
-              Over-allocated by {overAllocatedBy.toFixed(1)}%
-            </div>
-          )}
-          {saveError && (
-            <div className="flex items-center gap-2 text-xs text-red-400 mb-2">
-              <AlertCircle className="w-3 h-3" />
-              {saveError}
+              {tr("Unsaved changes", "저장되지 않은 변경사항")}
             </div>
           )}
           <div className="flex gap-2">
             <button
               onClick={onReset}
               className="flex-1 py-2 bg-gray-800 hover:bg-gray-700 rounded text-sm font-medium transition-colors"
-              disabled={!hasUnsavedChanges || isSaving}
+              disabled={!hasUnsavedChanges}
             >
-              Reset
+              {tr("Reset", "초기화")}
             </button>
             <button
               onClick={onSave}
               className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm font-medium transition-colors disabled:opacity-50"
-              disabled={!canSave}
+              disabled={!hasUnsavedChanges}
             >
-              {isSaving ? "Saving..." : "Save Targets"}
+              {tr("Save Targets", "목표 저장")}
             </button>
           </div>
         </div>
