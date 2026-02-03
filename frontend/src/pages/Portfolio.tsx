@@ -8,8 +8,10 @@ import type { AlertItem, BotRun, Env, Order, Range, StrategyState, UserStrategyL
 import { useState } from "react";
 import { rebalancePortfolio } from "@/api/portfolio";
 import { setUserStrategyState } from "@/api/userStrategies";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function Portfolio() {
+  const { tr } = useLanguage();
   const [env] = useState<Env>("paper");
   const [range] = useState<Range>("1M");
   const [showBenchmark] = useState(false);
