@@ -55,7 +55,7 @@ export default function Portfolio() {
       <div>
         <h1 className="text-2xl font-semibold">{tr("Portfolio", "포트폴리오")}</h1>
         <p className="text-sm text-gray-500 mt-1">
-          {tr("Current positions, performance, and strategy control", "현재 포지션, 성과, 전략 제어")}
+          {tr("Current positions, performance, and strategy control", "보유 종목 수, 성과 및 전략 관리")}
         </p>
       </div>
 

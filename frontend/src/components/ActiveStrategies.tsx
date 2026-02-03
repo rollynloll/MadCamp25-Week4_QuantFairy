@@ -16,7 +16,7 @@ export default function ActiveStrategies({ data }: { data: ActiveStrategy[] }) {
   const { tr } = useLanguage();
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
-      <h2 className="text-lg font-semibold mb-4">{tr("Active Strategies", "활성 전략")}</h2>
+      <h2 className="text-lg font-semibold mb-4">{tr("Active Strategies", "운용 중인 전략")}</h2>
       <div className="space-y-3">
         {data.map((strategy) => (
           <div 
@@ -56,7 +56,7 @@ export default function ActiveStrategies({ data }: { data: ActiveStrategy[] }) {
             </div>
             <div className="flex items-center justify-between text-xs text-gray-500">
               <span>
-                {strategy.positions_count} {tr("positions", "포지션")}
+                {strategy.positions_count} {tr("positions", "종목 수")}
               </span>
               <span
                 className={

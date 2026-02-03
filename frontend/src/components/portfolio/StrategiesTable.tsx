@@ -29,11 +29,11 @@ export default function StrategiesTable({
       <table className="w-full text-sm">
         <thead className="border-b border-gray-800">
           <tr className="text-xs text-gray-500">
-            <th className="text-left py-2 px-4 font-medium">{tr("Strategy Name", "전략 이름")}</th>
+            <th className="text-left py-2 px-4 font-medium">{tr("Strategy Name", "전략명")}</th>
             <th className="text-left py-2 px-4 font-medium">{tr("State", "상태")}</th>
-            <th className="text-right py-2 px-4 font-medium">{tr("Positions", "포지션")}</th>
+            <th className="text-right py-2 px-4 font-medium">{tr("Positions", "종목 수")}</th>
             <th className="text-left py-2 px-4 font-medium">{tr("Last Run", "최근 실행")}</th>
-            <th className="text-right py-2 px-4 font-medium">{tr("Actions", "액션")}</th>
+            <th className="text-right py-2 px-4 font-medium">{tr("Actions", "작업")}</th>
           </tr>
         </thead>
 

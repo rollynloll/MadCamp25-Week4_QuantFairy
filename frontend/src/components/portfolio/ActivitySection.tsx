@@ -38,7 +38,7 @@ export default function ActivitySection({
             tab === "trades" ? "text-white border-b-2 border-blue-500" : "text-gray-500"
           }`}
         >
-          {tr("Trades", "체결")}
+          {tr("Trades", "체결 내역")}
         </button>
         <button
           onClick={() => onTabChange("alerts")}
@@ -54,7 +54,7 @@ export default function ActivitySection({
             tab === "runs" ? "text-white border-b-2 border-blue-500" : "text-gray-500"
           }`}
         >
-          {tr("Bot Runs", "봇 실행")}
+          {tr("Bot Runs", "봇 실행 기록")}
         </button>
       </div>
 
@@ -124,7 +124,7 @@ export default function ActivitySection({
                   </span>
                   <span className="text-gray-500 font-mono text-xs">{run.duration}</span>
                   <span className="text-gray-400">
-                    {run.trades} {tr("trades", "거래")}
+                    {run.trades} {tr("trades", "거래 내역")}
                   </span>
                 </div>
               </div>

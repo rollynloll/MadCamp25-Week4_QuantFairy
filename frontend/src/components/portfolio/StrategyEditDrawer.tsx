@@ -69,9 +69,9 @@ export default function StrategyEditDrawer({
                 <h4 className="text-sm font-semibold mb-3 text-gray-400">{tr("Summary", "요약")}</h4>
                 <div className="space-y-2 text-sm">
                   <Row label={tr("State", "상태")} value={(data?.state ?? listItem?.state ?? "unknown").toString().toUpperCase()} />
-                  <Row label={tr("Positions", "포지션")} value={String(listItem?.positions_count ?? "-")} />
+                  <Row label={tr("Positions", "종목 수")} value={String(listItem?.positions_count ?? "-")} />
                   <Row
-                    label={tr("P&L (Today)", "오늘 손익")}
+                    label={tr("P&L (Today)", "금일 손익")}
                     value={
                       listItem?.today_pnl
                         ? `${listItem.today_pnl.value >= 0 ? "+" : ""}$${listItem.today_pnl.value.toFixed(2)}`
@@ -118,7 +118,7 @@ export default function StrategyEditDrawer({
                     ))}
                   </div>
                 ) : (
-                  <div className="text-sm text-gray-500">{tr("No param schema", "파라미터 스키마 없음")}</div>
+                  <div className="text-sm text-gray-500">{tr("No param schema", "설정 가능한 파라미터가 업습니다")}</div>
                 )}
               </div>
 

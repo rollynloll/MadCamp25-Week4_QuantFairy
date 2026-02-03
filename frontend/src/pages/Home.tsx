@@ -35,28 +35,28 @@ export default function Home() {
         <MetricCard
           title={tr("Equity", "총 자산")}
           value={money(data.account.equity)}
-          change={`${tr("Today P&L", "오늘 손익")} ${pct(data.account.today_pnl.pct)}`}
+          change={`${tr("Today P&L", "금일 손익")} ${pct(data.account.today_pnl.pct)}`}
           isPositive={data.account.today_pnl.value >= 0}
           icon={<DollarSign className="w-5 h-5" />}
         />
         <MetricCard
-          title={tr("Cash", "현금")}
+          title={tr("Cash", "예수금")}
           value={money(data.account.cash)}
-          change={`${data.account.active_positions.count} ${tr("positions", "포지션")}`}
+          change={`${data.account.active_positions.count} ${tr("positions", "종목 수")}`}
           isPositive={data.account.cash >= 0}
           icon={<DollarSign className="w-5 h-5" />}
         />
         <MetricCard
-          title={tr("Today P&L", "오늘 손익")}
+          title={tr("Today P&L", "금일 손익")}
           value={money(data.account.today_pnl.value)}
           change={pct(data.account.today_pnl.pct)}
           isPositive={data.account.today_pnl.value >= 0}
           icon={<Activity className="w-5 h-5" />}
         />
         <MetricCard
-          title={tr("Active Positions", "활성 포지션")}
+          title={tr("Active Positions", "보유 종목 수")}
           value={`${data.account.active_positions.count}`}
-          change={`${data.account.active_positions.new_today} ${tr("new today", "오늘 신규")}`}
+          change={`${data.account.active_positions.new_today} ${tr("new today", "금일 신규")}`}
           isPositive={data.account.active_positions.new_today > 0}
           icon={<Target className="w-5 h-5" />}
         />

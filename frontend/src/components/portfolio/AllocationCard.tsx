@@ -65,7 +65,7 @@ export default function AllocationCard({
             tab === "exposure" ? "text-white border-b-2 border-blue-500" : "text-gray-500"
           }`}
         >
-          {tr("Exposure", "익스포저")}
+          {tr("Exposure", "노출 비중")}
         </button>
       </div>
 
@@ -76,12 +76,12 @@ export default function AllocationCard({
             {/* Portfolio Constraints */}
             <div className="p-3 bg-gray-900/30 rounded border border-gray-800">
               <div className="text-xs font-semibold text-gray-400 mb-3">
-                {tr("Portfolio Constraints", "포트폴리오 제약")}
+                {tr("Portfolio Constraints", "포트폴리오 제약 조건")}
               </div>
               <div className="space-y-3">
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs text-gray-400">{tr("Target Cash %", "목표 현금 %")}</label>
+                    <label className="text-xs text-gray-400">{tr("Target Cash %", "목표 현금 비중")}</label>
                     <input
                       type="number"
                       value={targetCash}
@@ -161,7 +161,7 @@ export default function AllocationCard({
             </div>
 
             <div className="text-xs text-gray-500 pt-2">
-              {tr("Changes will be applied at the next scheduled rebalance", "변경 사항은 다음 리밸런스에 적용됩니다")}
+              {tr("Changes will be applied at the next scheduled rebalance", "변경 사항은 다음 리밸런싱 시 적용됩니다")}
             </div>
           </div>
         )}
@@ -190,10 +190,10 @@ export default function AllocationCard({
         {tab === "exposure" && (
           <div className="p-4 space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <MetricItem label={tr("Net Exposure", "순 익스포저")} value="87.5%" />
-              <MetricItem label={tr("Gross Exposure", "총 익스포저")} value="97.7%" />
+              <MetricItem label={tr("Net Exposure", "순 노출도")} value="87.5%" />
+              <MetricItem label={tr("Gross Exposure", "총 노출도")} value="97.7%" />
               <MetricItem label={tr("Cash", "현금")} value="12.5%" />
-              <MetricItem label={tr("Top 5 Concentration", "상위 5 집중도")} value="76.8%" />
+              <MetricItem label={tr("Top 5 Concentration", "상위 5종목 집중도")} value="76.8%" />
             </div>
           </div>
         )}

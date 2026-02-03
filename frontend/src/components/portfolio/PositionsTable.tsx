@@ -12,9 +12,9 @@ export default function PositionsTable({ positions }: { positions: Position[] })
         <table className="w-full text-sm">
           <thead className="sticky top-0 bg-[#0d1117] border-b border-gray-800">
             <tr className="text-xs text-gray-500">
-              <th className="text-left py-2 px-4 font-medium">{tr("Symbol", "종목")}</th>
+              <th className="text-left py-2 px-4 font-medium">{tr("Symbol", "종목 코드")}</th>
               <th className="text-right py-2 px-4 font-medium">{tr("Quantity", "수량")}</th>
-              <th className="text-right py-2 px-4 font-medium">{tr("Avg Price", "평균 단가")}</th>
+              <th className="text-right py-2 px-4 font-medium">{tr("Avg Price", "평균 매입가")}</th>
               <th className="text-right py-2 px-4 font-medium">{tr("Current Price", "현재가")}</th>
               <th className="text-right py-2 px-4 font-medium">{tr("P&L", "손익")}</th>
               <th className="text-right py-2 px-4 font-medium">{tr("P&L %", "손익률")}</th>

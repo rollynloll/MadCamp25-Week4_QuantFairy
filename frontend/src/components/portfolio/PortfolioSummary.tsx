@@ -30,7 +30,7 @@ export default function PortfolioSummary({
           value={formatUSD(account.cash)} 
         />
         <KPICard 
-          label={tr("Today P&L", "오늘 손익")} 
+          label={tr("Today P&L", "금일 손익")} 
           value={`${account.today_pnl.value >= 0 ? "+" : ""}${formatUSD(account.today_pnl.value)}`}
           subvalue={formatPct(account.today_pnl.pct)}
           positive={account.today_pnl.value >= 0}
@@ -41,12 +41,12 @@ export default function PortfolioSummary({
         />
 
         <KPICard
-          label={tr("Open Positions", "보유 포지션")}
+          label={tr("Open Positions", "보유 종목 수")}
           value={String(account.open_positions.count)}
         />
 
         <KPICard
-          label={tr("Long / Short", "롱 / 숏")}
+          label={tr("Long / Short", "롱 / 숏 비중")}
           value={`${account.open_positions.long}:${account.open_positions.short}`}
         />
       </div>

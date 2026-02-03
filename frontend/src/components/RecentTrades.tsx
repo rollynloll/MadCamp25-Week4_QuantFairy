@@ -16,7 +16,7 @@ export default function RecentTrades({ data }: { data: RecentTrade[] }) {
   const { tr } = useLanguage();
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
-      <h2 className="text-lg font-semibold mb-4">{tr("Recent Trades", "최근 체결")}</h2>
+      <h2 className="text-lg font-semibold mb-4">{tr("Recent Trades", "최근 거래 내역")}</h2>
       <div className="space-y-2">
         {data.map((trade) => (
           <div

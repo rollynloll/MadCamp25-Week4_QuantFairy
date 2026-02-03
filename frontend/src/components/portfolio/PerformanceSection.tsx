@@ -21,6 +21,14 @@ export default function PerformanceSection({
 }: PerformanceProps ) {
   const { tr } = useLanguage();
 
+  const rangeLabels: Record<string, string> = {
+    "1W": "1주",
+    "1M": "1개월",
+    "3M": "3개월",
+    "1Y": "1년",
+    "ALL": "전체"
+  };
+
   return (
     <div>
       <h2 className="font-semibold mb-4">{tr("Performance", "성과")}</h2>
@@ -28,7 +36,7 @@ export default function PerformanceSection({
         {/* Equity Curve */}
         <div className="bg-[#0d1117] border border-gray-800 rounded p-4">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-medium">{tr("Equity Curve", "자산 추이")}</h3>
+            <h3 className="text-sm font-medium">{tr("Equity Curve", "자산 곡선")}</h3>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1">
                 {["1W", "1M", "3M", "1Y", "ALL"].map((range) => (
@@ -39,7 +47,7 @@ export default function PerformanceSection({
                       timeRange === range ? "bg-blue-600 text-white" : "text-gray-500 hover:text-gray-300"
                     }`}
                   >
-                    {range}
+                    {tr(range, rangeLabels[range])}
                   </button>
                 ))}
               </div>
@@ -109,7 +117,7 @@ export default function PerformanceSection({
           <div className="bg-[#0d1117] border border-gray-800 rounded p-4">
             <div className="grid grid-cols-3 gap-4 text-sm">
               <div>
-                <div className="text-xs text-gray-500 mb-1">{tr("CAGR", "연복리")}</div>
+                <div className="text-xs text-gray-500 mb-1">{tr("CAGR", "연평균 수익률")}</div>
                 <div className="font-semibold text-green-500">+28.9%</div>
               </div>
               <div>
