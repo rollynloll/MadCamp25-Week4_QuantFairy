@@ -336,6 +336,7 @@ class PortfolioRebalanceRequest(BaseModel):
     strategy_ids: Optional[List[str]] = None
     target_weights: Optional[Dict[str, float]] = None
     target_cash_pct: Optional[float] = Field(default=None, ge=0, le=100)
+    allow_new_positions: Optional[bool] = False
     overrides: Optional[RebalanceOverrides] = None
 
 
@@ -349,6 +350,19 @@ class RebalanceOrderPreview(BaseModel):
     estimated_price: float
 
 
+class RebalanceSubmitResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    symbol: str
+    side: Literal["buy", "sell"]
+    qty: float
+    notional: float
+    estimated_price: float
+    order_id: Optional[str] = None
+    status: Literal["submitted", "failed"]
+    error: Optional[str] = None
+
+
 class PortfolioRebalanceResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -357,6 +371,8 @@ class PortfolioRebalanceResponse(BaseModel):
     rebalance_id: str
     status: Literal["preview", "submitted"]
     orders: List[RebalanceOrderPreview]
+    submitted: Optional[List[RebalanceSubmitResult]] = None
+    alpaca_positions: Optional[List[PositionItem]] = None
 
 
 class ActivityItem(BaseModel):

@@ -23,6 +23,7 @@ export default function Portfolio() {
   const [strategyStateOverrides, setStrategyStateOverrides] = useState<Record<string, StrategyState>>({});
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<string | null>(null);
 
   const [targetWeights, setTargetWeights] = useState<Record<string, number>>({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -118,6 +119,7 @@ export default function Portfolio() {
     setTargetWeights({ ...targetWeights, [id]: value });
     setHasUnsavedChanges(true);
     setSaveError(null);
+    setSaveStatus(null);
   };
 
   const totalTarget = allocationStrategies.reduce((sum, strategy) => sum + strategy.targetWeight, 0);
@@ -133,6 +135,7 @@ export default function Portfolio() {
         setSaveError("No active strategies to rebalance");
         return;
       }
+      setSaveStatus(tr("Saving...", "저장 중..."));
       setIsSaving(true);
       setSaveError(null);
       const weights = allocationStrategies.reduce<Record<string, number>>((acc, strategy) => {
@@ -146,11 +149,20 @@ export default function Portfolio() {
         strategy_ids: allocationStrategies.map((s) => s.id),
         target_weights: weights,
         target_cash_pct: derivedCash,
+        allow_new_positions: true,
       });
       setHasUnsavedChanges(false);
+      const timeLabel = new Date().toLocaleTimeString("ko-KR", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+      setSaveStatus(tr(`Saved at ${timeLabel}`, `${timeLabel} 저장 완료`));
+      setTimeout(() => setSaveStatus(null), 3000);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to save targets";
       setSaveError(message);
+      setSaveStatus(tr("Save failed", "저장 실패"));
       console.error(err);
     } finally {
       setIsSaving(false);
@@ -194,6 +206,7 @@ export default function Portfolio() {
     setTargetWeights({});
     setHasUnsavedChanges(false);
     setSaveError(null);
+    setSaveStatus(null);
   };
 
   return (
@@ -231,6 +244,7 @@ export default function Portfolio() {
         onToggleAdvanced={() => setShowAdvanced(v => !v)}
         saveError={saveError}
         isSaving={isSaving}
+        saveStatus={saveStatus}
       />
 
       {/* My Strategies Section */}

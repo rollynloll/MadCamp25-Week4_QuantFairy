@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import math
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Literal, Optional
 
+import pandas as pd
 from fastapi import APIRouter, Query
 
 from app.alpaca.client import AlpacaAccount, AlpacaClient
@@ -11,6 +13,11 @@ from app.core.config import get_settings
 from app.core.errors import APIError
 from app.core.ttl_cache import TTLCache
 from app.core.time import now_kst
+from app.services.backtest_runner import build_price_frame, resolve_universe
+from app.services.data_provider import load_price_series
+from app.strategies.base import StrategyContext
+from app.strategies.registry import get_strategy
+from app.strategies.validation import StrategyValidationError, validate_target_weights
 from app.schemas.portfolio import (
     ActivityItem,
     PortfolioActivityResponse,
@@ -34,12 +41,15 @@ from app.schemas.portfolio import (
 )
 from app.schemas.trading import KillSwitchRequest, KillSwitchResponse
 from app.storage.my_strategies_repo import MyStrategiesRepository
+from app.storage.orders_repo import OrdersRepository
 from app.storage.positions_repo import PositionsRepository
+from app.storage.public_strategies_repo import PublicStrategiesRepository
 from app.storage.strategies_repo import StrategiesRepository
 from app.storage.user_settings_repo import UserSettingsRepository
 
 
 router = APIRouter()
+logger = logging.getLogger("uvicorn.error")
 
 EnvLiteral = Literal["paper", "live"]
 SideLiteral = Literal["all", "long", "short"]
@@ -351,6 +361,10 @@ def _build_rebalance_orders(
     target_weights: Dict[str, float],
     target_cash_pct: float,
     min_notional: float = 1.0,
+    allow_missing_positions: bool = False,
+    extra_symbol_targets: Optional[Dict[str, float]] = None,
+    price_overrides: Optional[Dict[str, float]] = None,
+    scale_override: Optional[float] = None,
 ) -> List[Dict[str, Any]]:
     if equity <= 0:
         return []
@@ -373,8 +387,8 @@ def _build_rebalance_orders(
     total_target = sum(cleaned_weights.values())
     if total_target <= 0:
         return []
-    scale = 1.0
-    if total_target > investable_pct and investable_pct > 0:
+    scale = scale_override if scale_override is not None else 1.0
+    if scale_override is None and total_target > investable_pct and investable_pct > 0:
         scale = investable_pct / total_target
 
     symbol_deltas: Dict[str, Dict[str, Any]] = {}
@@ -384,6 +398,8 @@ def _build_rebalance_orders(
         current = grouped.get(strategy_id)
         current_value = current["value"] if current else 0.0
         if current_value <= 0:
+            if allow_missing_positions:
+                continue
             raise APIError(
                 "VALIDATION_ERROR",
                 f"No positions for strategy {strategy_id}",
@@ -406,6 +422,21 @@ def _build_rebalance_orders(
                 {"symbol": pos["symbol"], "delta_value": 0.0, "price": price},
             )
             entry["delta_value"] += delta_value
+
+    if extra_symbol_targets:
+        for symbol, target_value in extra_symbol_targets.items():
+            if abs(target_value) < min_notional:
+                continue
+            price = None
+            if price_overrides:
+                price = price_overrides.get(symbol)
+            entry = symbol_deltas.setdefault(
+                symbol,
+                {"symbol": symbol, "delta_value": 0.0, "price": price or 0.0},
+            )
+            entry["delta_value"] += target_value
+            if price and price > 0:
+                entry["price"] = price
 
     orders: List[Dict[str, Any]] = []
     for entry in symbol_deltas.values():
@@ -553,6 +584,230 @@ def _build_allocation_response(
         "by_strategy": [],
         "exposure": exposure,
     }
+
+
+def _positions_to_db_rows(
+    *,
+    user_id: str,
+    environment: str,
+    positions: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    now = now_kst().isoformat()
+    rows: List[Dict[str, Any]] = []
+    for pos in positions:
+        rows.append(
+            {
+                "user_id": user_id,
+                "environment": environment,
+                "symbol": pos["symbol"],
+                "qty": pos["qty"],
+                "avg_entry_price": pos["avg_entry_price"],
+                "unrealized_pnl": pos["unrealized_pnl"]["value"],
+                "strategy_id": None,
+                "updated_at": now,
+            }
+        )
+    return rows
+
+
+def _estimate_lookback_days(params: Dict[str, Any]) -> int:
+    candidates: List[int] = []
+    for key in ("lookback_days", "vol_window", "rsi_window", "sma_window", "window"):
+        value = params.get(key)
+        try:
+            if value is not None:
+                candidates.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    base = max(candidates + [60])
+    return max(base, 20)
+
+
+def _resolve_strategy_payload(
+    *,
+    settings,
+    user_id: str,
+    strategy_id: str,
+) -> Dict[str, Any]:
+    my_repo = MyStrategiesRepository(settings)
+    row = my_repo.get(user_id, strategy_id)
+    if not row:
+        raise APIError(
+            "VALIDATION_ERROR",
+            f"Strategy not found: {strategy_id}",
+            status_code=404,
+        )
+    public_id = (
+        row.get("source_public_strategy_id")
+        or row.get("public_strategy_id")
+        or row.get("public_strategy")
+    )
+    public_repo = PublicStrategiesRepository(settings)
+    public = public_repo.get(public_id) if public_id else None
+    if not public:
+        raise APIError(
+            "VALIDATION_ERROR",
+            f"Public strategy not found: {public_id or 'unknown'}",
+            status_code=404,
+        )
+    entrypoint = public.get("entrypoint")
+    if not entrypoint:
+        raise APIError(
+            "VALIDATION_ERROR",
+            f"Entrypoint missing for strategy {public_id}",
+            status_code=422,
+        )
+    params = {}
+    params.update(public.get("default_params") or {})
+    params.update(row.get("params") or {})
+    return {
+        "entrypoint": entrypoint,
+        "params": params,
+        "code_version": row.get("code_version") or public.get("code_version") or "live",
+    }
+
+
+def _compute_live_strategy_targets(
+    *,
+    settings,
+    user_id: str,
+    strategy_id: str,
+) -> tuple[Dict[str, float], Dict[str, float]]:
+    payload = _resolve_strategy_payload(
+        settings=settings,
+        user_id=user_id,
+        strategy_id=strategy_id,
+    )
+    entrypoint = payload["entrypoint"]
+    params = payload["params"]
+
+    benchmark_symbol = params.get("benchmark_symbol")
+    if isinstance(benchmark_symbol, str):
+        benchmark_symbol = benchmark_symbol.strip().upper()
+    else:
+        benchmark_symbol = None
+
+    universe = resolve_universe(params, benchmark_symbol)
+    if not universe:
+        raise APIError(
+            "VALIDATION_ERROR",
+            f"Universe is empty for strategy {strategy_id}",
+            status_code=422,
+        )
+
+    lookback = _estimate_lookback_days(params)
+    end_date = now_kst().date()
+    period_end = end_date.isoformat()
+
+    symbols = set(universe)
+    target_symbol = params.get("symbol")
+    if isinstance(target_symbol, str):
+        symbols.add(target_symbol.strip().upper())
+    if benchmark_symbol:
+        symbols.add(benchmark_symbol)
+
+    price_series = {}
+    prices_df = build_price_frame({})
+    price_matrix = pd.DataFrame()
+    period_start = None
+    for multiplier in (2.5, 5.0):
+        window_days = int(lookback * multiplier) + 30
+        start_date = end_date - timedelta(days=window_days)
+        period_start = start_date.isoformat()
+        price_series = load_price_series(
+            list(symbols),
+            period_start,
+            period_end,
+            "adj_close",
+        )
+        prices_df = build_price_frame(price_series)
+        if prices_df.empty:
+            continue
+        price_matrix = prices_df.reset_index().pivot(
+            index="date", columns="symbol", values="adj_close"
+        )
+        price_matrix = price_matrix.sort_index()
+        if len(price_matrix.index) >= lookback + 1:
+            break
+    if prices_df.empty or price_matrix.empty:
+        raise APIError(
+            "DATA_NOT_FOUND",
+            f"No market prices for strategy {strategy_id}",
+            detail=f"{period_start} to {period_end}",
+            status_code=404,
+        )
+
+    dt = price_matrix.index[-1]
+    available_symbols = list(price_matrix.columns)
+    logger.info(
+        "rebalance.strategy_data strategy=%s universe=%s available=%s dates=%s lookback=%s window_start=%s",
+        strategy_id,
+        len(universe),
+        len(available_symbols),
+        len(price_matrix.index),
+        _estimate_lookback_days(params),
+        period_start,
+    )
+    strategy = get_strategy(entrypoint)
+    ctx = StrategyContext(
+        my_strategy_id=strategy_id,
+        user_id=user_id,
+        params=params,
+        code_version=payload["code_version"],
+    )
+
+    weights: Dict[str, float] = {}
+    used_compute = False
+    if hasattr(strategy, "compute_target_weights") and callable(
+        getattr(strategy, "compute_target_weights")
+    ):
+        try:
+            weights = strategy.compute_target_weights(prices_df, ctx, universe, dt) or {}
+            used_compute = True
+        except NotImplementedError:
+            weights = {}
+            used_compute = False
+    if not weights and not used_compute:
+        latest = {}
+        for signal in strategy.generate_signals(prices_df, ctx, universe):
+            latest = signal.target_weights or {}
+        weights = latest
+
+    try:
+        weights = validate_target_weights(
+            weights,
+            universe,
+            long_only=True,
+            cash_buffer=0.0,
+            max_weight_per_asset=1.0,
+        )
+    except StrategyValidationError as exc:
+        raise APIError(
+            "VALIDATION_ERROR",
+            f"Invalid weights for strategy {strategy_id}",
+            detail=str(exc),
+            status_code=422,
+        ) from exc
+
+    if not weights:
+        logger.warning(
+            "rebalance.strategy_no_weights strategy=%s reason=no_signals_or_insufficient_data",
+            strategy_id,
+        )
+        return {}, {}
+
+    latest_prices = price_matrix.loc[dt].to_dict()
+    price_map: Dict[str, float] = {}
+    for symbol in weights.keys():
+        price = latest_prices.get(symbol)
+        try:
+            price_val = float(price)
+        except (TypeError, ValueError):
+            continue
+        if price_val > 0:
+            price_map[symbol] = price_val
+
+    return weights, price_map
 
 
 @router.get(
@@ -1027,6 +1282,14 @@ async def rebalance_portfolio(
     payload: PortfolioRebalanceRequest,
     env: EnvLiteral = Query(..., description="paper or live"),
 ):
+    logger.info(
+        "rebalance.start env=%s mode=%s target_source=%s strategy_ids=%s allow_new=%s",
+        env,
+        payload.mode,
+        payload.target_source,
+        payload.strategy_ids,
+        bool(payload.allow_new_positions),
+    )
     if payload.target_source == "strategy" and not payload.strategy_ids:
         raise APIError(
             "VALIDATION_ERROR",
@@ -1061,7 +1324,14 @@ async def rebalance_portfolio(
         )
 
     client = AlpacaClient(settings, env)
-    account, _ = _require_account(client)
+    account, latency_ms = _require_account(client)
+    logger.info(
+        "rebalance.alpaca account_ok env=%s latency_ms=%s equity=%.2f cash=%.2f",
+        env,
+        latency_ms,
+        account.equity,
+        account.cash,
+    )
 
     positions_repo = PositionsRepository(settings)
     rows = positions_repo.list(user_id, env, limit=500)
@@ -1085,30 +1355,167 @@ async def rebalance_portfolio(
         else (account.cash / account.equity * 100 if account.equity else 0.0)
     )
 
+    cleaned_weights: Dict[str, float] = {}
+    for key, raw in target_weights.items():
+        try:
+            weight = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if weight < 0:
+            raise APIError(
+                "VALIDATION_ERROR",
+                f"Negative weight not allowed: {key}",
+                status_code=422,
+            )
+        cleaned_weights[str(key)] = weight
+
+    investable_pct = max(0.0, 100.0 - target_cash_pct)
+    total_target = sum(cleaned_weights.values())
+    if total_target <= 0:
+        raise APIError(
+            "VALIDATION_ERROR",
+            "Total target weight must be greater than zero",
+            status_code=422,
+        )
+    scale = 1.0
+    if total_target > investable_pct and investable_pct > 0:
+        scale = investable_pct / total_target
+
+    grouped = _aggregate_position_values(positions)
+    allow_new_positions = bool(payload.allow_new_positions)
+    extra_symbol_targets: Dict[str, float] = {}
+    price_overrides: Dict[str, float] = {}
+    if allow_new_positions:
+        for strategy_id, weight_pct in cleaned_weights.items():
+            current = grouped.get(strategy_id)
+            current_value = current["value"] if current else 0.0
+            if current_value > 0:
+                continue
+            target_value = account.equity * (weight_pct * scale / 100.0)
+            if target_value <= 0:
+                continue
+            weights, price_map = _compute_live_strategy_targets(
+                settings=settings,
+                user_id=user_id,
+                strategy_id=strategy_id,
+            )
+            if not weights:
+                continue
+            missing_prices = [s for s in weights.keys() if s not in price_map]
+            if missing_prices:
+                raise APIError(
+                    "DATA_NOT_FOUND",
+                    f"Missing prices for {strategy_id}",
+                    details=[{"field": "symbols", "reason": s} for s in missing_prices],
+                    status_code=404,
+                )
+            for symbol, symbol_weight in weights.items():
+                extra_symbol_targets[symbol] = extra_symbol_targets.get(symbol, 0.0) + (
+                    target_value * float(symbol_weight)
+                )
+            for symbol, price in price_map.items():
+                if symbol not in price_overrides and price > 0:
+                    price_overrides[symbol] = price
+
     orders = _build_rebalance_orders(
         equity=account.equity,
         positions=positions,
-        target_weights=target_weights,
+        target_weights=cleaned_weights,
         target_cash_pct=target_cash_pct,
+        allow_missing_positions=allow_new_positions,
+        extra_symbol_targets=extra_symbol_targets or None,
+        price_overrides=price_overrides or None,
+        scale_override=scale,
     )
 
+    logger.info(
+        "rebalance.orders count=%s target_cash_pct=%.2f",
+        len(orders),
+        target_cash_pct,
+    )
+
+    rebalance_id = f"rb_{now_kst().strftime('%Y%m%d_%H%M%S')}"
+    submitted_results: List[Dict[str, Any]] = []
+    order_rows: List[Dict[str, Any]] = []
     if payload.mode == "execute":
-        for order in orders:
-            client.submit_market_order(
+        for idx, order in enumerate(orders):
+            result = client.submit_market_order(
                 symbol=order["symbol"],
                 side=order["side"],
                 qty=order["qty"],
                 time_in_force="day",
             )
+            order_id = None
+            submitted_at = None
+            filled_at = None
+            if isinstance(result, dict) and result.get("ok") and result.get("order") is not None:
+                order_obj = result["order"]
+                order_id = getattr(order_obj, "id", None) or getattr(
+                    order_obj, "client_order_id", None
+                )
+                submitted_at = getattr(order_obj, "submitted_at", None)
+                filled_at = getattr(order_obj, "filled_at", None)
+            submitted_results.append(
+                {
+                    "symbol": order["symbol"],
+                    "side": order["side"],
+                    "qty": order["qty"],
+                    "notional": order["notional"],
+                    "estimated_price": order["estimated_price"],
+                    "order_id": str(order_id) if order_id else None,
+                    "status": "submitted" if isinstance(result, dict) and result.get("ok") else "failed",
+                    "error": None if isinstance(result, dict) and result.get("ok") else (result or {}).get("error"),
+                }
+            )
+            order_rows.append(
+                {
+                    "order_id": str(order_id) if order_id else f"local_{rebalance_id}_{order['symbol']}_{idx}",
+                    "user_id": user_id,
+                    "environment": env,
+                    "symbol": order["symbol"],
+                    "side": order["side"],
+                    "qty": order["qty"],
+                    "type": "market",
+                    "status": "submitted" if isinstance(result, dict) and result.get("ok") else "failed",
+                    "submitted_at": str(submitted_at) if submitted_at else now_kst().isoformat(),
+                    "filled_at": str(filled_at) if filled_at else None,
+                    "strategy_id": None,
+                }
+            )
+            logger.info(
+                "rebalance.submit symbol=%s side=%s qty=%.4f status=%s error=%s",
+                order["symbol"],
+                order["side"],
+                order["qty"],
+                "submitted" if isinstance(result, dict) and result.get("ok") else "failed",
+                (result or {}).get("error") if isinstance(result, dict) else None,
+            )
 
-    rebalance_id = f"rb_{now_kst().strftime('%Y%m%d_%H%M%S')}"
     status = "preview" if payload.mode == "dry_run" else "submitted"
+    alpaca_positions = None
+    if payload.mode == "execute":
+        if order_rows:
+            OrdersRepository(settings).upsert_many(order_rows)
+        raw_positions = client.get_positions() or []
+        alpaca_positions = _normalize_positions(raw_positions)
+        logger.info("rebalance.positions count=%s", len(alpaca_positions))
+        PositionsRepository(settings).replace_all(
+            user_id,
+            env,
+            _positions_to_db_rows(
+                user_id=user_id,
+                environment=env,
+                positions=alpaca_positions,
+            ),
+        )
     return {
         "env": env,
         "mode": payload.mode,
         "rebalance_id": rebalance_id,
         "status": status,
         "orders": orders,
+        "submitted": submitted_results or None,
+        "alpaca_positions": alpaca_positions,
     }
 
 
