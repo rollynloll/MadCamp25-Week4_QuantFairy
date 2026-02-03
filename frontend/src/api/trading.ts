@@ -1,5 +1,10 @@
 import { buildApiUrl } from "@/api/base";
-import type { TradingOrdersResponse, TradingOrderDetail, TradingPositionsResponse } from "@/types/trading";
+import type {
+  TradingOrdersResponse,
+  TradingOrderDetail,
+  TradingPositionsResponse,
+  TradingBarsResponse,
+} from "@/types/trading";
 
 export type OrderScope = "open" | "filled" | "all";
 
@@ -52,6 +57,35 @@ export async function getTradingPositions(): Promise<TradingPositionsResponse> {
     const body = await res.json().catch(() => null);
     const message =
       body?.error?.message ?? `Failed to load positions (${res.status})`;
+    throw new Error(message);
+  }
+
+  return res.json();
+}
+
+export async function getTradingBars(params: {
+  symbol: string;
+  timeframe?: string;
+  limit?: number;
+  feed?: string;
+}): Promise<TradingBarsResponse> {
+  const { symbol, timeframe = "1Min", limit = 200, feed } = params;
+  const res = await fetch(
+    buildApiUrl("/trading/bars", {
+      symbol,
+      timeframe,
+      limit,
+      feed: feed ?? undefined,
+    }),
+    {
+      headers: { "Content-Type": "application/json" },
+    }
+  );
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    const message =
+      body?.error?.message ?? `Failed to load bars (${res.status})`;
     throw new Error(message);
   }
 

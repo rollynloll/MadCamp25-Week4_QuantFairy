@@ -1,4 +1,4 @@
-import type { OpenOrder, OrderBook, RecentTrade } from "@/types/trading";
+import type { OrderBook, RecentTrade } from "@/types/trading";
 
 export const orderBook: OrderBook = {
   bids: [

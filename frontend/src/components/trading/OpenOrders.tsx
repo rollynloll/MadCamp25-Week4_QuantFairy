@@ -76,7 +76,7 @@ export default function OpenOrders({ orders, filledOrders = [], view, onViewChan
               {order.filled}
             </div>
             <div className="text-right font-mono">
-              ${order.price === null ? "-" : `$${order.price.toFixed(2)}`}
+              {typeof order.price === "number" ? `$${order.price.toFixed(2)}` : "-"}
             </div>
             <div>
               <span

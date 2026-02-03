@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { OrderBook, OrderBookLevel, RecentTrade } from "@/types/trading";
 import { API_BASE_URL } from "@/api/base";
+import { getTradingBars } from "@/api/trading";
 
 export interface BarPoint {
   time: string;
@@ -29,8 +30,16 @@ interface StreamMessage {
   message?: string;
 }
 
+const resolveBaseUrl = () => {
+  if (API_BASE_URL) return API_BASE_URL;
+  if (window.location.hostname === "localhost" && window.location.port === "5173") {
+    return "http://localhost:8000";
+  }
+  return window.location.origin;
+};
+
 const makeWsUrl = (path: string) => {
-  const base = API_BASE_URL || window.location.origin;
+  const base = resolveBaseUrl();
   const wsBase = base.replace(/^http/, "ws");
   return `${wsBase}${path}`;
 };
@@ -43,19 +52,30 @@ export function useMarketStream(symbol: string) {
   const [bars, setBars] = useState<BarPoint[]>([]);
   const [status, setStatus] = useState<string>("connecting");
   const lastTradeRef = useRef<number | null>(null);
+  const hasStreamedBars = useRef(false);
 
   useEffect(() => {
     if (!symbol) return;
     setStatus("connecting");
-    const url = makeWsUrl(`/api/v1/trading/stream?symbols=${symbol}&channels=trades,quotes,bars`);
+    setOrderBook(initialBook);
+    setTrades([]);
+    setBars([]);
+    lastTradeRef.current = null;
+    hasStreamedBars.current = false;
+    const url = makeWsUrl(
+      `/api/v1/trading/stream?symbols=${encodeURIComponent(
+        symbol
+      )}&channels=trades,quotes,bars`
+    );
     const ws = new WebSocket(url);
+    let shouldClose = false;
 
     ws.onopen = () => {
+      if (shouldClose) {
+        ws.close();
+        return;
+      }
       setStatus("open");
-      setOrderBook(initialBook);
-      setTrades([]);
-      setBars([]);
-      lastTradeRef.current = null;
     };
 
     ws.onclose = () => setStatus("closed");
@@ -68,7 +88,13 @@ export function useMarketStream(symbol: string) {
       } catch {
         return;
       }
-      if (!msg || msg.type === "status") return;
+      if (!msg) return;
+      if (msg.type === "status") {
+        if (msg.message) {
+          setStatus(msg.message);
+        }
+        return;
+      }
 
       if (msg.type === "quote") {
         const bid = Number(msg.bid ?? 0);
@@ -110,6 +136,7 @@ export function useMarketStream(symbol: string) {
       }
 
       if (msg.type === "bar") {
+        hasStreamedBars.current = true;
         const point: BarPoint = {
           time: msg.time ?? new Date().toISOString(),
           open: Number(msg.open ?? 0),
@@ -132,7 +159,47 @@ export function useMarketStream(symbol: string) {
     };
 
     return () => {
-      ws.close();
+      if (ws.readyState === WebSocket.CONNECTING) {
+        shouldClose = true;
+      } else if (ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+    };
+  }, [symbol]);
+
+  useEffect(() => {
+    if (!symbol) return;
+    let cancelled = false;
+
+    const loadHistory = async () => {
+      try {
+        let res = await getTradingBars({ symbol, timeframe: "1Min", limit: 200 });
+        if (cancelled) return;
+        if (hasStreamedBars.current) return;
+        if (!res.bars?.length || res.bars.length < 50) {
+          res = await getTradingBars({ symbol, timeframe: "1Day", limit: 365 });
+          if (cancelled) return;
+          if (hasStreamedBars.current) return;
+        }
+        if (!res.bars?.length) return;
+        const history = res.bars.map((bar) => ({
+          time: bar.time,
+          open: bar.open,
+          high: bar.high,
+          low: bar.low,
+          close: bar.close,
+          volume: bar.volume,
+        }));
+        setBars(history);
+        lastTradeRef.current = history[history.length - 1]?.close ?? lastTradeRef.current;
+      } catch {
+        // ignore history fetch failures; stream may still work
+      }
+    };
+
+    loadHistory();
+    return () => {
+      cancelled = true;
     };
   }, [symbol]);
 

@@ -77,3 +77,23 @@ class LastFillResponse(BaseModel):
     symbol: str
     price: float
     filled_at: str | None
+
+
+class BarItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    time: str
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+
+
+class BarsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    symbol: str
+    timeframe: str
+    feed: str | None
+    bars: list[BarItem]
