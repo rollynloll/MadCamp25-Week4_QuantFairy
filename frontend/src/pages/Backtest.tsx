@@ -537,6 +537,7 @@ export default function Backtest() {
             {tr("Backtest", "백테스트")} {job?.status} 
             {progressLabel && ` · ${progressLabel}`}
             {remainingLabel && ` · ${tr(remainingLabel, "남음")}`}
+            {etaLabel && ` · ${etaLabel}`}
           </div>
           {progressMessage && (
             <div className="text-xs text-gray-500">{progressMessage}</div>
