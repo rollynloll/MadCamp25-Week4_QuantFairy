@@ -20,3 +20,29 @@ class OrdersRepository:
         except Exception:
             return rows
         return rows
+
+    def list_recent(
+        self,
+        user_id: str,
+        environment: str,
+        *,
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        if self.supabase is None:
+            return []
+        try:
+            result = (
+                self.supabase.table("orders")
+                .select("*")
+                .eq("user_id", user_id)
+                .eq("environment", environment)
+                .order("submitted_at", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            data = getattr(result, "data", None)
+            if data is not None:
+                return data
+        except Exception:
+            return []
+        return []
