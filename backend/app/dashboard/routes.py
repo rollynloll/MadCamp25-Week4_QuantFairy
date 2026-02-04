@@ -189,8 +189,8 @@ async def get_dashboard(
         except Exception as exc:
             logger.warning("dashboard.alpaca_sync failed env=%s error=%s", environment, exc)
 
-    account_row = accounts_repo.get_latest(resolved_user_id, environment)
-    if account_row is None and account_result.account:
+    account_row = None
+    if account_result.account:
         account_row = accounts_repo.upsert_account(
             resolved_user_id,
             environment,
@@ -200,6 +200,8 @@ async def get_dashboard(
             buying_power=float(account_result.account.buying_power),
             currency=str(account_result.account.currency),
         )
+    if account_row is None:
+        account_row = accounts_repo.get_latest(resolved_user_id, environment)
 
     equity = float(account_row["equity"]) if account_row else 0.0
     cash = float(account_row["cash"]) if account_row else 0.0
