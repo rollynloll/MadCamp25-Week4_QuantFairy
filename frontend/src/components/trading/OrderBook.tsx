@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { OrderBook as OrderBookData } from "@/types/trading";
 import { useLanguage } from "@/contexts/LanguageContext";
 
@@ -10,14 +11,20 @@ type Props = {
 
 export default function OrderBook({ orderBook, symbol, midPrice, spread }: Props) {
   const { tr } = useLanguage();
-  const bestBid = orderBook.bids[0]?.price ?? null;
-  const bestAsk = orderBook.asks[0]?.price ?? null;
-  const computedMid =
-    bestBid !== null && bestAsk !== null ? (bestBid + bestAsk) / 2 : bestBid ?? bestAsk ?? null;
-  const computedSpread =
-    bestBid !== null && bestAsk !== null ? bestAsk - bestBid : null;
-  const displayMid = midPrice ?? computedMid;
-  const displaySpread = spread ?? computedSpread;
+  const { asks, bids, displayMid, displaySpread } = useMemo(() => {
+    const bestBid = orderBook.bids[0]?.price ?? null;
+    const bestAsk = orderBook.asks[0]?.price ?? null;
+    const computedMid =
+      bestBid !== null && bestAsk !== null ? (bestBid + bestAsk) / 2 : bestBid ?? bestAsk ?? null;
+    const computedSpread =
+      bestBid !== null && bestAsk !== null ? bestAsk - bestBid : null;
+    return {
+      asks: [...orderBook.asks].reverse(),
+      bids: orderBook.bids,
+      displayMid: midPrice ?? computedMid,
+      displaySpread: spread ?? computedSpread,
+    };
+  }, [orderBook, midPrice, spread]);
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
       <div className="flex items-center justify-between mb-4">
@@ -31,7 +38,7 @@ export default function OrderBook({ orderBook, symbol, midPrice, spread }: Props
             <span>{tr("Size", "수량")}</span>
           </div>
           <div className="space-y-1">
-            {[...orderBook.asks].reverse().map((ask, i) => (
+            {asks.map((ask, i) => (
               <div
                 key={i}
                 className="flex justify-between items-center text-sm py-1 px-2 rounded hover:bg-red-600/10"
@@ -59,7 +66,7 @@ export default function OrderBook({ orderBook, symbol, midPrice, spread }: Props
 
         <div>
           <div className="space-y-1">
-            {orderBook.bids.map((bid, i) => (
+            {bids.map((bid, i) => (
               <div
                 key={i}
                 className="flex justify-between items-center text-sm py-1 px-2 rounded hover:bg-green-600/10"

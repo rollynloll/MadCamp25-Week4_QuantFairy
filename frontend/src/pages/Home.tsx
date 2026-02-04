@@ -72,14 +72,14 @@ export default function Home() {
         <MetricCard
           title={tr("Equity", "총 자산")}
           value={money(data.account.equity)}
-          change={`${tr("Today P&L", "일일 손익")} ${pct(data.account.today_pnl.pct)}`}
+          change={``}
           isPositive={data.account.today_pnl.value >= 0}
           icon={<DollarSign className="w-5 h-5" />}
         />
         <MetricCard
           title={tr("Cash", "예수금")}
           value={money(data.account.cash)}
-          change={`${data.account.active_positions.count} ${tr("positions", "개 보유")}`}
+          change={``}
           isPositive={data.account.cash >= 0}
           icon={<DollarSign className="w-5 h-5" />}
         />
@@ -88,6 +88,7 @@ export default function Home() {
           value={money(data.account.today_pnl.value)}
           change={pct(data.account.today_pnl.pct)}
           isPositive={data.account.today_pnl.value >= 0}
+          colorValue
           icon={<Activity className="w-5 h-5" />}
         />
         <MetricCard
