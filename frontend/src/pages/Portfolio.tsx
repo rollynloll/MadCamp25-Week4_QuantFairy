@@ -9,9 +9,11 @@ import { useState } from "react";
 import { rebalancePortfolio } from "@/api/portfolio";
 import { setUserStrategyState } from "@/api/userStrategies";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useDashboardContext } from "@/contexts/DashboardContext";
 
 export default function Portfolio() {
   const { tr } = useLanguage();
+  const { refreshUserStrategies } = useDashboardContext();
   const [env] = useState<Env>("paper");
   const [range] = useState<Range>("1M");
   const [showBenchmark] = useState(false);
@@ -190,6 +192,7 @@ export default function Portfolio() {
 
     try {
       await setUserStrategyState(env, id, action);
+      refreshUserStrategies();
     } catch (err) {
       setStrategyStateOverrides((prev) => {
         if (prevOverride === undefined) {

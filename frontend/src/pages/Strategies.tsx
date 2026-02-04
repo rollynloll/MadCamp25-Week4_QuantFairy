@@ -19,6 +19,10 @@ import type {
 import NewStrategyModal from "@/components/strategies/NewStrategyModal";
 import { useLanguage } from "@/contexts/LanguageContext";
 
+let cachedMyStrategies: MyStrategy[] | null = null;
+let cachedMyLoaded = false;
+const cachedStrategyDetail = new Map<string, PublicStrategyDetail>();
+
 export default function Strategies() {
   const { data, loading, error } = useStrategies();
   const { tr } = useLanguage();
@@ -28,8 +32,8 @@ export default function Strategies() {
   const [detail, setDetail] = useState<PublicStrategyDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
-  const [myStrategies, setMyStrategies] = useState<MyStrategy[]>([]);
-  const [myLoading, setMyLoading] = useState(false);
+  const [myStrategies, setMyStrategies] = useState<MyStrategy[]>(cachedMyStrategies ?? []);
+  const [myLoading, setMyLoading] = useState(!cachedMyLoaded);
   const [myError, setMyError] = useState<string | null>(null);
   const [addingIds, setAddingIds] = useState<Set<string>>(new Set());
 
@@ -50,7 +54,12 @@ export default function Strategies() {
     setCreateError(null);
     createMyStrategyCustom(body)
       .then((created) => {
-        setMyStrategies((prev) => [created, ...prev]);
+        setMyStrategies((prev) => {
+          const next = [created, ...prev];
+          cachedMyStrategies = next;
+          cachedMyLoaded = true;
+          return next;
+        });
         setShowCreate(false);
       })
       .catch((err) => {
@@ -102,7 +111,10 @@ export default function Strategies() {
           if (prev.some((item) => item.my_strategy_id === created.my_strategy_id)) {
             return prev;
           }
-          return [created, ...prev];
+          const next = [created, ...prev];
+          cachedMyStrategies = next;
+          cachedMyLoaded = true;
+          return next;
         });
       })
       .catch((err) => {
@@ -124,9 +136,12 @@ export default function Strategies() {
     setMyError(null);
     deleteMyStrategy(myId)
       .then(() => {
-        setMyStrategies((prev) =>
-          prev.filter((item) => item.my_strategy_id !== myId)
-        );
+        setMyStrategies((prev) => {
+          const next = prev.filter((item) => item.my_strategy_id !== myId);
+          cachedMyStrategies = next;
+          cachedMyLoaded = true;
+          return next;
+        });
       })
       .catch((err) => {
         setMyError(
@@ -140,9 +155,12 @@ export default function Strategies() {
     setMyError(null);
     deleteMyStrategy(myStrategyId)
       .then(() => {
-        setMyStrategies((prev) =>
-          prev.filter((item) => item.my_strategy_id !== myStrategyId)
-        );
+        setMyStrategies((prev) => {
+          const next = prev.filter((item) => item.my_strategy_id !== myStrategyId);
+          cachedMyStrategies = next;
+          cachedMyLoaded = true;
+          return next;
+        });
       })
       .catch((err) => {
         setMyError(
@@ -152,6 +170,9 @@ export default function Strategies() {
   };
 
   useEffect(() => {
+    if (cachedMyLoaded) {
+      return;
+    }
     let isMounted = true;
     setMyLoading(true);
     setMyError(null);
@@ -159,6 +180,8 @@ export default function Strategies() {
     getMyStrategies()
       .then((result) => {
         if (isMounted) {
+          cachedMyStrategies = result.items;
+          cachedMyLoaded = true;
           setMyStrategies(result.items);
         }
       })
@@ -188,6 +211,14 @@ export default function Strategies() {
       return;
     }
 
+    const cached = cachedStrategyDetail.get(selected.public_strategy_id);
+    if (cached) {
+      setDetail(cached);
+      setDetailError(null);
+      setDetailLoading(false);
+      return;
+    }
+
     let isMounted = true;
     setDetailLoading(true);
     setDetailError(null);
@@ -196,6 +227,7 @@ export default function Strategies() {
       try {
         const result = await getPublicStrategy(selected.public_strategy_id);
         if (isMounted) {
+          cachedStrategyDetail.set(selected.public_strategy_id, result);
           setDetail(result);
         }
       } catch (err) {
