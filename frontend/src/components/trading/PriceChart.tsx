@@ -12,7 +12,7 @@ interface PriceChartProps {
 export default function PriceChart({ symbol, bars, lastPrice, status }: PriceChartProps) {
   const { tr } = useLanguage();
 
-  const { path, min, max } = useMemo(() => {
+  const chart = useMemo(() => {
     if (bars.length < 2) {
       return { path: "", min: 0, max: 0 };
     }
@@ -46,15 +46,15 @@ export default function PriceChart({ symbol, bars, lastPrice, status }: PriceCha
         <div className="text-right">
           <div className="text-lg font-mono font-semibold">{lastPrice ? lastPrice.toFixed(2) : "-"}</div>
           <div className="text-xs text-gray-500">
-            {min && max ? `${min.toFixed(2)} - ${max.toFixed(2)}` : ""}
+            {chart.min && chart.max ? `${chart.min.toFixed(2)} - ${chart.max.toFixed(2)}` : ""}
           </div>
         </div>
       </div>
 
       <div className="rounded-lg border border-gray-800 bg-gradient-to-br from-gray-900/40 to-transparent p-3">
-        {path ? (
+        {chart.path ? (
           <svg viewBox="0 0 600 200" className="w-full h-40">
-            <path d={path} fill="none" stroke="#3b82f6" strokeWidth="2" />
+            <path d={chart.path} fill="none" stroke="#3b82f6" strokeWidth="2" />
           </svg>
         ) : (
           <div className="h-40 flex items-center justify-center text-xs text-gray-500">

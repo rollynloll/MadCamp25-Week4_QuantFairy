@@ -1,8 +1,20 @@
+import { useMemo } from "react";
 import type { RecentTrade } from "@/types/trading";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function RecentTrades({ trades }: { trades: RecentTrade[] }) {
   const { tr } = useLanguage();
+  const rows = useMemo(
+    () =>
+      trades.map((trade, i) => ({
+        key: i,
+        time: new Date(trade.time).toLocaleTimeString(),
+        price: trade.price.toFixed(2),
+        size: trade.size,
+        side: trade.side,
+      })),
+    [trades]
+  );
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
       <h2 className="text-lg font-semibold mb-4">{tr("Recent Trades", "최근 체결")}</h2>
@@ -12,9 +24,9 @@ export default function RecentTrades({ trades }: { trades: RecentTrade[] }) {
           <span>{tr("Price", "가격")}</span>
           <span>{tr("Size", "수량")}</span>
         </div>
-        {trades.map((trade, i) => (
+        {rows.map((trade) => (
           <div
-            key={i}
+            key={trade.key}
             className={`flex justify-between items-center text-sm py-1.5 px-2 rounded ${
               trade.side === "buy"
                 ? "hover:bg-green-600/10"
@@ -22,14 +34,14 @@ export default function RecentTrades({ trades }: { trades: RecentTrade[] }) {
             }`}
           >
             <span className="font-mono text-xs text-gray-500">
-              {new Date(trade.time).toLocaleTimeString()}
+              {trade.time}
             </span>
             <span
               className={`font-mono font-semibold ${
                 trade.side === "buy" ? "text-green-400" : "text-red-400"
               }`}
             >
-              {trade.price.toFixed(2)}
+              {trade.price}
             </span>
             <span className="font-mono text-gray-400">{trade.size}</span>
           </div>
