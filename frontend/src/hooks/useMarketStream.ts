@@ -46,13 +46,62 @@ const makeWsUrl = (path: string) => {
 
 const initialBook: OrderBook = { bids: [], asks: [] };
 
-export function useMarketStream(symbol: string) {
+export type MarketTimeframe = "1D" | "1W" | "1M" | "3M" | "1Y";
+
+const resolveHistoryParams = (timeframe: MarketTimeframe) => {
+  switch (timeframe) {
+    case "1W":
+      return { timeframe: "1Day", limit: 7 };
+    case "1M":
+      return { timeframe: "1Day", limit: 30 };
+    case "3M":
+      return { timeframe: "1Day", limit: 90 };
+    case "1Y":
+      return { timeframe: "1Day", limit: 365 };
+    default:
+      return { timeframe: "1Min", limit: 390 };
+  }
+};
+
+const resolveWindowDays = (timeframe: MarketTimeframe) => {
+  switch (timeframe) {
+    case "1W":
+      return 7;
+    case "1M":
+      return 30;
+    case "3M":
+      return 90;
+    case "1Y":
+      return 365;
+    default:
+      return 1;
+  }
+};
+
+const applyTimeWindow = (bars: BarPoint[], timeframe: MarketTimeframe) => {
+  if (!bars.length) return bars;
+  const days = resolveWindowDays(timeframe);
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  const filtered = bars.filter((bar) => {
+    const t = new Date(bar.time).getTime();
+    return Number.isNaN(t) ? true : t >= cutoff;
+  });
+  return filtered.length ? filtered : bars;
+};
+
+export function useMarketStream(symbol: string, timeframe: MarketTimeframe = "1D") {
   const [orderBook, setOrderBook] = useState<OrderBook>(initialBook);
   const [trades, setTrades] = useState<RecentTrade[]>([]);
   const [bars, setBars] = useState<BarPoint[]>([]);
   const [status, setStatus] = useState<string>("connecting");
   const lastTradeRef = useRef<number | null>(null);
   const hasStreamedBars = useRef(false);
+  const timeframeRef = useRef<MarketTimeframe>(timeframe);
+  const feed = "iex";
+
+  useEffect(() => {
+    timeframeRef.current = timeframe;
+  }, [timeframe]);
 
   useEffect(() => {
     if (!symbol) return;
@@ -65,7 +114,7 @@ export function useMarketStream(symbol: string) {
     const url = makeWsUrl(
       `/api/v1/trading/stream?symbols=${encodeURIComponent(
         symbol
-      )}&channels=trades,quotes,bars`
+      )}&channels=trades,quotes,bars&feed=${feed}`
     );
     const ws = new WebSocket(url);
     let shouldClose = false;
@@ -136,6 +185,9 @@ export function useMarketStream(symbol: string) {
       }
 
       if (msg.type === "bar") {
+        if (timeframeRef.current !== "1D") {
+          return;
+        }
         hasStreamedBars.current = true;
         const point: BarPoint = {
           time: msg.time ?? new Date().toISOString(),
@@ -170,14 +222,25 @@ export function useMarketStream(symbol: string) {
   useEffect(() => {
     if (!symbol) return;
     let cancelled = false;
+    setBars([]);
+    hasStreamedBars.current = false;
 
     const loadHistory = async () => {
       try {
-        let res = await getTradingBars({ symbol, timeframe: "1Min", limit: 200 });
+        const historyParams = resolveHistoryParams(timeframe);
+        let res = await getTradingBars({
+          symbol,
+          timeframe: historyParams.timeframe,
+          limit: historyParams.limit,
+          feed,
+        });
         if (cancelled) return;
         if (hasStreamedBars.current) return;
-        if (!res.bars?.length || res.bars.length < 50) {
-          res = await getTradingBars({ symbol, timeframe: "1Day", limit: 365 });
+        if (
+          timeframe === "1D" &&
+          (!res.bars?.length || res.bars.length < 50)
+        ) {
+          res = await getTradingBars({ symbol, timeframe: "1Day", limit: 365, feed });
           if (cancelled) return;
           if (hasStreamedBars.current) return;
         }
@@ -190,7 +253,7 @@ export function useMarketStream(symbol: string) {
           close: bar.close,
           volume: bar.volume,
         }));
-        setBars(history);
+        setBars(applyTimeWindow(history, timeframe));
         lastTradeRef.current = history[history.length - 1]?.close ?? lastTradeRef.current;
       } catch {
         // ignore history fetch failures; stream may still work
@@ -201,7 +264,7 @@ export function useMarketStream(symbol: string) {
     return () => {
       cancelled = true;
     };
-  }, [symbol]);
+  }, [symbol, timeframe]);
 
   const midPrice = (() => {
     const bid = orderBook.bids[0]?.price;

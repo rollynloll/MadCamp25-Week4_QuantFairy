@@ -7,13 +7,13 @@ import PositionsTrade from "@/components/trading/PositionsTrade";
 
 import { useTradingOrders } from "@/hooks/useTradingOrders";
 import { useTradingPositions } from "@/hooks/useTradingPositions";
+import { useMarketStream } from "@/hooks/useMarketStream";
 import { mapOrder } from "@/utils/tradingOrderUtils";
 import { mapPosition } from "@/utils/tradingPositionUtils";
 
-import { orderBook } from "@/data/trading.mock";
-
 export default function Trading() {
   const [orderScope, setOrderScope] = useState<"open" | "filled">("open");
+  const [timeframe, setTimeframe] = useState<"1D" | "1W" | "1M" | "3M" | "1Y">("1D");
   const { items: openOrderItems } = useTradingOrders("open");
   const { items: filledOrderItems } = useTradingOrders("filled");
   const openOrdersUi = openOrderItems.map(mapOrder);
@@ -31,33 +31,7 @@ export default function Trading() {
     [positionsForTable, selectedSymbol]
   );
 
-  const basePriceBySymbol: Record<string, number> = {
-    AAPL: 177.5,
-    MSFT: 413.0,
-    GOOGL: 143.0,
-    TSLA: 245.2,
-    NVDA: 621.4,
-    AMD: 132.75,
-  };
-
-  const orderBookForSymbol = useMemo(() => {
-    const basePrice = basePriceBySymbol[selectedSymbol] ?? 100;
-    const bestBid = orderBook.bids[0]?.price ?? 0;
-    const bestAsk = orderBook.asks[0]?.price ?? 0;
-    const mid = bestBid && bestAsk ? (bestBid + bestAsk) / 2 : bestBid || bestAsk || 1;
-    const scale = mid ? basePrice / mid : 1;
-
-    return {
-      bids: orderBook.bids.map((bid) => ({
-        ...bid,
-        price: +(bid.price * scale).toFixed(2),
-      })),
-      asks: orderBook.asks.map((ask) => ({
-        ...ask,
-        price: +(ask.price * scale).toFixed(2),
-      })),
-    };
-  }, [orderBook, selectedSymbol]);
+  const { orderBook, bars, midPrice, spread } = useMarketStream(selectedSymbol, timeframe);
 
   return (
     <div className="space-y-6">
@@ -71,8 +45,19 @@ export default function Trading() {
       />
 
       <div className="grid grid-cols-[1fr_3fr] gap-6">
-        <OrderBook orderBook={orderBookForSymbol} symbol={selectedSymbol} />
-        <GraphCurve symbol={selectedSymbol} name={selectedPosition?.name} />
+        <OrderBook
+          orderBook={orderBook}
+          symbol={selectedSymbol}
+          midPrice={midPrice}
+          spread={spread}
+        />
+        <GraphCurve
+          symbol={selectedSymbol}
+          name={selectedPosition?.name}
+          bars={bars}
+          timeframe={timeframe}
+          onTimeframeChange={setTimeframe}
+        />
       </div>
 
       <PositionsTrade

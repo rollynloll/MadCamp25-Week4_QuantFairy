@@ -43,8 +43,8 @@ export default function OpenOrders({ orders, filledOrders = [], view, onViewChan
         </div>
       </div>
 
-      <div className="space-y-1">
-        <div className="grid grid-cols-9 gap-4 px-3 py-2 text-xs text-gray-500 font-medium border-b border-gray-800">
+      <div className="space-y-1 max-h-[360px] overflow-y-auto pr-1">
+        <div className="grid grid-cols-9 gap-4 px-3 py-2 text-xs text-gray-500 font-medium border-b border-gray-800 sticky top-0 bg-[#0d1117] z-10">
           <div>{tr("Order ID", "주문 번호")}</div>
           <div>{tr("Symbol", "종목")}</div>
           <div>{tr("Side", "구분")}</div>
