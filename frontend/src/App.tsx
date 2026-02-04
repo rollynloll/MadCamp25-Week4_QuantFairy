@@ -7,23 +7,26 @@ import Trading from "./pages/Trading";
 import StrategyPage from "./pages/StrategyPage";
 import AppLayout from "./Layout/AppLayout";
 import { LanguageProvider } from "./contexts/LanguageContext";
+import { DashboardProvider } from "./contexts/DashboardContext";
 
 function App() {
   return (
     <LanguageProvider>
-      <Router>
-        <AppLayout>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/strategies" element={<Strategies />} />
-            <Route path="/builder" element={<StrategyPage />} />
-            <Route path="/portfolio" element={<Portfolio />} />
-            <Route path="/backtest" element={<Backtest />} />
-            <Route path="/trading" element={<Trading />} />
-            <Route path="*" element={<h1>404 Not Found</h1>} />
-          </Routes>
-        </AppLayout>
-      </Router>
+      <DashboardProvider>
+        <Router>
+          <AppLayout>
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/strategies" element={<Strategies />} />
+              <Route path="/builder" element={<StrategyPage />} />
+              <Route path="/portfolio" element={<Portfolio />} />
+              <Route path="/backtest" element={<Backtest />} />
+              <Route path="/trading" element={<Trading />} />
+              <Route path="*" element={<h1>404 Not Found</h1>} />
+            </Routes>
+          </AppLayout>
+        </Router>
+      </DashboardProvider>
     </LanguageProvider>
   );
 }

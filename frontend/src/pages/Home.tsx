@@ -3,14 +3,11 @@ import MetricCard from "@/components/MetricCard";
 import PerformanceChart from "@/components/PerformanceChart";
 import ActiveStrategies from "@/components/ActiveStrategies";
 import RecentTrades from "@/components/RecentTrades";
-import { useDashboard } from "@/hooks/useDashboard";
-import { useState } from "react";
-import type { Range } from "@/types/dashboard";
+import { useDashboardContext } from "@/contexts/DashboardContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function Home() {
-  const [range, setRange] = useState<Range>("1M");
-  const { data, loading, error } = useDashboard(range);
+  const { data, loading, error, range, setRange } = useDashboardContext();
   const { tr } = useLanguage();
 
   const fmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
