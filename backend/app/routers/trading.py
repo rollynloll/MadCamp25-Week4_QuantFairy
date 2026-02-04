@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from typing import Any, Literal, Optional
 import logging
@@ -111,6 +112,7 @@ def _normalize_filled_orders_to_trades(
     *,
     user_id: str,
     environment: str,
+    symbol_strategy_map: Optional[dict[str, str]] = None,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     now_dt = datetime.now(timezone.utc)
@@ -138,7 +140,7 @@ def _normalize_filled_orders_to_trades(
                 "side": _normalize_enum_text(_get_field(order, "side", "buy"), default="buy"),
                 "qty": qty,
                 "price": price,
-                "strategy_id": None,
+                "strategy_id": (symbol_strategy_map or {}).get(symbol),
                 "strategy_name": "Unknown Strategy",
             }
         )
@@ -276,6 +278,138 @@ async def _upsert_trades(conn: Any, rows: list[dict[str, Any]]) -> None:
     await conn.executemany(query, params)
 
 
+async def _fetch_order_strategy_map(
+    conn: Any,
+    *,
+    user_id: str,
+    environment: str,
+    order_ids: list[str],
+) -> dict[str, str]:
+    if not order_ids:
+        return {}
+    rows = await conn.fetch(
+        """
+        SELECT order_id, strategy_id
+        FROM orders
+        WHERE user_id = $1::uuid
+          AND environment = $2
+          AND order_id = ANY($3::text[])
+        """,
+        user_id,
+        environment,
+        order_ids,
+    )
+    result: dict[str, str] = {}
+    for row in rows:
+        order_id = row.get("order_id")
+        strategy_id = row.get("strategy_id")
+        if order_id and strategy_id:
+            result[str(order_id)] = str(strategy_id)
+    return result
+
+
+async def _fetch_strategy_hints(
+    conn: Any,
+    *,
+    user_id: str,
+) -> tuple[dict[str, str], str | None, list[str]]:
+    rows = await conn.fetch(
+        """
+        SELECT strategy_id, state, params
+        FROM user_strategies
+        WHERE user_id = $1::uuid
+        """,
+        user_id,
+    )
+    running = [row for row in rows if str(row.get("state", "")).lower() in {"running", "paused"}]
+    if not running:
+        return {}, None, []
+
+    hints: dict[str, str] = {}
+    no_hint_ids: list[str] = []
+    for row in running:
+        sid = row.get("strategy_id")
+        if not sid:
+            continue
+        sid = str(sid)
+        params = row.get("params") or {}
+        if not isinstance(params, dict):
+            params = {}
+        row_hints: set[str] = set()
+        for key in ("benchmark_symbol", "symbol"):
+            value = params.get(key)
+            if isinstance(value, str) and value.strip():
+                row_hints.add(value.strip().upper())
+        if row_hints:
+            for sym in row_hints:
+                hints.setdefault(sym, sid)
+        else:
+            no_hint_ids.append(sid)
+
+    default_sid: str | None = None
+    if len(running) == 1:
+        only_sid = running[0].get("strategy_id")
+        default_sid = str(only_sid) if only_sid else None
+    elif len(no_hint_ids) == 1:
+        default_sid = no_hint_ids[0]
+    running_ids = [str(row.get("strategy_id")) for row in running if row.get("strategy_id")]
+    return hints, default_sid, running_ids
+
+
+def _pick_strategy_for_symbol(symbol: str, running_ids: list[str]) -> str | None:
+    if not running_ids:
+        return None
+    digest = hashlib.sha256(symbol.encode("utf-8")).hexdigest()
+    idx = int(digest[:8], 16) % len(running_ids)
+    return running_ids[idx]
+
+
+async def _fetch_existing_symbol_strategy_map(
+    conn: Any,
+    *,
+    user_id: str,
+    environment: str,
+) -> dict[str, str]:
+    result: dict[str, str] = {}
+
+    pos_rows = await conn.fetch(
+        """
+        SELECT symbol, strategy_id
+        FROM positions
+        WHERE user_id = $1::uuid
+          AND environment = $2
+          AND strategy_id IS NOT NULL
+        """,
+        user_id,
+        environment,
+    )
+    for row in pos_rows:
+        symbol = row.get("symbol")
+        strategy_id = row.get("strategy_id")
+        if symbol and strategy_id:
+            result[str(symbol).upper()] = str(strategy_id)
+
+    order_rows = await conn.fetch(
+        """
+        SELECT DISTINCT ON (symbol) symbol, strategy_id
+        FROM orders
+        WHERE user_id = $1::uuid
+          AND environment = $2
+          AND strategy_id IS NOT NULL
+        ORDER BY symbol, COALESCE(filled_at, submitted_at) DESC NULLS LAST
+        """,
+        user_id,
+        environment,
+    )
+    for row in order_rows:
+        symbol = row.get("symbol")
+        strategy_id = row.get("strategy_id")
+        if symbol and strategy_id and str(symbol).upper() not in result:
+            result[str(symbol).upper()] = str(strategy_id)
+
+    return result
+
+
 async def _replace_positions(
     conn: Any,
     *,
@@ -283,6 +417,61 @@ async def _replace_positions(
     environment: str,
     rows: list[dict[str, Any]],
 ) -> None:
+    existing = await conn.fetch(
+        """
+        SELECT symbol, strategy_id
+        FROM positions
+        WHERE user_id = $1::uuid
+          AND environment = $2
+        """,
+        user_id,
+        environment,
+    )
+    existing_strategy_by_symbol: dict[str, str] = {}
+    for row in existing:
+        symbol = row.get("symbol")
+        strategy_id = row.get("strategy_id")
+        if symbol and strategy_id:
+            existing_strategy_by_symbol[str(symbol).upper()] = str(strategy_id)
+
+    for row in rows:
+        symbol = str(row.get("symbol", "")).upper()
+        if symbol and not row.get("strategy_id") and symbol in existing_strategy_by_symbol:
+            row["strategy_id"] = existing_strategy_by_symbol[symbol]
+
+    order_symbol_strategy = await conn.fetch(
+        """
+        SELECT DISTINCT ON (symbol) symbol, strategy_id
+        FROM orders
+        WHERE user_id = $1::uuid
+          AND environment = $2
+          AND strategy_id IS NOT NULL
+        ORDER BY symbol, COALESCE(filled_at, submitted_at) DESC NULLS LAST
+        """,
+        user_id,
+        environment,
+    )
+    order_strategy_by_symbol: dict[str, str] = {}
+    for row in order_symbol_strategy:
+        symbol = row.get("symbol")
+        strategy_id = row.get("strategy_id")
+        if symbol and strategy_id:
+            order_strategy_by_symbol[str(symbol).upper()] = str(strategy_id)
+
+    strategy_hints, default_strategy_id, running_strategy_ids = await _fetch_strategy_hints(
+        conn, user_id=user_id
+    )
+    for row in rows:
+        symbol = str(row.get("symbol", "")).upper()
+        if not symbol or row.get("strategy_id"):
+            continue
+        row["strategy_id"] = (
+            order_strategy_by_symbol.get(symbol)
+            or strategy_hints.get(symbol)
+            or default_strategy_id
+            or _pick_strategy_for_symbol(symbol, running_strategy_ids)
+        )
+
     async with conn.transaction():
         await conn.execute(
             "DELETE FROM positions WHERE user_id = $1::uuid AND environment = $2",
@@ -346,11 +535,41 @@ async def _sync_alpaca_snapshot(
             raw_orders = await anyio.to_thread.run_sync(lambda: client.get_orders(status="all", limit=500))
             if raw_orders is not None:
                 order_rows = _normalize_alpaca_orders(raw_orders, user_id=user_id, environment=env)
+                order_ids = [row["order_id"] for row in order_rows]
+                existing_order_strategy_map = await _fetch_order_strategy_map(
+                    conn,
+                    user_id=user_id,
+                    environment=env,
+                    order_ids=order_ids,
+                )
+                existing_symbol_strategy_map = await _fetch_existing_symbol_strategy_map(
+                    conn,
+                    user_id=user_id,
+                    environment=env,
+                )
+                strategy_hints, default_strategy_id, running_strategy_ids = await _fetch_strategy_hints(
+                    conn,
+                    user_id=user_id,
+                )
+                for row in order_rows:
+                    symbol = str(row.get("symbol", "")).upper()
+                    sid = (
+                        existing_order_strategy_map.get(row["order_id"])
+                        or existing_symbol_strategy_map.get(symbol)
+                        or strategy_hints.get(symbol)
+                        or default_strategy_id
+                        or _pick_strategy_for_symbol(symbol, running_strategy_ids)
+                    )
+                    if sid:
+                        row["strategy_id"] = sid
+                        if symbol:
+                            existing_symbol_strategy_map.setdefault(symbol, sid)
                 await _upsert_orders(conn, order_rows)
                 trade_rows = _normalize_filled_orders_to_trades(
                     raw_orders,
                     user_id=user_id,
                     environment=env,
+                    symbol_strategy_map=existing_symbol_strategy_map,
                 )
                 await _upsert_trades(conn, trade_rows)
                 SYNC_CACHE.set(f"trading:orders:{env}:{user_id}", True, ttl=ORDER_SYNC_TTL)

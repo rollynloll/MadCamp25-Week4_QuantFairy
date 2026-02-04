@@ -6,6 +6,7 @@ interface ActiveStrategy {
   name: string;
   state: StrategyState;
   positions_count: number;
+  managed_value: number;
   pnl_today: {
     value: number;
     pct: number;
@@ -49,13 +50,8 @@ export default function ActiveStrategies({
                   />
                   <span className="text-sm font-semibold">{strategy.name}</span>
                 </div>
-                <span
-                  className={`text-sm font-semibold ${
-                    strategy.pnl_today.value >= 0 ? "text-green-500" : "text-red-500"
-                  }`}
-                >
-                  {strategy.pnl_today.value >= 0 ? "+" : ""}
-                  ${strategy.pnl_today.value.toFixed(2)}
+                <span className="text-sm font-semibold text-blue-400">
+                  AUM ${strategy.managed_value.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                 </span>
               </div>
               <div className="flex items-center justify-between text-xs text-gray-500">

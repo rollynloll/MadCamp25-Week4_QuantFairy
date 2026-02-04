@@ -609,7 +609,11 @@ def _positions_to_db_rows(
                 "qty": pos["qty"],
                 "avg_entry_price": pos["avg_entry_price"],
                 "unrealized_pnl": pos["unrealized_pnl"]["value"],
-                "strategy_id": None,
+                "strategy_id": (
+                    pos.get("strategy", {}).get("user_strategy_id")
+                    if isinstance(pos.get("strategy"), dict)
+                    else None
+                ),
                 "updated_at": now,
             }
         )
@@ -1433,6 +1437,41 @@ async def rebalance_portfolio(
         scale = investable_pct / total_target
 
     grouped = _aggregate_position_values(positions)
+    symbol_strategy_scores: Dict[str, Dict[str, float]] = {}
+    existing_symbol_strategy: Dict[str, str] = {}
+
+    def add_symbol_strategy_score(symbol: str, strategy_id: str, value: float) -> None:
+        if value <= 0:
+            return
+        bucket = symbol_strategy_scores.setdefault(symbol, {})
+        bucket[strategy_id] = bucket.get(strategy_id, 0.0) + float(value)
+
+    for strategy_id, current in grouped.items():
+        best_value = -1.0
+        for pos in current["positions"]:
+            symbol = pos["symbol"]
+            abs_value = float(pos.get("abs_value", 0.0))
+            add_symbol_strategy_score(symbol, strategy_id, abs_value)
+            if abs_value > best_value:
+                best_value = abs_value
+                existing_symbol_strategy[symbol] = strategy_id
+
+    for strategy_id, weight_pct in cleaned_weights.items():
+        current = grouped.get(strategy_id)
+        current_value = current["value"] if current else 0.0
+        if current_value <= 0:
+            continue
+        target_value = account.equity * (weight_pct * scale / 100.0)
+        for pos in current["positions"]:
+            abs_value = float(pos.get("abs_value", 0.0))
+            if abs_value <= 0:
+                continue
+            target_pos_value = target_value * abs_value / current_value
+            delta_value = abs(target_pos_value - abs_value)
+            if delta_value <= 0:
+                continue
+            add_symbol_strategy_score(pos["symbol"], strategy_id, delta_value)
+
     allow_new_positions = bool(payload.allow_new_positions)
     extra_symbol_targets: Dict[str, float] = {}
     price_overrides: Dict[str, float] = {}
@@ -1461,9 +1500,9 @@ async def rebalance_portfolio(
                     status_code=404,
                 )
             for symbol, symbol_weight in weights.items():
-                extra_symbol_targets[symbol] = extra_symbol_targets.get(symbol, 0.0) + (
-                    target_value * float(symbol_weight)
-                )
+                symbol_target_value = target_value * float(symbol_weight)
+                extra_symbol_targets[symbol] = extra_symbol_targets.get(symbol, 0.0) + symbol_target_value
+                add_symbol_strategy_score(symbol, strategy_id, abs(symbol_target_value))
             for symbol, price in price_map.items():
                 if symbol not in price_overrides and price > 0:
                     price_overrides[symbol] = price
@@ -1484,6 +1523,23 @@ async def rebalance_portfolio(
         len(orders),
         target_cash_pct,
     )
+
+    symbol_strategy_map: Dict[str, str] = {}
+    for symbol, bucket in symbol_strategy_scores.items():
+        if not bucket:
+            continue
+        symbol_strategy_map[symbol] = max(bucket.items(), key=lambda item: item[1])[0]
+    symbol_strategy_map.update({k: v for k, v in existing_symbol_strategy.items() if k not in symbol_strategy_map})
+
+    strategy_name_map: Dict[str, str] = {}
+    try:
+        for row in MyStrategiesRepository(settings).list(user_id, {}, "updated_at", "desc", 1000, None):
+            sid = row.get("strategy_id")
+            name = row.get("name")
+            if sid and name:
+                strategy_name_map[str(sid)] = str(name)
+    except Exception:
+        strategy_name_map = {}
 
     rebalance_id = f"rb_{now_kst().strftime('%Y%m%d_%H%M%S')}"
     submitted_results: List[Dict[str, Any]] = []
@@ -1530,7 +1586,7 @@ async def rebalance_portfolio(
                     "status": "submitted" if isinstance(result, dict) and result.get("ok") else "failed",
                     "submitted_at": str(submitted_at) if submitted_at else now_kst().isoformat(),
                     "filled_at": str(filled_at) if filled_at else None,
-                    "strategy_id": None,
+                    "strategy_id": symbol_strategy_map.get(order["symbol"]),
                 }
             )
             logger.info(
@@ -1549,6 +1605,17 @@ async def rebalance_portfolio(
             OrdersRepository(settings).upsert_many(order_rows)
         raw_positions = client.get_positions() or []
         alpaca_positions = _normalize_positions(raw_positions)
+        for pos in alpaca_positions:
+            symbol = pos.get("symbol")
+            if not symbol:
+                continue
+            strategy_id = symbol_strategy_map.get(symbol) or existing_symbol_strategy.get(symbol)
+            if not strategy_id:
+                continue
+            pos["strategy"] = {
+                "user_strategy_id": strategy_id,
+                "name": strategy_name_map.get(strategy_id, pos.get("strategy", {}).get("name", "Unassigned")),
+            }
         logger.info("rebalance.positions count=%s", len(alpaca_positions))
         PositionsRepository(settings).replace_all(
             user_id,

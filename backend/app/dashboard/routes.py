@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import logging
-from typing import List, Literal, Any
-from datetime import datetime
+import math
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Literal
 
 from fastapi import APIRouter, Header, Query
 
@@ -38,6 +40,17 @@ def _range_days(range_value: str) -> int:
         "1Y": 365,
         "ALL": 730,
     }.get(range_value, 30)
+
+
+def _range_to_alpaca_period(range_value: str) -> str:
+    return {
+        "1D": "1D",
+        "1W": "1W",
+        "1M": "1M",
+        "3M": "3M",
+        "1Y": "1A",
+        "ALL": "ALL",
+    }.get(range_value, "1M")
 
 
 def _equity_curve_fallback(equity_value: float) -> List[dict]:
@@ -81,6 +94,17 @@ def _to_iso(value: Any) -> str | None:
     return str(value)
 
 
+def _to_equity_timestamp_iso(value: Any) -> str:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, (int, float)):
+        ts = float(value)
+        if ts > 10_000_000_000:
+            ts = ts / 1000.0
+        return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+    return str(value)
+
+
 def _normalize_enum_text(value: Any, default: str = "") -> str:
     if value is None:
         return default
@@ -90,6 +114,66 @@ def _normalize_enum_text(value: Any, default: str = "") -> str:
     if "." in text:
         text = text.split(".")[-1]
     return text.lower()
+
+
+def _history_to_equity_points(history: Any) -> List[dict]:
+    timestamps = _get_field(history, "timestamp") or _get_field(history, "timestamps")
+    equity = _get_field(history, "equity")
+    if not timestamps or not equity:
+        return []
+    points: List[dict] = []
+    for ts, eq in zip(timestamps, equity):
+        points.append({"t": _to_equity_timestamp_iso(ts), "equity": _to_float(eq, 0.0)})
+    return _sanitize_equity_curve(points)
+
+
+def _sanitize_equity_curve(points: List[dict]) -> List[dict]:
+    cleaned: List[dict] = []
+    for point in sorted(points, key=lambda item: str(item.get("t", ""))):
+        ts = point.get("t")
+        if ts is None:
+            continue
+        equity = _to_float(point.get("equity", 0.0), 0.0)
+        if not math.isfinite(equity):
+            continue
+        cleaned.append({"t": str(ts), "equity": equity})
+
+    # Drop zero placeholder points when valid positive points exist.
+    if any(item["equity"] > 0 for item in cleaned):
+        cleaned = [item for item in cleaned if item["equity"] > 0]
+    return cleaned
+
+
+def _ensure_latest_equity_point(
+    equity_curve: List[dict],
+    latest_equity: float,
+    *,
+    now_dt: datetime | None = None,
+) -> tuple[List[dict], bool]:
+    if latest_equity <= 0:
+        return equity_curve, False
+    now_dt = now_dt or now_kst()
+    now_iso = now_dt.isoformat()
+    if not equity_curve:
+        return [{"t": now_iso, "equity": latest_equity}], True
+
+    last_point = equity_curve[-1]
+    last_equity = _to_float(last_point.get("equity"), latest_equity)
+    last_ts = last_point.get("t")
+    last_dt: datetime | None = None
+    if last_ts is not None:
+        try:
+            last_dt = parse_datetime(str(last_ts))
+        except Exception:
+            last_dt = None
+
+    # Reflect latest account equity when history lags by day or value changed intraday.
+    should_append = abs(last_equity - latest_equity) > 0.01
+    if last_dt is not None and last_dt.date() < now_dt.date():
+        should_append = True
+    if not should_append:
+        return equity_curve, False
+    return [*equity_curve, {"t": now_iso, "equity": latest_equity}], True
 
 
 def _normalize_orders(
@@ -127,6 +211,7 @@ def _normalize_filled_orders_to_trades(
     *,
     user_id: str,
     environment: str,
+    symbol_strategy_map: Dict[str, str] | None = None,
 ) -> List[dict]:
     rows: List[dict] = []
     now_iso = now_kst().isoformat()
@@ -154,11 +239,54 @@ def _normalize_filled_orders_to_trades(
                 "side": _normalize_enum_text(_get_field(order, "side", "buy"), default="buy"),
                 "qty": qty,
                 "price": price,
-                "strategy_id": None,
+                "strategy_id": (symbol_strategy_map or {}).get(symbol),
                 "strategy_name": "Unknown Strategy",
             }
         )
     return rows
+
+
+def _build_strategy_hints(strategies: List[dict]) -> tuple[Dict[str, str], str | None, List[str]]:
+    running = [row for row in strategies if str(row.get("state", "")).lower() in {"running", "paused"}]
+    if not running:
+        return {}, None, []
+    hints: Dict[str, str] = {}
+    no_hint_ids: list[str] = []
+    for row in running:
+        sid = row.get("strategy_id")
+        if not sid:
+            continue
+        sid = str(sid)
+        params = row.get("params") or {}
+        if not isinstance(params, dict):
+            params = {}
+        row_hints: set[str] = set()
+        for key in ("benchmark_symbol", "symbol"):
+            value = params.get(key)
+            if isinstance(value, str) and value.strip():
+                row_hints.add(value.strip().upper())
+        if row_hints:
+            for sym in row_hints:
+                hints.setdefault(sym, sid)
+        else:
+            no_hint_ids.append(sid)
+
+    default_sid: str | None = None
+    if len(running) == 1:
+        only_sid = running[0].get("strategy_id")
+        default_sid = str(only_sid) if only_sid else None
+    elif len(no_hint_ids) == 1:
+        default_sid = no_hint_ids[0]
+    running_ids = [str(row.get("strategy_id")) for row in running if row.get("strategy_id")]
+    return hints, default_sid, running_ids
+
+
+def _pick_strategy_for_symbol(symbol: str, running_ids: List[str]) -> str | None:
+    if not running_ids:
+        return None
+    digest = hashlib.sha256(symbol.encode("utf-8")).hexdigest()
+    idx = int(digest[:8], 16) % len(running_ids)
+    return running_ids[idx]
 
 
 def _normalize_positions(
@@ -186,6 +314,38 @@ def _normalize_positions(
             }
         )
     return rows
+
+
+def _compute_strategy_runtime_metrics(position_rows: List[dict]) -> Dict[str, Dict[str, float | int]]:
+    metrics: Dict[str, Dict[str, float | int]] = {}
+    for row in position_rows:
+        strategy_id = row.get("strategy_id") or row.get("user_strategy_id")
+        if not strategy_id:
+            continue
+        strategy_key = str(strategy_id)
+        qty = abs(_to_float(row.get("qty", 0.0)))
+        avg_entry_price = _to_float(row.get("avg_entry_price", 0.0))
+        unrealized_pnl = _to_float(row.get("unrealized_pnl", row.get("unrealized_pl", 0.0)))
+        exposure_value = abs(qty * avg_entry_price)
+        item = metrics.setdefault(
+            strategy_key,
+            {
+                "positions_count": 0,
+                "pnl_today_value": 0.0,
+                "pnl_today_pct": 0.0,
+                "managed_value": 0.0,
+            },
+        )
+        if qty > 0:
+            item["positions_count"] = int(item["positions_count"]) + 1
+        item["pnl_today_value"] = float(item["pnl_today_value"]) + unrealized_pnl
+        item["managed_value"] = float(item["managed_value"]) + exposure_value
+
+    for item in metrics.values():
+        managed_value = float(item.get("managed_value", 0.0) or 0.0)
+        pnl_value = float(item.get("pnl_today_value", 0.0) or 0.0)
+        item["pnl_today_pct"] = (pnl_value / managed_value * 100.0) if managed_value > 0 else 0.0
+    return metrics
 
 @router.get("/dashboard", response_model=DashboardResponse)
 async def get_dashboard(
@@ -218,13 +378,55 @@ async def get_dashboard(
     broker_state = "connected" if account_result.account else "down"
     if account_result.account:
         try:
+            strategy_rows = strategies_repo.list(resolved_user_id)
+            strategy_hints, default_strategy_id, running_strategy_ids = _build_strategy_hints(
+                strategy_rows
+            )
+            existing_orders = orders_repo.list_recent(
+                resolved_user_id,
+                environment,
+                limit=1000,
+            )
+            existing_positions = positions_repo.list(resolved_user_id, environment, limit=1000)
+            existing_symbol_strategy_map: Dict[str, str] = {
+                str(row.get("symbol")).upper(): str(row.get("strategy_id"))
+                for row in existing_orders
+                if row.get("symbol") and row.get("strategy_id")
+            }
+            existing_symbol_strategy_map.update(
+                {
+                    str(row.get("symbol")).upper(): str(row.get("strategy_id"))
+                    for row in existing_positions
+                    if row.get("symbol")
+                    and row.get("strategy_id")
+                    and str(row.get("symbol")).upper() not in existing_symbol_strategy_map
+                }
+            )
+
             raw_orders = alpaca.get_orders(status="all", limit=200) or []
             order_rows = _normalize_orders(
                 raw_orders, user_id=resolved_user_id, environment=environment
             )
+            for row in order_rows:
+                symbol = str(row.get("symbol", "")).upper()
+                if not symbol:
+                    continue
+                sid = (
+                    existing_symbol_strategy_map.get(symbol)
+                    or strategy_hints.get(symbol)
+                    or default_strategy_id
+                    or _pick_strategy_for_symbol(symbol, running_strategy_ids)
+                )
+                if sid:
+                    row["strategy_id"] = sid
+                    existing_symbol_strategy_map.setdefault(symbol, sid)
+
             orders_repo.upsert_many(order_rows)
             trade_rows = _normalize_filled_orders_to_trades(
-                raw_orders, user_id=resolved_user_id, environment=environment
+                raw_orders,
+                user_id=resolved_user_id,
+                environment=environment,
+                symbol_strategy_map=existing_symbol_strategy_map,
             )
             trades_repo.upsert_many(trade_rows)
 
@@ -232,7 +434,26 @@ async def get_dashboard(
             position_rows = _normalize_positions(
                 raw_positions, user_id=resolved_user_id, environment=environment
             )
+            for row in position_rows:
+                symbol = str(row.get("symbol", "")).upper()
+                if not symbol:
+                    continue
+                sid = (
+                    existing_symbol_strategy_map.get(symbol)
+                    or strategy_hints.get(symbol)
+                    or default_strategy_id
+                    or _pick_strategy_for_symbol(symbol, running_strategy_ids)
+                )
+                if sid:
+                    row["strategy_id"] = sid
+                    existing_symbol_strategy_map.setdefault(symbol, sid)
+
             positions_repo.replace_all(resolved_user_id, environment, position_rows)
+            existing_order_strategy_map = {
+                str(row.get("order_id")): str(row.get("strategy_id"))
+                for row in existing_orders
+                if row.get("order_id") and row.get("strategy_id")
+            }
 
             logger.info(
                 "dashboard.alpaca_sync env=%s orders=%s trades=%s positions=%s",
@@ -292,24 +513,68 @@ async def get_dashboard(
     active_strategies = []
     allowed_strategy_states = {"running", "paused", "idle", "error"}
     strategies_repo.ensure_seed(resolved_user_id)
+    strategy_runtime_metrics: Dict[str, Dict[str, float | int]] = {}
+    try:
+        position_rows = positions_repo.list(resolved_user_id, environment, limit=1000)
+        strategy_runtime_metrics = _compute_strategy_runtime_metrics(position_rows)
+    except Exception:
+        strategy_runtime_metrics = {}
+
+    try:
+        strategies_repo.update_runtime_metrics(resolved_user_id, strategy_runtime_metrics)
+    except Exception as exc:
+        logger.warning(
+            "dashboard.strategy_metrics_update_failed user_id=%s env=%s error=%s",
+            resolved_user_id,
+            environment,
+            exc,
+        )
+
     for strat in strategies_repo.list_active(resolved_user_id):
         state = strat.get("state") if strat.get("state") in allowed_strategy_states else "idle"
+        strategy_id = str(strat["strategy_id"])
+        runtime_metrics = strategy_runtime_metrics.get(strategy_id, {})
+        positions_count = int(runtime_metrics.get("positions_count", strat.get("positions_count", 0)) or 0)
+        pnl_today_value = float(runtime_metrics.get("pnl_today_value", strat.get("pnl_today_value", 0)) or 0.0)
+        pnl_today_pct = float(runtime_metrics.get("pnl_today_pct", strat.get("pnl_today_pct", 0)) or 0.0)
+        managed_value = float(runtime_metrics.get("managed_value", 0.0) or 0.0)
         active_strategies.append(
             {
-                "strategy_id": strat["strategy_id"],
+                "strategy_id": strategy_id,
                 "name": strat["name"],
                 "state": state,
-                "positions_count": int(strat.get("positions_count", 0)),
+                "positions_count": positions_count,
+                "managed_value": managed_value,
                 "pnl_today": {
-                    "value": float(strat.get("pnl_today_value", 0)),
-                    "pct": float(strat.get("pnl_today_pct", 0)),
+                    "value": pnl_today_value,
+                    "pct": pnl_today_pct,
                 },
             }
         )
 
+    all_strategy_name_map: Dict[str, str] = {}
+    try:
+        for row in strategies_repo.list(resolved_user_id):
+            sid = row.get("strategy_id")
+            name = row.get("name")
+            if sid and name:
+                all_strategy_name_map[str(sid)] = str(name)
+    except Exception:
+        all_strategy_name_map = {}
+    strategy_name_map = {str(item["strategy_id"]): str(item["name"]) for item in active_strategies}
+    strategy_name_map.update({k: v for k, v in all_strategy_name_map.items() if k not in strategy_name_map})
+
     trades = []
     for trade in trades_repo.list_recent(resolved_user_id, environment):
         filled_at = trade.get("filled_at") or now_kst().isoformat()
+        strategy_id = trade.get("strategy_id") or "unknown"
+        raw_strategy_name = str(trade.get("strategy_name") or "").strip()
+        is_placeholder_name = raw_strategy_name.lower() in {"", "unknown", "unknown strategy", "-"}
+        strategy_name = (
+            strategy_name_map.get(str(strategy_id))
+            if is_placeholder_name
+            else raw_strategy_name
+        ) or "Unknown Strategy"
         trades.append(
             {
                 "fill_id": trade.get("fill_id") or "fill_unknown",
@@ -318,8 +583,8 @@ async def get_dashboard(
                 "side": trade.get("side") or "buy",
                 "qty": float(trade.get("qty") or 0),
                 "price": float(trade.get("price") or 0),
-                "strategy_id": trade.get("strategy_id") or "unknown",
-                "strategy_name": trade.get("strategy_name") or "Unknown Strategy",
+                "strategy_id": strategy_id,
+                "strategy_name": strategy_name,
             }
         )
 
@@ -343,8 +608,37 @@ async def get_dashboard(
             }
         )
 
-    # ✅ equity_curve: repo 반환 포맷이 달라도 프론트 타입 {t, equity}로 normalize
-    equity_curve_raw = portfolio_repo.list_equity_curve(
+    history_curve: List[dict] = []
+    try:
+        history = alpaca.get_portfolio_history(
+            period=_range_to_alpaca_period(range),
+            timeframe="1D",
+        )
+        history_curve = _history_to_equity_points(history)
+        history_curve, _ = _ensure_latest_equity_point(history_curve, equity)
+        if history_curve:
+            portfolio_repo.replace_equity_curve_range(
+                resolved_user_id,
+                environment,
+                history_curve,
+                cash=cash,
+            )
+            logger.info(
+                "dashboard.performance_from_alpaca env=%s range=%s points=%s",
+                environment,
+                range,
+                len(history_curve),
+            )
+    except Exception as exc:
+        logger.warning(
+            "dashboard.performance_alpaca_failed env=%s range=%s error=%s",
+            environment,
+            range,
+            exc,
+        )
+
+    # ✅ equity_curve: Alpaca history 우선, 없으면 snapshots fallback
+    equity_curve_raw = history_curve or portfolio_repo.list_equity_curve(
         resolved_user_id, environment, _range_days(range)
     ) or []
 
@@ -371,6 +665,7 @@ async def get_dashboard(
         if equity_val is None:
             equity_val = row.get("value") or row.get("equity_value")
         equity_curve.append({"t": str(t), "equity": float(equity_val or 0)})
+    equity_curve = _sanitize_equity_curve(equity_curve)
 
     if not equity_curve and equity > 0:
         # fallback도 프론트 타입에 맞게 {t, equity}로
@@ -382,6 +677,18 @@ async def get_dashboard(
                 equity_val = row.get("equity") if row.get("equity") is not None else row.get("value")
                 if t is not None:
                     equity_curve.append({"t": str(t), "equity": float(equity_val or 0)})
+
+    equity_curve, appended_latest = _ensure_latest_equity_point(equity_curve, equity)
+    if appended_latest and equity_curve:
+        try:
+            portfolio_repo.replace_equity_curve_range(
+                resolved_user_id,
+                environment,
+                equity_curve,
+                cash=cash,
+            )
+        except Exception:
+            pass
 
     first_equity = equity_curve[0]["equity"] if equity_curve else equity
     last_equity = equity_curve[-1]["equity"] if equity_curve else equity
