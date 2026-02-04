@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Literal
+from typing import List, Literal, Any
+from datetime import datetime
 
 from fastapi import APIRouter, Header, Query
 
@@ -18,6 +19,7 @@ from app.storage.strategies_repo import StrategiesRepository
 from app.storage.trades_repo import TradesRepository
 from app.storage.user_accounts_repo import UserAccountsRepository
 from app.storage.user_settings_repo import UserSettingsRepository
+from app.storage.orders_repo import OrdersRepository
 
 
 router = APIRouter()
@@ -57,6 +59,84 @@ def _max_drawdown_pct(equity_curve: List[dict]) -> float:
                 max_drawdown = drawdown
     return max_drawdown
 
+
+def _get_field(obj: Any, name: str, default: Any = None) -> Any:
+    if isinstance(obj, dict):
+        return obj.get(name, default)
+    return getattr(obj, name, default)
+
+
+def _to_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _to_iso(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
+
+
+def _normalize_orders(
+    raw_orders: Any,
+    *,
+    user_id: str,
+    environment: str,
+) -> List[dict]:
+    rows: List[dict] = []
+    for order in raw_orders or []:
+        order_id = _get_field(order, "id") or _get_field(order, "client_order_id")
+        symbol = str(_get_field(order, "symbol", "")).upper()
+        if not order_id or not symbol:
+            continue
+        rows.append(
+            {
+                "order_id": str(order_id),
+                "user_id": user_id,
+                "environment": environment,
+                "symbol": symbol,
+                "side": str(_get_field(order, "side", "")).lower(),
+                "qty": _to_float(_get_field(order, "qty", 0)),
+                "type": str(_get_field(order, "type", "market")),
+                "status": str(_get_field(order, "status", "unknown")),
+                "submitted_at": _to_iso(_get_field(order, "submitted_at")),
+                "filled_at": _to_iso(_get_field(order, "filled_at")),
+                "strategy_id": None,
+            }
+        )
+    return rows
+
+
+def _normalize_positions(
+    raw_positions: Any,
+    *,
+    user_id: str,
+    environment: str,
+) -> List[dict]:
+    now = now_kst().isoformat()
+    rows: List[dict] = []
+    for pos in raw_positions or []:
+        symbol = str(_get_field(pos, "symbol", "")).upper()
+        if not symbol:
+            continue
+        rows.append(
+            {
+                "user_id": user_id,
+                "environment": environment,
+                "symbol": symbol,
+                "qty": _to_float(_get_field(pos, "qty", 0)),
+                "avg_entry_price": _to_float(_get_field(pos, "avg_entry_price", 0)),
+                "unrealized_pnl": _to_float(_get_field(pos, "unrealized_pl", 0)),
+                "strategy_id": None,
+                "updated_at": now,
+            }
+        )
+    return rows
+
 @router.get("/dashboard", response_model=DashboardResponse)
 async def get_dashboard(
     range: RangeLiteral = Query(default="1M", description="Time range"),
@@ -77,6 +157,7 @@ async def get_dashboard(
     portfolio_repo = PortfolioRepository(settings)
     positions_repo = PositionsRepository(settings)
     bot_runs_repo = BotRunsRepository(settings)
+    orders_repo = OrdersRepository(settings)
 
     user_settings = settings_repo.get_or_create(resolved_user_id)
     environment = user_settings.get("environment", "paper")
@@ -85,6 +166,28 @@ async def get_dashboard(
     alpaca = AlpacaClient(settings, environment)
     account_result = alpaca.get_account()
     broker_state = "connected" if account_result.account else "down"
+    if account_result.account:
+        try:
+            raw_orders = alpaca.get_orders(status="all", limit=200) or []
+            order_rows = _normalize_orders(
+                raw_orders, user_id=resolved_user_id, environment=environment
+            )
+            orders_repo.upsert_many(order_rows)
+
+            raw_positions = alpaca.get_positions() or []
+            position_rows = _normalize_positions(
+                raw_positions, user_id=resolved_user_id, environment=environment
+            )
+            positions_repo.replace_all(resolved_user_id, environment, position_rows)
+
+            logger.info(
+                "dashboard.alpaca_sync env=%s orders=%s positions=%s",
+                environment,
+                len(order_rows),
+                len(position_rows),
+            )
+        except Exception as exc:
+            logger.warning("dashboard.alpaca_sync failed env=%s error=%s", environment, exc)
 
     account_row = accounts_repo.get_latest(resolved_user_id, environment)
     if account_row is None and account_result.account:
