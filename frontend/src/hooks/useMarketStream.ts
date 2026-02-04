@@ -40,8 +40,12 @@ const resolveBaseUrl = () => {
 
 const makeWsUrl = (path: string) => {
   const base = resolveBaseUrl();
-  const wsBase = base.replace(/^http/, "ws");
-  return `${wsBase}${path}`;
+  const normalizedBase = base.replace(/\/api\/v1\/?$/, "");
+  const normalizedPath = path.startsWith("/api/v1")
+    ? path
+    : `/api/v1${path.startsWith("/") ? "" : "/"}${path}`;
+  const wsBase = normalizedBase.replace(/^http/, "ws");
+  return `${wsBase}${normalizedPath}`;
 };
 
 const initialBook: OrderBook = { bids: [], asks: [] };
