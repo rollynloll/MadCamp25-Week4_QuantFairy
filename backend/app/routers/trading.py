@@ -5,7 +5,9 @@ import json
 from typing import Any, Literal, Optional
 import logging
 import anyio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
+from math import ceil
+import re
 
 import websockets
 from websockets.exceptions import ConnectionClosed
@@ -22,6 +24,7 @@ from app.schemas.trading import (
     LastFillResponse,
     BarsResponse,
 )
+from app.services.data_provider import load_price_series
 from app.services.trading_service import (
     fetch_order_by_id,
     fetch_orders,
@@ -37,13 +40,14 @@ try:  # optional alpaca-py data client
     from alpaca.data.historical import StockHistoricalDataClient
     from alpaca.data.requests import StockBarsRequest
     from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
-    from alpaca.data.enums import DataFeed
+    from alpaca.data.enums import DataFeed, Adjustment
 except Exception:  # pragma: no cover - optional dependency
     StockHistoricalDataClient = None
     StockBarsRequest = None
     TimeFrame = None
     TimeFrameUnit = None
     DataFeed = None
+    Adjustment = None
 
 EnvLiteral = Literal["paper", "live"]
 ScopeLiteral = Literal["open", "filled", "all"]
@@ -103,6 +107,83 @@ def _parse_data_feed(raw: str | None) -> Any:
         return DataFeed(raw)
     except Exception:
         raise APIError("VALIDATION_ERROR", f"unsupported feed: {raw}", status_code=400)
+
+
+def _estimate_days(timeframe: str, limit: int) -> int:
+    value = timeframe.strip().lower()
+    match = re.match(r"(\d+)", value)
+    amount = int(match.group(1)) if match else 1
+    if "min" in value:
+        return max(1, ceil(limit * amount / 60 / 24))
+    if "hour" in value:
+        return max(1, ceil(limit * amount / 24))
+    if "day" in value:
+        return max(1, limit)
+    return max(1, limit)
+
+
+def _timeframe_hours(value: str) -> int | None:
+    value = value.strip().lower()
+    if "hour" not in value:
+        return None
+    match = re.match(r"(\d+)", value)
+    amount = int(match.group(1)) if match else 1
+    return max(1, amount)
+
+
+def _upsample_daily_to_hours(daily: list[dict], hour_step: int) -> list[dict]:
+    if not daily:
+        return []
+    expanded: list[dict] = []
+    for bar in daily:
+        base_time = str(bar.get("time", ""))[:10]
+        for hour in range(0, 24, hour_step):
+            ts = f"{base_time}T{hour:02d}:00:00Z"
+            expanded.append(
+                {
+                    "time": ts,
+                    "open": bar.get("open", 0),
+                    "high": bar.get("high", 0),
+                    "low": bar.get("low", 0),
+                    "close": bar.get("close", 0),
+                    "volume": bar.get("volume", 0),
+                }
+            )
+    return expanded
+
+
+def _timeframe_minutes(value: str) -> int | None:
+    value = value.strip().lower()
+    if "min" not in value:
+        return None
+    match = re.match(r"(\d+)", value)
+    amount = int(match.group(1)) if match else 1
+    return max(1, amount)
+
+
+def _upsample_daily_to_minutes(daily: list[dict], minute_step: int) -> list[dict]:
+    if not daily:
+        return []
+    expanded: list[dict] = []
+    for bar in daily:
+        base_time = str(bar.get("time", ""))[:10]
+        # 09:30~16:00 regular session (390 minutes)
+        for offset in range(0, 390, minute_step):
+            total = 30 + offset
+            hour = 9 + (total // 60)
+            minute = total % 60
+            ts = f"{base_time}T{hour:02d}:{minute:02d}:00Z"
+            expanded.append(
+                {
+                    "time": ts,
+                    "open": bar.get("open", 0),
+                    "high": bar.get("high", 0),
+                    "low": bar.get("low", 0),
+                    "close": bar.get("close", 0),
+                    "volume": bar.get("volume", 0),
+                }
+            )
+    return expanded
 
 
 def _bar_attr(bar: Any, *names: str) -> Any:
@@ -249,16 +330,29 @@ async def get_bars(
             limit=limit,
             start=start_dt,
             feed=parsed_feed,
+            adjustment=Adjustment.ALL if Adjustment is not None else None,
         )
         return client.get_stock_bars(request)
 
-    barset = await anyio.to_thread.run_sync(_fetch)
+    estimated_days = _estimate_days(timeframe, limit)
+    if "min" in timeframe.lower():
+        estimated_days = max(7, estimated_days * 3)
+    elif "hour" in timeframe.lower():
+        estimated_days = max(30, estimated_days * 2)
+    elif "day" in timeframe.lower():
+        estimated_days = max(365, estimated_days)
+
+    start_dt = datetime.now(timezone.utc) - timedelta(days=estimated_days)
+    barset = await anyio.to_thread.run_sync(lambda: _fetch(start_dt))
     raw_bars = []
     if barset is not None:
         raw_bars = barset.data.get(symbol, [])
 
-    if not raw_bars and timeframe.lower().endswith("day"):
-        fallback_start = datetime.now(timezone.utc) - timedelta(days=max(365, limit * 2))
+    if not raw_bars:
+        fallback_days = max(estimated_days * 2, 14)
+        if "day" in timeframe.lower():
+            fallback_days = max(fallback_days, 365)
+        fallback_start = datetime.now(timezone.utc) - timedelta(days=fallback_days)
         logger.info(
             "alpaca.bars fallback start=%s timeframe=%s feed=%s",
             fallback_start.isoformat(),
@@ -269,8 +363,70 @@ async def get_bars(
         if barset is not None:
             raw_bars = barset.data.get(symbol, [])
 
+    min_required = max(5, int(limit * 0.2))
+    # Minute bars should stay vendor-accurate; avoid synthetic DB fallback that can
+    # diverge from Alpaca live prices.
+    should_fallback_market_prices = len(raw_bars) < min_required and "min" not in timeframe.lower()
+    if should_fallback_market_prices:
+        end_date = date.today()
+        days = _estimate_days(timeframe, limit)
+        if "min" in timeframe.lower():
+            days = max(days, 7)
+        if "hour" in timeframe.lower():
+            days = max(days, 30)
+        start_date = end_date - timedelta(days=days)
+        series = load_price_series(
+            [symbol],
+            start_date.isoformat(),
+            end_date.isoformat(),
+            "adj_close",
+        ).get(symbol, {})
+        if series:
+            daily_bars: list[dict] = []
+            for day, value in sorted(series.items()):
+                daily_bars.append(
+                    {
+                        "time": f"{day}T00:00:00Z",
+                        "open": value,
+                        "high": value,
+                        "low": value,
+                        "close": value,
+                        "volume": 0.0,
+                    }
+                )
+            minute_step = _timeframe_minutes(timeframe)
+            hour_step = _timeframe_hours(timeframe)
+            if minute_step:
+                upsampled = _upsample_daily_to_minutes(daily_bars, minute_step)
+                if upsampled:
+                    raw_bars = upsampled[-limit:]
+            elif hour_step:
+                upsampled = _upsample_daily_to_hours(daily_bars, hour_step)
+                if upsampled:
+                    raw_bars = upsampled[-limit:]
+            else:
+                raw_bars = daily_bars[-limit:]
+            logger.info(
+                "alpaca.bars fallback_market_prices symbol=%s timeframe=%s count=%s",
+                symbol,
+                timeframe,
+                len(raw_bars),
+            )
+
     items = []
     for bar in raw_bars:
+        if isinstance(bar, dict) and "time" in bar:
+            items.append(
+                {
+                    "time": str(bar.get("time")),
+                    "open": float(bar.get("open", 0)),
+                    "high": float(bar.get("high", 0)),
+                    "low": float(bar.get("low", 0)),
+                    "close": float(bar.get("close", 0)),
+                    "volume": float(bar.get("volume", 0)),
+                }
+            )
+            continue
         timestamp = _bar_attr(bar, "t", "timestamp", "time")
         if hasattr(timestamp, "isoformat"):
             timestamp = timestamp.isoformat()

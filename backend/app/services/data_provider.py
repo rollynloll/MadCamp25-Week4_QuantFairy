@@ -87,14 +87,16 @@ def _load_from_supabase(
         raise RuntimeError("Supabase query failed")
 
     for ticker in tickers:
-        query = (
-            supabase.table("market_prices")
-            .select(f"price_date,{field}")
-            .eq("symbol", ticker)
-            .gte("price_date", period_start)
-            .lte("price_date", period_end)
-            .order("price_date", desc=False)
-        )
+        def _base_query():
+            return (
+                supabase.table("market_prices")
+                .select(f"price_date,{field}")
+                .gte("price_date", period_start)
+                .lte("price_date", period_end)
+                .order("price_date", desc=False)
+            )
+
+        query = _base_query().eq("symbol", ticker)
 
         rows = []
         from_index = 0
@@ -106,6 +108,20 @@ def _load_from_supabase(
             if len(data) < page_size:
                 break
             from_index += page_size
+
+        if not rows:
+            try:
+                query_alt = _base_query().ilike("symbol", ticker)
+                from_index = 0
+                while True:
+                    page = _execute_with_retry(query_alt.range(from_index, from_index + page_size - 1))
+                    data = getattr(page, "data", None) or []
+                    rows.extend(data)
+                    if len(data) < page_size:
+                        break
+                    from_index += page_size
+            except Exception:
+                rows = []
 
         series: Dict[str, float] = {}
         for row in rows:

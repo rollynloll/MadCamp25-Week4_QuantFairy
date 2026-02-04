@@ -29,38 +29,37 @@ const formatTick = (value: string, timeframe: Props["timeframe"]) => {
     const minutes = date.getMinutes().toString().padStart(2, "0");
     return `${hours}:${minutes}`;
   }
-  if (timeframe === "1W") {
+  if (timeframe === "1W" || timeframe === "1M" || timeframe === "3M") {
     return `${date.getMonth() + 1}/${date.getDate()}`;
   }
-  if (timeframe === "1M") {
-    const week = Math.floor((date.getDate() - 1) / 7) + 1;
-    return `W${week}`;
-  }
-  if (timeframe === "3M") {
-    return `${date.getMonth() + 1}/${date.getDate()}`;
-  }
-  return `${date.getMonth() + 1}M`;
+  return `${date.getMonth() + 1}/${String(date.getFullYear()).slice(-2)}`;
 };
 
-const resolveTickInterval = (timeframe: Props["timeframe"]) => {
-  switch (timeframe) {
-    case "1D":
-      return 20;
-    case "1W":
-      return 1;
-    case "1M":
-      return 2;
-    case "3M":
-      return 5;
-    case "1Y":
-      return 20;
-    default:
-      return 20;
+const estimatePointsPerDay = (bars: BarPoint[]) => {
+  if (bars.length < 2) return 1;
+  const diffs: number[] = [];
+  const samples = Math.min(bars.length - 1, 50);
+  for (let i = 1; i <= samples; i += 1) {
+    const prev = new Date(bars[i - 1].time).getTime();
+    const next = new Date(bars[i].time).getTime();
+    if (Number.isNaN(prev) || Number.isNaN(next)) continue;
+    const diffMinutes = Math.abs(next - prev) / 60000;
+    if (diffMinutes > 0) diffs.push(diffMinutes);
   }
+  if (!diffs.length) return 1;
+  diffs.sort((a, b) => a - b);
+  const median = diffs[Math.floor(diffs.length / 2)];
+  return Math.max(1, Math.round(1440 / median));
 };
 
 export default function GraphCurve({ symbol, name, bars, timeframe, onTimeframeChange }: Props) {
   const { tr } = useLanguage();
+  const pointsPerDay = useMemo(() => estimatePointsPerDay(bars), [bars]);
+  const tickInterval = useMemo(() => {
+    if (timeframe === "1D") return 20;
+    if (timeframe === "1Y") return 20;
+    return Math.max(pointsPerDay - 1, 0);
+  }, [timeframe, pointsPerDay]);
   const chartData = useMemo(
     () =>
       bars.map((bar) => ({
@@ -181,7 +180,7 @@ export default function GraphCurve({ symbol, name, bars, timeframe, onTimeframeC
               stroke="#6b7280"
               tick={{ fill: "#9ca3af", fontSize: 11 }}
               tickLine={{ stroke: "#374151" }}
-              interval={resolveTickInterval(timeframe)}
+              interval={tickInterval}
               tickFormatter={(value) => formatTick(value, timeframe)}
             />
             <YAxis
