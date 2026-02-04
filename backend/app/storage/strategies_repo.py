@@ -75,3 +75,37 @@ class StrategiesRepository:
     def list_active(self, user_id: str) -> List[Dict[str, Any]]:
         items = [item for item in self.list(user_id) if item.get("state") == "running"]
         return items
+
+    def update_runtime_metrics(
+        self,
+        user_id: str,
+        metrics_by_strategy: Dict[str, Dict[str, float | int]],
+    ) -> None:
+        """Persist latest per-strategy runtime metrics used by dashboard/portfolio views."""
+        if self.supabase is None:
+            return
+        rows = self.list(user_id)
+        if not rows:
+            return
+        now = now_kst().isoformat()
+        for row in rows:
+            strategy_id = row.get("strategy_id")
+            if not strategy_id:
+                continue
+            metrics = metrics_by_strategy.get(str(strategy_id), {})
+            payload = {
+                "positions_count": int(metrics.get("positions_count", 0) or 0),
+                "pnl_today_value": float(metrics.get("pnl_today_value", 0.0) or 0.0),
+                "pnl_today_pct": float(metrics.get("pnl_today_pct", 0.0) or 0.0),
+                "updated_at": now,
+            }
+            try:
+                (
+                    self.supabase.table("user_strategies")
+                    .update(payload)
+                    .eq("user_id", user_id)
+                    .eq("strategy_id", strategy_id)
+                    .execute()
+                )
+            except Exception:
+                continue

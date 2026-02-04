@@ -37,3 +37,47 @@ class PortfolioRepository:
         except Exception:
             return []
         return []
+
+    def replace_equity_curve_range(
+        self,
+        user_id: str,
+        environment: str,
+        points: List[Dict[str, Any]],
+        *,
+        cash: float,
+    ) -> None:
+        """Replace snapshot rows in the incoming time window with fresh Alpaca history points."""
+        if self.supabase is None or not points:
+            return
+        sorted_points = sorted(
+            [p for p in points if p.get("t") is not None],
+            key=lambda p: str(p["t"]),
+        )
+        if not sorted_points:
+            return
+        start = str(sorted_points[0]["t"])
+        end = str(sorted_points[-1]["t"])
+        rows = []
+        for point in sorted_points:
+            rows.append(
+                {
+                    "user_id": user_id,
+                    "environment": environment,
+                    "as_of": str(point["t"]),
+                    "equity": float(point.get("equity", 0.0) or 0.0),
+                    "cash": float(cash),
+                }
+            )
+        try:
+            (
+                self.supabase.table("portfolio_snapshots")
+                .delete()
+                .eq("user_id", user_id)
+                .eq("environment", environment)
+                .gte("as_of", start)
+                .lte("as_of", end)
+                .execute()
+            )
+            self.supabase.table("portfolio_snapshots").insert(rows).execute()
+        except Exception:
+            return

@@ -6,7 +6,6 @@ import ActiveStrategies from "@/components/ActiveStrategies";
 import RecentTrades from "@/components/RecentTrades";
 import { useDashboardContext } from "@/contexts/DashboardContext";
 import { useLanguage } from "@/contexts/LanguageContext";
-import type { StrategyState } from "@/types/dashboard";
 import { useMarketStream } from "@/hooks/useMarketStream";
 
 export default function Home() {
@@ -17,7 +16,6 @@ export default function Home() {
     range,
     setRange,
     performanceLoading,
-    userStrategies,
   } = useDashboardContext();
   const { tr } = useLanguage();
 
@@ -33,17 +31,8 @@ export default function Home() {
   const { trades: streamTrades } = useMarketStream(streamSymbol);
 
   const runningStrategies = useMemo(
-    () =>
-      (userStrategies ?? [])
-        .filter((strategy) => strategy.state === "running")
-        .map((strategy) => ({
-          strategy_id: strategy.user_strategy_id,
-          name: strategy.name,
-          state: strategy.state as StrategyState,
-          positions_count: strategy.positions_count,
-          pnl_today: strategy.today_pnl ?? { value: 0, pct: 0 },
-        })),
-    [userStrategies]
+    () => (data?.active_strategies ?? []).filter((strategy) => strategy.state === "running"),
+    [data?.active_strategies]
   );
 
   const recentTradesData = useMemo(() => {
@@ -118,7 +107,7 @@ export default function Home() {
       />
 
       <div className="grid grid-cols-2 gap-6">
-        <ActiveStrategies data={runningStrategies} loading={!userStrategies} />
+        <ActiveStrategies data={runningStrategies} loading={loading} />
         <RecentTrades data={recentTradesData} />
       </div>
     </div>

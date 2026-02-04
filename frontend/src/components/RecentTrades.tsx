@@ -18,9 +18,9 @@ export default function RecentTrades({ data }: { data: RecentTrade[] }) {
     "grid-cols-[96px_72px_64px_80px_96px_minmax(120px,1fr)]";
 
   return (
-    <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
+    <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6 flex h-[460px] flex-col">
       <h2 className="text-lg font-semibold mb-4">{tr("Recent Trades", "최근 거래 내역")}</h2>
-      <div className="max-h-[360px] overflow-auto pr-1">
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
         <div className={`sticky top-0 z-10 hidden ${gridCols} gap-3 border-b border-gray-800 bg-[#0d1117] px-3 py-2 text-xs font-medium text-gray-500 md:grid`}>
           <span>{tr("Time", "시간")}</span>
           <span>{tr("Symbol", "종목")}</span>

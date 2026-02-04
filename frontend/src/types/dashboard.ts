@@ -62,6 +62,7 @@ export interface DashboardResponse {
     name: string;
     state: StrategyState;
     positions_count: number;
+    managed_value: number;
     pnl_today: { value: number; pct: number };
   }[];
   recent_trades: {

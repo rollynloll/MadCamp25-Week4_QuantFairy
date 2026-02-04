@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import pathlib
 import sys
 from datetime import datetime
@@ -16,6 +17,7 @@ from app.alpaca.client import AlpacaClient
 from app.core.config import get_settings
 from app.core.time import now_kst
 from app.core.user import resolve_user_id
+from app.storage.my_strategies_repo import MyStrategiesRepository
 from app.storage.orders_repo import OrdersRepository
 from app.storage.positions_repo import PositionsRepository
 from app.storage.trades_repo import TradesRepository
@@ -88,6 +90,7 @@ def _normalize_filled_orders_to_trades(
     *,
     user_id: str,
     environment: str,
+    symbol_strategy_map: Dict[str, str] | None = None,
 ) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
     now = now_kst().isoformat()
@@ -115,11 +118,60 @@ def _normalize_filled_orders_to_trades(
                 "side": _normalize_enum_text(_get_field(order, "side", "buy"), default="buy"),
                 "qty": qty,
                 "price": price,
-                "strategy_id": None,
+                "strategy_id": (symbol_strategy_map or {}).get(symbol),
                 "strategy_name": "Unknown Strategy",
             }
         )
     return rows
+
+
+def _build_strategy_hints(settings, user_id: str) -> tuple[Dict[str, str], str | None, List[str]]:
+    repo = MyStrategiesRepository(settings)
+    try:
+        rows = repo.list(user_id, {}, "updated_at", "desc", 1000, None)
+    except Exception:
+        return {}, None, []
+    running = [row for row in rows if str(row.get("state", "")).lower() in {"running", "paused"}]
+    if not running:
+        return {}, None, []
+
+    hints: Dict[str, str] = {}
+    no_hint_ids: list[str] = []
+    for row in running:
+        sid = row.get("strategy_id")
+        if not sid:
+            continue
+        sid = str(sid)
+        params = row.get("params") or {}
+        if not isinstance(params, dict):
+            params = {}
+        row_hints: set[str] = set()
+        for key in ("benchmark_symbol", "symbol"):
+            value = params.get(key)
+            if isinstance(value, str) and value.strip():
+                row_hints.add(value.strip().upper())
+        if row_hints:
+            for sym in row_hints:
+                hints.setdefault(sym, sid)
+        else:
+            no_hint_ids.append(sid)
+
+    default_sid: str | None = None
+    if len(running) == 1:
+        only_sid = running[0].get("strategy_id")
+        default_sid = str(only_sid) if only_sid else None
+    elif len(no_hint_ids) == 1:
+        default_sid = no_hint_ids[0]
+    running_ids = [str(row.get("strategy_id")) for row in running if row.get("strategy_id")]
+    return hints, default_sid, running_ids
+
+
+def _pick_strategy_for_symbol(symbol: str, running_ids: List[str]) -> str | None:
+    if not running_ids:
+        return None
+    digest = hashlib.sha256(symbol.encode("utf-8")).hexdigest()
+    idx = int(digest[:8], 16) % len(running_ids)
+    return running_ids[idx]
 
 
 def _normalize_positions(
@@ -166,19 +218,64 @@ def main() -> None:
     settings = get_settings()
     user_id = resolve_user_id(settings, args.user_id)
     client = AlpacaClient(settings, args.env)
+    strategy_hints, default_strategy_id, running_strategy_ids = _build_strategy_hints(settings, user_id)
+
+    existing_orders = OrdersRepository(settings).list_recent(user_id, args.env, limit=2000)
+    existing_positions = PositionsRepository(settings).list(user_id, args.env, limit=2000)
+    existing_symbol_strategy_map: Dict[str, str] = {}
+    for row in existing_orders:
+        symbol = str(row.get("symbol", "")).upper()
+        sid = row.get("strategy_id")
+        if symbol and sid and symbol not in existing_symbol_strategy_map:
+            existing_symbol_strategy_map[symbol] = str(sid)
+    for row in existing_positions:
+        symbol = str(row.get("symbol", "")).upper()
+        sid = row.get("strategy_id")
+        if symbol and sid and symbol not in existing_symbol_strategy_map:
+            existing_symbol_strategy_map[symbol] = str(sid)
+
+    raw_orders = client.get_orders(status=args.status, limit=args.limit) if args.orders else []
+    raw_positions = client.get_positions() if args.positions else []
+    order_rows = _normalize_orders(raw_orders or [], user_id=user_id, environment=args.env)
+    position_rows = _normalize_positions(raw_positions or [], user_id=user_id, environment=args.env)
+
+    symbols = {
+        str(row.get("symbol", "")).upper()
+        for row in order_rows + position_rows
+        if row.get("symbol")
+    }
+    symbol_strategy_map: Dict[str, str] = {}
+    for symbol in sorted(symbols):
+        sid = (
+            existing_symbol_strategy_map.get(symbol)
+            or strategy_hints.get(symbol)
+            or default_strategy_id
+            or _pick_strategy_for_symbol(symbol, running_strategy_ids)
+        )
+        if sid:
+            symbol_strategy_map[symbol] = sid
 
     if args.orders:
-        raw_orders = client.get_orders(status=args.status, limit=args.limit) or []
-        order_rows = _normalize_orders(raw_orders, user_id=user_id, environment=args.env)
+        for row in order_rows:
+            symbol = str(row.get("symbol", "")).upper()
+            if symbol and symbol in symbol_strategy_map:
+                row["strategy_id"] = symbol_strategy_map[symbol]
         OrdersRepository(settings).upsert_many(order_rows)
-        trade_rows = _normalize_filled_orders_to_trades(raw_orders, user_id=user_id, environment=args.env)
+        trade_rows = _normalize_filled_orders_to_trades(
+            raw_orders or [],
+            user_id=user_id,
+            environment=args.env,
+            symbol_strategy_map=symbol_strategy_map,
+        )
         TradesRepository(settings).upsert_many(trade_rows)
         print(f"synced orders: {len(order_rows)}")
         print(f"synced trades: {len(trade_rows)}")
 
     if args.positions:
-        raw_positions = client.get_positions() or []
-        position_rows = _normalize_positions(raw_positions, user_id=user_id, environment=args.env)
+        for row in position_rows:
+            symbol = str(row.get("symbol", "")).upper()
+            if symbol and symbol in symbol_strategy_map:
+                row["strategy_id"] = symbol_strategy_map[symbol]
         PositionsRepository(settings).replace_all(user_id, args.env, position_rows)
         print(f"synced positions: {len(position_rows)}")
 

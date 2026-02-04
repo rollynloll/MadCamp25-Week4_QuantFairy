@@ -131,6 +131,7 @@ class ActiveStrategyBlock(BaseModel):
     name: str
     state: Literal["running", "paused", "idle", "error"]
     positions_count: int
+    managed_value: float
     pnl_today: PnlBlock
 
 
