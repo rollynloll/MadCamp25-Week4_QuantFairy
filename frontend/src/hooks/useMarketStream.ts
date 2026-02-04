@@ -55,7 +55,7 @@ export type MarketTimeframe = "1D" | "1W" | "1M" | "3M" | "1Y";
 const resolveHistoryParams = (timeframe: MarketTimeframe) => {
   switch (timeframe) {
     case "1W":
-      return { timeframe: "1Day", limit: 7 };
+      return { timeframe: "1Hour", limit: 168 };
     case "1M":
       return { timeframe: "1Day", limit: 30 };
     case "3M":
@@ -87,10 +87,57 @@ const applyTimeWindow = (bars: BarPoint[], timeframe: MarketTimeframe) => {
   const days = resolveWindowDays(timeframe);
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
   const filtered = bars.filter((bar) => {
-    const t = new Date(bar.time).getTime();
+    const t = parseTimeMs(bar.time);
     return Number.isNaN(t) ? true : t >= cutoff;
   });
   return filtered.length ? filtered : bars;
+};
+
+const parseTimeMs = (value: string) => {
+  let t = new Date(value).getTime();
+  if (!Number.isNaN(t)) return t;
+  if (value.includes(" ")) {
+    t = new Date(value.replace(" ", "T")).getTime();
+    if (!Number.isNaN(t)) return t;
+  }
+  if (!value.endsWith("Z")) {
+    t = new Date(`${value}Z`).getTime();
+  }
+  return t;
+};
+
+const aggregateDaily = (bars: BarPoint[]) => {
+  if (!bars.length) return bars;
+  const groups = new Map<string, BarPoint[]>();
+  for (const bar of bars) {
+    const ms = parseTimeMs(bar.time);
+    if (Number.isNaN(ms)) continue;
+    const dayKey = new Date(ms).toISOString().slice(0, 10);
+    if (!groups.has(dayKey)) {
+      groups.set(dayKey, []);
+    }
+    groups.get(dayKey)!.push(bar);
+  }
+  const daily: BarPoint[] = [];
+  Array.from(groups.entries())
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .forEach(([day, items]) => {
+      items.sort((a, b) => parseTimeMs(a.time) - parseTimeMs(b.time));
+      const open = items[0].open;
+      const close = items[items.length - 1].close;
+      const high = Math.max(...items.map((i) => i.high));
+      const low = Math.min(...items.map((i) => i.low));
+      const volume = items.reduce((sum, i) => sum + (i.volume || 0), 0);
+      daily.push({
+        time: `${day}T00:00:00Z`,
+        open,
+        high,
+        low,
+        close,
+        volume,
+      });
+    });
+  return daily;
 };
 
 export function useMarketStream(symbol: string, timeframe: MarketTimeframe = "1D") {
@@ -170,13 +217,14 @@ export function useMarketStream(symbol: string, timeframe: MarketTimeframe = "1D
       if (msg.type === "trade") {
         const price = Number(msg.price ?? 0);
         const size = Number(msg.size ?? 0);
+        const tradeTime = msg.time ?? new Date().toISOString();
         const previous = lastTradeRef.current;
         const side: "buy" | "sell" = previous !== null && price < previous ? "sell" : "buy";
         lastTradeRef.current = price;
         setTrades((prev) => {
           const next: RecentTrade[] = [
             {
-              time: msg.time ?? new Date().toISOString(),
+              time: tradeTime,
               price,
               size,
               side,
@@ -185,6 +233,53 @@ export function useMarketStream(symbol: string, timeframe: MarketTimeframe = "1D
           ];
           return next.slice(0, 40);
         });
+        if (timeframeRef.current === "1D" && Number.isFinite(price) && price > 0) {
+          setBars((prev) => {
+            const next = [...prev];
+            if (!next.length) {
+              return [
+                {
+                  time: tradeTime,
+                  open: price,
+                  high: price,
+                  low: price,
+                  close: price,
+                  volume: Number.isFinite(size) ? size : 0,
+                },
+              ];
+            }
+
+            const last = next[next.length - 1];
+            const tradeMs = parseTimeMs(tradeTime);
+            const lastMs = parseTimeMs(last.time);
+            const sameMinute =
+              !Number.isNaN(tradeMs) &&
+              !Number.isNaN(lastMs) &&
+              Math.floor(tradeMs / 60000) === Math.floor(lastMs / 60000);
+
+            if (sameMinute) {
+              next[next.length - 1] = {
+                ...last,
+                high: Math.max(last.high, price),
+                low: Math.min(last.low, price),
+                close: price,
+                volume: (last.volume || 0) + (Number.isFinite(size) ? size : 0),
+              };
+            } else {
+              const baseOpen = Number.isFinite(last.close) ? last.close : price;
+              next.push({
+                time: tradeTime,
+                open: baseOpen,
+                high: Math.max(baseOpen, price),
+                low: Math.min(baseOpen, price),
+                close: price,
+                volume: Number.isFinite(size) ? size : 0,
+              });
+            }
+
+            return next.slice(-600);
+          });
+        }
         return;
       }
 
@@ -240,24 +335,49 @@ export function useMarketStream(symbol: string, timeframe: MarketTimeframe = "1D
         });
         if (cancelled) return;
         if (hasStreamedBars.current) return;
-        if (
-          timeframe === "1D" &&
-          (!res.bars?.length || res.bars.length < 50)
-        ) {
-          res = await getTradingBars({ symbol, timeframe: "1Day", limit: 365, feed });
+        if (!res.bars?.length || res.bars.length < 2) {
+          if (timeframe === "1D") {
+            res = await getTradingBars({ symbol, timeframe: "1Min", limit: 390, feed });
+          } else {
+            res = await getTradingBars({ symbol, timeframe: "1Day", limit: 365, feed });
+          }
+          if (cancelled) return;
+          if (hasStreamedBars.current) return;
+        }
+        if (!res.bars?.length || res.bars.length < 2) {
+          if (timeframe === "1D") {
+            res = await getTradingBars({ symbol, timeframe: "1Min", limit: 120, feed });
+          } else {
+            res = await getTradingBars({ symbol, timeframe: "1Hour", limit: 1000, feed });
+          }
           if (cancelled) return;
           if (hasStreamedBars.current) return;
         }
         if (!res.bars?.length) return;
-        const history = res.bars.map((bar) => ({
-          time: bar.time,
-          open: bar.open,
-          high: bar.high,
-          low: bar.low,
-          close: bar.close,
-          volume: bar.volume,
-        }));
-        setBars(applyTimeWindow(history, timeframe));
+        const history = res.bars
+          .map((bar) => ({
+            time: bar.time,
+            open: Number(bar.open ?? 0),
+            high: Number(bar.high ?? 0),
+            low: Number(bar.low ?? 0),
+            close: Number(bar.close ?? 0),
+            volume: Number(bar.volume ?? 0),
+          }))
+          .filter(
+            (bar) =>
+              Number.isFinite(bar.open) &&
+              Number.isFinite(bar.high) &&
+              Number.isFinite(bar.low) &&
+              Number.isFinite(bar.close) &&
+              !Number.isNaN(parseTimeMs(bar.time))
+          )
+          .sort((a, b) => parseTimeMs(a.time) - parseTimeMs(b.time));
+        const windowed = applyTimeWindow(history, timeframe);
+        if (timeframe === "1D" || timeframe === "1W") {
+          setBars(windowed);
+        } else {
+          setBars(aggregateDaily(windowed));
+        }
         lastTradeRef.current = history[history.length - 1]?.close ?? lastTradeRef.current;
       } catch {
         // ignore history fetch failures; stream may still work

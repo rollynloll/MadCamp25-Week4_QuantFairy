@@ -5,15 +5,19 @@ import json
 from typing import Any, Literal, Optional
 import logging
 import anyio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
+from math import ceil
+import re
 
 import websockets
 from websockets.exceptions import ConnectionClosed
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 
+from app.alpaca.client import AlpacaClient
 from app.core.config import get_settings
 from app.core.errors import APIError
+from app.core.ttl_cache import TTLCache
 from app.db import get_db_connection
 from app.schemas.trading import (
     OrderDetailResponse,
@@ -22,6 +26,7 @@ from app.schemas.trading import (
     LastFillResponse,
     BarsResponse,
 )
+from app.services.data_provider import load_price_series
 from app.services.trading_service import (
     fetch_order_by_id,
     fetch_orders,
@@ -37,16 +42,20 @@ try:  # optional alpaca-py data client
     from alpaca.data.historical import StockHistoricalDataClient
     from alpaca.data.requests import StockBarsRequest
     from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
-    from alpaca.data.enums import DataFeed
+    from alpaca.data.enums import DataFeed, Adjustment
 except Exception:  # pragma: no cover - optional dependency
     StockHistoricalDataClient = None
     StockBarsRequest = None
     TimeFrame = None
     TimeFrameUnit = None
     DataFeed = None
+    Adjustment = None
 
 EnvLiteral = Literal["paper", "live"]
 ScopeLiteral = Literal["open", "filled", "all"]
+ORDER_SYNC_TTL = 5.0
+POSITION_SYNC_TTL = 5.0
+SYNC_CACHE = TTLCache(default_ttl=5.0, maxsize=256)
 
 
 def _resolve_user_id(user_id: Optional[str]) -> str:
@@ -55,6 +64,332 @@ def _resolve_user_id(user_id: Optional[str]) -> str:
     if not resolved:
         raise APIError("VALIDATION_ERROR", "user_id is required", status_code=400)
     return resolved
+
+
+def _get_field(obj: Any, name: str, default: Any = None) -> Any:
+    if isinstance(obj, dict):
+        return obj.get(name, default)
+    return getattr(obj, name, default)
+
+
+def _to_iso(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
+
+
+def _to_datetime(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        try:
+            if value.endswith("Z"):
+                return datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return datetime.fromisoformat(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _normalize_enum_text(value: Any, default: str = "") -> str:
+    if value is None:
+        return default
+    text = str(value).strip()
+    if not text:
+        return default
+    if "." in text:
+        text = text.split(".")[-1]
+    return text.lower()
+
+
+def _normalize_filled_orders_to_trades(
+    raw_orders: Any,
+    *,
+    user_id: str,
+    environment: str,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    now_dt = datetime.now(timezone.utc)
+    for order in raw_orders or []:
+        status = _normalize_enum_text(_get_field(order, "status", "unknown"), default="unknown")
+        if status != "filled":
+            continue
+        order_id = _get_field(order, "id") or _get_field(order, "client_order_id")
+        symbol = str(_get_field(order, "symbol", "")).upper()
+        if not order_id or not symbol:
+            continue
+        qty = float(_get_field(order, "filled_qty", _get_field(order, "qty", 0)) or 0)
+        if qty <= 0:
+            continue
+        price = float(_get_field(order, "filled_avg_price", 0) or 0)
+        if price <= 0:
+            price = float(_get_field(order, "limit_price", 0) or 0)
+        rows.append(
+            {
+                "fill_id": str(order_id),
+                "user_id": user_id,
+                "environment": environment,
+                "filled_at": _to_datetime(_get_field(order, "filled_at")) or now_dt,
+                "symbol": symbol,
+                "side": _normalize_enum_text(_get_field(order, "side", "buy"), default="buy"),
+                "qty": qty,
+                "price": price,
+                "strategy_id": None,
+                "strategy_name": "Unknown Strategy",
+            }
+        )
+    return rows
+
+
+def _normalize_alpaca_orders(
+    raw_orders: Any,
+    *,
+    user_id: str,
+    environment: str,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for order in raw_orders or []:
+        order_id = _get_field(order, "id") or _get_field(order, "client_order_id")
+        symbol = str(_get_field(order, "symbol", "")).upper()
+        if not order_id or not symbol:
+            continue
+        rows.append(
+            {
+                "order_id": str(order_id),
+                "user_id": user_id,
+                "environment": environment,
+                "symbol": symbol,
+                "side": _normalize_enum_text(_get_field(order, "side", ""), default="buy"),
+                "qty": float(_get_field(order, "qty", 0) or 0),
+                "type": _normalize_enum_text(_get_field(order, "type", "market"), default="market"),
+                "status": _normalize_enum_text(_get_field(order, "status", "unknown"), default="unknown"),
+                "submitted_at": _to_datetime(_get_field(order, "submitted_at")),
+                "filled_at": _to_datetime(_get_field(order, "filled_at")),
+                "strategy_id": None,
+            }
+        )
+    return rows
+
+
+def _normalize_alpaca_positions(
+    raw_positions: Any,
+    *,
+    user_id: str,
+    environment: str,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    now = datetime.now(timezone.utc)
+    for pos in raw_positions or []:
+        symbol = str(_get_field(pos, "symbol", "")).upper()
+        if not symbol:
+            continue
+        rows.append(
+            {
+                "user_id": user_id,
+                "environment": environment,
+                "symbol": symbol,
+                "qty": float(_get_field(pos, "qty", 0) or 0),
+                "avg_entry_price": float(_get_field(pos, "avg_entry_price", 0) or 0),
+                "unrealized_pnl": float(_get_field(pos, "unrealized_pl", 0) or 0),
+                "strategy_id": None,
+                "updated_at": now,
+            }
+        )
+    return rows
+
+
+async def _upsert_orders(conn: Any, rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    query = """
+        INSERT INTO orders (
+            order_id, user_id, environment, symbol, side, qty, type, status, submitted_at, filled_at, strategy_id
+        ) VALUES (
+            $1, $2::uuid, $3, $4, $5, $6, $7, $8, $9::timestamptz, $10::timestamptz, $11
+        )
+        ON CONFLICT (order_id) DO UPDATE SET
+            symbol = EXCLUDED.symbol,
+            side = EXCLUDED.side,
+            qty = EXCLUDED.qty,
+            type = EXCLUDED.type,
+            status = EXCLUDED.status,
+            submitted_at = COALESCE(EXCLUDED.submitted_at, orders.submitted_at),
+            filled_at = COALESCE(EXCLUDED.filled_at, orders.filled_at),
+            strategy_id = COALESCE(orders.strategy_id, EXCLUDED.strategy_id)
+    """
+    params = [
+        (
+            row["order_id"],
+            row["user_id"],
+            row["environment"],
+            row["symbol"],
+            row["side"],
+            row["qty"],
+            row["type"],
+            row["status"],
+            row["submitted_at"],
+            row["filled_at"],
+            row["strategy_id"],
+        )
+        for row in rows
+    ]
+    await conn.executemany(query, params)
+
+
+async def _upsert_trades(conn: Any, rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    query = """
+        INSERT INTO trades (
+            fill_id, user_id, environment, filled_at, symbol, side, qty, price, strategy_id, strategy_name
+        ) VALUES (
+            $1, $2::uuid, $3, $4::timestamptz, $5, $6, $7, $8, $9, $10
+        )
+        ON CONFLICT (fill_id) DO UPDATE SET
+            filled_at = EXCLUDED.filled_at,
+            symbol = EXCLUDED.symbol,
+            side = EXCLUDED.side,
+            qty = EXCLUDED.qty,
+            price = EXCLUDED.price,
+            strategy_id = COALESCE(trades.strategy_id, EXCLUDED.strategy_id),
+            strategy_name = COALESCE(trades.strategy_name, EXCLUDED.strategy_name)
+    """
+    params = [
+        (
+            row["fill_id"],
+            row["user_id"],
+            row["environment"],
+            row["filled_at"],
+            row["symbol"],
+            row["side"],
+            row["qty"],
+            row["price"],
+            row["strategy_id"],
+            row["strategy_name"],
+        )
+        for row in rows
+    ]
+    await conn.executemany(query, params)
+
+
+async def _replace_positions(
+    conn: Any,
+    *,
+    user_id: str,
+    environment: str,
+    rows: list[dict[str, Any]],
+) -> None:
+    async with conn.transaction():
+        await conn.execute(
+            "DELETE FROM positions WHERE user_id = $1::uuid AND environment = $2",
+            user_id,
+            environment,
+        )
+        if not rows:
+            return
+        query = """
+            INSERT INTO positions (
+                user_id, environment, symbol, qty, avg_entry_price, unrealized_pnl, strategy_id, updated_at
+            ) VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8::timestamptz)
+        """
+        params = [
+            (
+                row["user_id"],
+                row["environment"],
+                row["symbol"],
+                row["qty"],
+                row["avg_entry_price"],
+                row["unrealized_pnl"],
+                row["strategy_id"],
+                row["updated_at"],
+            )
+            for row in rows
+        ]
+        await conn.executemany(query, params)
+
+
+async def _sync_alpaca_snapshot(
+    conn: Any,
+    *,
+    env: str,
+    user_id: str,
+    sync_orders: bool = False,
+    sync_positions: bool = False,
+) -> None:
+    if not (sync_orders or sync_positions):
+        return
+    settings = get_settings()
+    if not settings.alpaca_api_key or not settings.alpaca_secret_key:
+        return
+
+    cache_hits: list[str] = []
+    if sync_orders:
+        order_key = f"trading:orders:{env}:{user_id}"
+        if SYNC_CACHE.get(order_key) is not None:
+            cache_hits.append("orders")
+            sync_orders = False
+    if sync_positions:
+        pos_key = f"trading:positions:{env}:{user_id}"
+        if SYNC_CACHE.get(pos_key) is not None:
+            cache_hits.append("positions")
+            sync_positions = False
+    if not (sync_orders or sync_positions):
+        return
+
+    client = AlpacaClient(settings, env)
+    try:
+        if sync_orders:
+            raw_orders = await anyio.to_thread.run_sync(lambda: client.get_orders(status="all", limit=500))
+            if raw_orders is not None:
+                order_rows = _normalize_alpaca_orders(raw_orders, user_id=user_id, environment=env)
+                await _upsert_orders(conn, order_rows)
+                trade_rows = _normalize_filled_orders_to_trades(
+                    raw_orders,
+                    user_id=user_id,
+                    environment=env,
+                )
+                await _upsert_trades(conn, trade_rows)
+                SYNC_CACHE.set(f"trading:orders:{env}:{user_id}", True, ttl=ORDER_SYNC_TTL)
+                logger.info(
+                    "trading.sync orders env=%s count=%s trades=%s",
+                    env,
+                    len(order_rows),
+                    len(trade_rows),
+                )
+            else:
+                logger.warning("trading.sync orders skipped env=%s reason=alpaca_none", env)
+
+        if sync_positions:
+            raw_positions = await anyio.to_thread.run_sync(client.get_positions)
+            if raw_positions is not None:
+                position_rows = _normalize_alpaca_positions(
+                    raw_positions,
+                    user_id=user_id,
+                    environment=env,
+                )
+                await _replace_positions(
+                    conn,
+                    user_id=user_id,
+                    environment=env,
+                    rows=position_rows,
+                )
+                SYNC_CACHE.set(f"trading:positions:{env}:{user_id}", True, ttl=POSITION_SYNC_TTL)
+                logger.info("trading.sync positions env=%s count=%s", env, len(position_rows))
+            else:
+                logger.warning("trading.sync positions skipped env=%s reason=alpaca_none", env)
+    except Exception as exc:
+        logger.warning(
+            "trading.sync failed env=%s sync_orders=%s sync_positions=%s cache_hits=%s error=%s",
+            env,
+            sync_orders,
+            sync_positions,
+            ",".join(cache_hits) if cache_hits else "-",
+            exc,
+        )
 
 
 def _parse_symbols(raw: str | None) -> list[str]:
@@ -103,6 +438,83 @@ def _parse_data_feed(raw: str | None) -> Any:
         return DataFeed(raw)
     except Exception:
         raise APIError("VALIDATION_ERROR", f"unsupported feed: {raw}", status_code=400)
+
+
+def _estimate_days(timeframe: str, limit: int) -> int:
+    value = timeframe.strip().lower()
+    match = re.match(r"(\d+)", value)
+    amount = int(match.group(1)) if match else 1
+    if "min" in value:
+        return max(1, ceil(limit * amount / 60 / 24))
+    if "hour" in value:
+        return max(1, ceil(limit * amount / 24))
+    if "day" in value:
+        return max(1, limit)
+    return max(1, limit)
+
+
+def _timeframe_hours(value: str) -> int | None:
+    value = value.strip().lower()
+    if "hour" not in value:
+        return None
+    match = re.match(r"(\d+)", value)
+    amount = int(match.group(1)) if match else 1
+    return max(1, amount)
+
+
+def _upsample_daily_to_hours(daily: list[dict], hour_step: int) -> list[dict]:
+    if not daily:
+        return []
+    expanded: list[dict] = []
+    for bar in daily:
+        base_time = str(bar.get("time", ""))[:10]
+        for hour in range(0, 24, hour_step):
+            ts = f"{base_time}T{hour:02d}:00:00Z"
+            expanded.append(
+                {
+                    "time": ts,
+                    "open": bar.get("open", 0),
+                    "high": bar.get("high", 0),
+                    "low": bar.get("low", 0),
+                    "close": bar.get("close", 0),
+                    "volume": bar.get("volume", 0),
+                }
+            )
+    return expanded
+
+
+def _timeframe_minutes(value: str) -> int | None:
+    value = value.strip().lower()
+    if "min" not in value:
+        return None
+    match = re.match(r"(\d+)", value)
+    amount = int(match.group(1)) if match else 1
+    return max(1, amount)
+
+
+def _upsample_daily_to_minutes(daily: list[dict], minute_step: int) -> list[dict]:
+    if not daily:
+        return []
+    expanded: list[dict] = []
+    for bar in daily:
+        base_time = str(bar.get("time", ""))[:10]
+        # 09:30~16:00 regular session (390 minutes)
+        for offset in range(0, 390, minute_step):
+            total = 30 + offset
+            hour = 9 + (total // 60)
+            minute = total % 60
+            ts = f"{base_time}T{hour:02d}:{minute:02d}:00Z"
+            expanded.append(
+                {
+                    "time": ts,
+                    "open": bar.get("open", 0),
+                    "high": bar.get("high", 0),
+                    "low": bar.get("low", 0),
+                    "close": bar.get("close", 0),
+                    "volume": bar.get("volume", 0),
+                }
+            )
+    return expanded
 
 
 def _bar_attr(bar: Any, *names: str) -> Any:
@@ -164,6 +576,12 @@ async def list_orders(
     conn=Depends(get_db_connection),
 ):
     resolved_user_id = _resolve_user_id(user_id)
+    await _sync_alpaca_snapshot(
+        conn,
+        env=env,
+        user_id=resolved_user_id,
+        sync_orders=True,
+    )
     items = await fetch_orders(
         conn,
         user_id=resolved_user_id,
@@ -182,6 +600,12 @@ async def get_order(
     conn=Depends(get_db_connection),
 ):
     resolved_user_id = _resolve_user_id(user_id)
+    await _sync_alpaca_snapshot(
+        conn,
+        env=env,
+        user_id=resolved_user_id,
+        sync_orders=True,
+    )
     item = await fetch_order_by_id(
         conn,
         user_id=resolved_user_id,
@@ -200,6 +624,12 @@ async def list_positions(
     conn=Depends(get_db_connection),
 ):
     resolved_user_id = _resolve_user_id(user_id)
+    await _sync_alpaca_snapshot(
+        conn,
+        env=env,
+        user_id=resolved_user_id,
+        sync_positions=True,
+    )
     items = await fetch_positions(
         conn,
         user_id=resolved_user_id,
@@ -249,16 +679,29 @@ async def get_bars(
             limit=limit,
             start=start_dt,
             feed=parsed_feed,
+            adjustment=Adjustment.ALL if Adjustment is not None else None,
         )
         return client.get_stock_bars(request)
 
-    barset = await anyio.to_thread.run_sync(_fetch)
+    estimated_days = _estimate_days(timeframe, limit)
+    if "min" in timeframe.lower():
+        estimated_days = max(7, estimated_days * 3)
+    elif "hour" in timeframe.lower():
+        estimated_days = max(30, estimated_days * 2)
+    elif "day" in timeframe.lower():
+        estimated_days = max(365, estimated_days)
+
+    start_dt = datetime.now(timezone.utc) - timedelta(days=estimated_days)
+    barset = await anyio.to_thread.run_sync(lambda: _fetch(start_dt))
     raw_bars = []
     if barset is not None:
         raw_bars = barset.data.get(symbol, [])
 
-    if not raw_bars and timeframe.lower().endswith("day"):
-        fallback_start = datetime.now(timezone.utc) - timedelta(days=max(365, limit * 2))
+    if not raw_bars:
+        fallback_days = max(estimated_days * 2, 14)
+        if "day" in timeframe.lower():
+            fallback_days = max(fallback_days, 365)
+        fallback_start = datetime.now(timezone.utc) - timedelta(days=fallback_days)
         logger.info(
             "alpaca.bars fallback start=%s timeframe=%s feed=%s",
             fallback_start.isoformat(),
@@ -269,8 +712,70 @@ async def get_bars(
         if barset is not None:
             raw_bars = barset.data.get(symbol, [])
 
+    min_required = max(5, int(limit * 0.2))
+    # Minute bars should stay vendor-accurate; avoid synthetic DB fallback that can
+    # diverge from Alpaca live prices.
+    should_fallback_market_prices = len(raw_bars) < min_required and "min" not in timeframe.lower()
+    if should_fallback_market_prices:
+        end_date = date.today()
+        days = _estimate_days(timeframe, limit)
+        if "min" in timeframe.lower():
+            days = max(days, 7)
+        if "hour" in timeframe.lower():
+            days = max(days, 30)
+        start_date = end_date - timedelta(days=days)
+        series = load_price_series(
+            [symbol],
+            start_date.isoformat(),
+            end_date.isoformat(),
+            "adj_close",
+        ).get(symbol, {})
+        if series:
+            daily_bars: list[dict] = []
+            for day, value in sorted(series.items()):
+                daily_bars.append(
+                    {
+                        "time": f"{day}T00:00:00Z",
+                        "open": value,
+                        "high": value,
+                        "low": value,
+                        "close": value,
+                        "volume": 0.0,
+                    }
+                )
+            minute_step = _timeframe_minutes(timeframe)
+            hour_step = _timeframe_hours(timeframe)
+            if minute_step:
+                upsampled = _upsample_daily_to_minutes(daily_bars, minute_step)
+                if upsampled:
+                    raw_bars = upsampled[-limit:]
+            elif hour_step:
+                upsampled = _upsample_daily_to_hours(daily_bars, hour_step)
+                if upsampled:
+                    raw_bars = upsampled[-limit:]
+            else:
+                raw_bars = daily_bars[-limit:]
+            logger.info(
+                "alpaca.bars fallback_market_prices symbol=%s timeframe=%s count=%s",
+                symbol,
+                timeframe,
+                len(raw_bars),
+            )
+
     items = []
     for bar in raw_bars:
+        if isinstance(bar, dict) and "time" in bar:
+            items.append(
+                {
+                    "time": str(bar.get("time")),
+                    "open": float(bar.get("open", 0)),
+                    "high": float(bar.get("high", 0)),
+                    "low": float(bar.get("low", 0)),
+                    "close": float(bar.get("close", 0)),
+                    "volume": float(bar.get("volume", 0)),
+                }
+            )
+            continue
         timestamp = _bar_attr(bar, "t", "timestamp", "time")
         if hasattr(timestamp, "isoformat"):
             timestamp = timestamp.isoformat()

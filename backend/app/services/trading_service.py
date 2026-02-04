@@ -56,10 +56,14 @@ async def fetch_orders(
 ) -> List[Dict[str, Any]]:
     where = ""
     params = [user_id, environment, limit]
+    status_norm = r"regexp_replace(lower(trim(coalesce(status, ''))), '^.*\.', '')"
     if scope == "open":
-        where = "AND status NOT IN ('filled','canceled','rejected','expired')"
+        where = (
+            f"AND {status_norm} NOT IN "
+            "('filled','canceled','cancelled','rejected','expired')"
+        )
     elif scope == "filled":
-        where = "AND status = 'filled'"
+        where = f"AND {status_norm} = 'filled'"
 
     query = f"""
         SELECT order_id, submitted_at, symbol, side, type, qty, status, filled_at, strategy_id

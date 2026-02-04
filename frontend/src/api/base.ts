@@ -1,5 +1,19 @@
 const RAW_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
-export const API_BASE_URL = RAW_BASE ? RAW_BASE.replace(/\/$/, "") : "";
+
+const resolveBaseUrl = () => {
+  if (RAW_BASE) return RAW_BASE.replace(/\/$/, "");
+  if (typeof window !== "undefined") {
+    const { hostname, port } = window.location;
+    if (hostname === "localhost" || hostname === "127.0.0.1") {
+      if (port === "5173" || port === "3000" || port === "4173") {
+        return "http://localhost:8000";
+      }
+    }
+  }
+  return "";
+};
+
+export const API_BASE_URL = resolveBaseUrl();
 
 const normalizePath = (path: string) => {
   if (path.startsWith("/api/v1")) return path;

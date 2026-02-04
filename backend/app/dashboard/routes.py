@@ -81,6 +81,17 @@ def _to_iso(value: Any) -> str | None:
     return str(value)
 
 
+def _normalize_enum_text(value: Any, default: str = "") -> str:
+    if value is None:
+        return default
+    text = str(value).strip()
+    if not text:
+        return default
+    if "." in text:
+        text = text.split(".")[-1]
+    return text.lower()
+
+
 def _normalize_orders(
     raw_orders: Any,
     *,
@@ -99,13 +110,52 @@ def _normalize_orders(
                 "user_id": user_id,
                 "environment": environment,
                 "symbol": symbol,
-                "side": str(_get_field(order, "side", "")).lower(),
+                "side": _normalize_enum_text(_get_field(order, "side", ""), default="buy"),
                 "qty": _to_float(_get_field(order, "qty", 0)),
-                "type": str(_get_field(order, "type", "market")),
-                "status": str(_get_field(order, "status", "unknown")),
+                "type": _normalize_enum_text(_get_field(order, "type", "market"), default="market"),
+                "status": _normalize_enum_text(_get_field(order, "status", "unknown"), default="unknown"),
                 "submitted_at": _to_iso(_get_field(order, "submitted_at")),
                 "filled_at": _to_iso(_get_field(order, "filled_at")),
                 "strategy_id": None,
+            }
+        )
+    return rows
+
+
+def _normalize_filled_orders_to_trades(
+    raw_orders: Any,
+    *,
+    user_id: str,
+    environment: str,
+) -> List[dict]:
+    rows: List[dict] = []
+    now_iso = now_kst().isoformat()
+    for order in raw_orders or []:
+        status = _normalize_enum_text(_get_field(order, "status", "unknown"), default="unknown")
+        if status != "filled":
+            continue
+        order_id = _get_field(order, "id") or _get_field(order, "client_order_id")
+        symbol = str(_get_field(order, "symbol", "")).upper()
+        if not order_id or not symbol:
+            continue
+        qty = _to_float(_get_field(order, "filled_qty", _get_field(order, "qty", 0)))
+        if qty <= 0:
+            continue
+        price = _to_float(_get_field(order, "filled_avg_price", 0))
+        if price <= 0:
+            price = _to_float(_get_field(order, "limit_price", 0))
+        rows.append(
+            {
+                "fill_id": str(order_id),
+                "user_id": user_id,
+                "environment": environment,
+                "filled_at": _to_iso(_get_field(order, "filled_at")) or now_iso,
+                "symbol": symbol,
+                "side": _normalize_enum_text(_get_field(order, "side", "buy"), default="buy"),
+                "qty": qty,
+                "price": price,
+                "strategy_id": None,
+                "strategy_name": "Unknown Strategy",
             }
         )
     return rows
@@ -173,6 +223,10 @@ async def get_dashboard(
                 raw_orders, user_id=resolved_user_id, environment=environment
             )
             orders_repo.upsert_many(order_rows)
+            trade_rows = _normalize_filled_orders_to_trades(
+                raw_orders, user_id=resolved_user_id, environment=environment
+            )
+            trades_repo.upsert_many(trade_rows)
 
             raw_positions = alpaca.get_positions() or []
             position_rows = _normalize_positions(
@@ -181,9 +235,10 @@ async def get_dashboard(
             positions_repo.replace_all(resolved_user_id, environment, position_rows)
 
             logger.info(
-                "dashboard.alpaca_sync env=%s orders=%s positions=%s",
+                "dashboard.alpaca_sync env=%s orders=%s trades=%s positions=%s",
                 environment,
                 len(order_rows),
+                len(trade_rows),
                 len(position_rows),
             )
         except Exception as exc:
