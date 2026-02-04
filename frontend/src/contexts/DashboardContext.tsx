@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { getDashboard } from "@/api/dashboard";
 import { getUserStrategies } from "@/api/userStrategies";
 import type { DashboardResponse, Range } from "@/types/dashboard";
@@ -29,12 +29,13 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const [userStrategiesRefreshKey, setUserStrategiesRefreshKey] = useState(0);
   const [range, setRange] = useState<Range>("1M");
   const [refreshKey, setRefreshKey] = useState(0);
+  const initialLoadRef = useRef(true);
 
   useEffect(() => {
     let isMounted = true;
 
     const load = async () => {
-      const isInitial = data === null;
+      const isInitial = initialLoadRef.current;
       if (isInitial) {
         setLoading(true);
       } else {
@@ -45,6 +46,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         const result = await getDashboard(range);
         if (isMounted) {
           setData(result);
+          initialLoadRef.current = false;
         }
       } catch (err) {
         if (isMounted) {
@@ -52,7 +54,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         }
       } finally {
         if (isMounted) {
-          if (data === null) {
+          if (isInitial) {
             setLoading(false);
           } else {
             setPerformanceLoading(false);
