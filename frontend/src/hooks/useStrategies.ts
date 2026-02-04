@@ -9,19 +9,27 @@ interface UseStrategiesResult {
   error: string | null;
 }
 
+let cachedPublicStrategies: PublicStrategyListItem[] | null = null;
+let cachedNextCursor: string | null = null;
+
 export function useStrategies(): UseStrategiesResult {
-  const [data, setData] = useState<PublicStrategyListItem[] | null>(null);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<PublicStrategyListItem[] | null>(cachedPublicStrategies);
+  const [nextCursor, setNextCursor] = useState<string | null>(cachedNextCursor);
+  const [loading, setLoading] = useState(!cachedPublicStrategies);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (cachedPublicStrategies) {
+      return;
+    }
     let isMounted = true;
 
     const load = async () => {
       try {
         const result = await getPublicStrategies();
         if (isMounted) {
+          cachedPublicStrategies = result.items;
+          cachedNextCursor = result.next_cursor ?? null;
           setData(result.items);
           setNextCursor(result.next_cursor);
         }

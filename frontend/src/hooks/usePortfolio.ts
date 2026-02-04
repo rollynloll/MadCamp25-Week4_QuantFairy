@@ -103,11 +103,11 @@ export function usePortfolioPageData(env: Env, range: Range, showBenchmark: bool
     return () => {
       isMounted = false;
     };
-  }, [env, range, showBenchmark]);
+  }, [env]);
 
-  const loadAnalytics = async () => {
+  const loadAnalytics = async (force = false) => {
     if (!data) return;
-    if (data.performance && data.drawdown && data.kpi && data.attribution) return;
+    if (!force && data.performance && data.drawdown && data.kpi && data.attribution) return;
     if (extrasLoading.analytics) return;
     setExtrasLoading((prev) => ({ ...prev, analytics: true }));
     setExtrasError(null);
@@ -136,6 +136,11 @@ export function usePortfolioPageData(env: Env, range: Range, showBenchmark: bool
       setExtrasLoading((prev) => ({ ...prev, analytics: false }));
     }
   };
+
+  useEffect(() => {
+    if (!data) return;
+    loadAnalytics(true);
+  }, [range, showBenchmark, data]);
 
   const loadActivity = async () => {
     if (!data) return;

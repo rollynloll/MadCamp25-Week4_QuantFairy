@@ -13,9 +13,10 @@ interface Props {
   data: CurvePoint[];
   range: Range;
   onRangeChange: (range: Range) => void;
+  loading?: boolean;
 }
 
-export default function PerformanceChart({ data, range, onRangeChange }: Props) {
+export default function PerformanceChart({ data, range, onRangeChange, loading }: Props) {
   const ranges: Range[] = ["1D", "1W", "1M", "3M", "1Y", "ALL"];
   
   const rangeLabels: Record<Range, string> = {
@@ -32,6 +33,39 @@ export default function PerformanceChart({ data, range, onRangeChange }: Props) 
   const [metric, setMetric] = useState<Metric>("equity");
   const metricKey = metric === "equity" ? "equity" : "daily_pnl";
   const { tr } = useLanguage();
+  const formatTick = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    if (range === "1D") {
+      return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
+    if (range === "1Y") {
+      return date.toLocaleDateString([], { month: "short" });
+    }
+    if (range === "ALL") {
+      return date.toLocaleDateString([], { year: "2-digit", month: "short" });
+    }
+    return date.toLocaleDateString([], { month: "short", day: "2-digit" });
+  };
+
+  const resolveInterval = () => {
+    switch (range) {
+      case "1D":
+        return 6;
+      case "1W":
+        return 1;
+      case "1M":
+        return 3;
+      case "3M":
+        return 6;
+      case "1Y":
+        return 8;
+      case "ALL":
+        return 12;
+      default:
+        return 6;
+    }
+  };
   
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
@@ -66,28 +100,41 @@ export default function PerformanceChart({ data, range, onRangeChange }: Props) 
         </div>
       </div>
 
-      <ResponsiveContainer width="100%" height={300}>
-        <AreaChart data={data}>
-          <defs>
-            <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-              <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-          <XAxis dataKey="t" stroke="#6b7280" style={{ fontSize: 12 }} />
-          <YAxis stroke="#6b7280" style={{ fontSize: 12 }} tickFormatter={formatYAxis} />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: "#1f2937",
-              border: "1px solid #374151",
-              borderRadius: "6px",
-              fontSize: 12,
-            }}
-          />
-          <Area type="monotone" dataKey={metricKey} stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorValue)" />
-        </AreaChart>
-      </ResponsiveContainer>
+      <div className="relative">
+        <ResponsiveContainer width="100%" height={300}>
+          <AreaChart data={data}>
+            <defs>
+              <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+            <XAxis
+              dataKey="t"
+              stroke="#6b7280"
+              style={{ fontSize: 12 }}
+              tickFormatter={formatTick}
+              interval={resolveInterval()}
+            />
+            <YAxis stroke="#6b7280" style={{ fontSize: 12 }} tickFormatter={formatYAxis} />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: "#1f2937",
+                border: "1px solid #374151",
+                borderRadius: "6px",
+                fontSize: 12,
+              }}
+            />
+            <Area type="monotone" dataKey={metricKey} stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorValue)" />
+          </AreaChart>
+        </ResponsiveContainer>
+        {loading ? (
+          <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-400 bg-[#0d1117]/40">
+            Updating...
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
