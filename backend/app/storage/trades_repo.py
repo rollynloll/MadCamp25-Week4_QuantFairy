@@ -10,6 +10,17 @@ class TradesRepository:
     def __init__(self, settings: Settings) -> None:
         self.supabase = get_supabase_client(settings)
 
+    def upsert_many(self, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if not rows:
+            return []
+        if self.supabase is None:
+            return rows
+        try:
+            self.supabase.table("trades").upsert(rows, on_conflict="fill_id").execute()
+        except Exception:
+            return rows
+        return rows
+
     def list_recent(self, user_id: str, environment: str, limit: int = 5) -> List[Dict[str, Any]]:
         if self.supabase is None:
             return []

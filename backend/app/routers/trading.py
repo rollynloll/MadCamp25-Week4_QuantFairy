@@ -14,8 +14,10 @@ from websockets.exceptions import ConnectionClosed
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 
+from app.alpaca.client import AlpacaClient
 from app.core.config import get_settings
 from app.core.errors import APIError
+from app.core.ttl_cache import TTLCache
 from app.db import get_db_connection
 from app.schemas.trading import (
     OrderDetailResponse,
@@ -51,6 +53,9 @@ except Exception:  # pragma: no cover - optional dependency
 
 EnvLiteral = Literal["paper", "live"]
 ScopeLiteral = Literal["open", "filled", "all"]
+ORDER_SYNC_TTL = 5.0
+POSITION_SYNC_TTL = 5.0
+SYNC_CACHE = TTLCache(default_ttl=5.0, maxsize=256)
 
 
 def _resolve_user_id(user_id: Optional[str]) -> str:
@@ -59,6 +64,332 @@ def _resolve_user_id(user_id: Optional[str]) -> str:
     if not resolved:
         raise APIError("VALIDATION_ERROR", "user_id is required", status_code=400)
     return resolved
+
+
+def _get_field(obj: Any, name: str, default: Any = None) -> Any:
+    if isinstance(obj, dict):
+        return obj.get(name, default)
+    return getattr(obj, name, default)
+
+
+def _to_iso(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
+
+
+def _to_datetime(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        try:
+            if value.endswith("Z"):
+                return datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return datetime.fromisoformat(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _normalize_enum_text(value: Any, default: str = "") -> str:
+    if value is None:
+        return default
+    text = str(value).strip()
+    if not text:
+        return default
+    if "." in text:
+        text = text.split(".")[-1]
+    return text.lower()
+
+
+def _normalize_filled_orders_to_trades(
+    raw_orders: Any,
+    *,
+    user_id: str,
+    environment: str,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    now_dt = datetime.now(timezone.utc)
+    for order in raw_orders or []:
+        status = _normalize_enum_text(_get_field(order, "status", "unknown"), default="unknown")
+        if status != "filled":
+            continue
+        order_id = _get_field(order, "id") or _get_field(order, "client_order_id")
+        symbol = str(_get_field(order, "symbol", "")).upper()
+        if not order_id or not symbol:
+            continue
+        qty = float(_get_field(order, "filled_qty", _get_field(order, "qty", 0)) or 0)
+        if qty <= 0:
+            continue
+        price = float(_get_field(order, "filled_avg_price", 0) or 0)
+        if price <= 0:
+            price = float(_get_field(order, "limit_price", 0) or 0)
+        rows.append(
+            {
+                "fill_id": str(order_id),
+                "user_id": user_id,
+                "environment": environment,
+                "filled_at": _to_datetime(_get_field(order, "filled_at")) or now_dt,
+                "symbol": symbol,
+                "side": _normalize_enum_text(_get_field(order, "side", "buy"), default="buy"),
+                "qty": qty,
+                "price": price,
+                "strategy_id": None,
+                "strategy_name": "Unknown Strategy",
+            }
+        )
+    return rows
+
+
+def _normalize_alpaca_orders(
+    raw_orders: Any,
+    *,
+    user_id: str,
+    environment: str,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for order in raw_orders or []:
+        order_id = _get_field(order, "id") or _get_field(order, "client_order_id")
+        symbol = str(_get_field(order, "symbol", "")).upper()
+        if not order_id or not symbol:
+            continue
+        rows.append(
+            {
+                "order_id": str(order_id),
+                "user_id": user_id,
+                "environment": environment,
+                "symbol": symbol,
+                "side": _normalize_enum_text(_get_field(order, "side", ""), default="buy"),
+                "qty": float(_get_field(order, "qty", 0) or 0),
+                "type": _normalize_enum_text(_get_field(order, "type", "market"), default="market"),
+                "status": _normalize_enum_text(_get_field(order, "status", "unknown"), default="unknown"),
+                "submitted_at": _to_datetime(_get_field(order, "submitted_at")),
+                "filled_at": _to_datetime(_get_field(order, "filled_at")),
+                "strategy_id": None,
+            }
+        )
+    return rows
+
+
+def _normalize_alpaca_positions(
+    raw_positions: Any,
+    *,
+    user_id: str,
+    environment: str,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    now = datetime.now(timezone.utc)
+    for pos in raw_positions or []:
+        symbol = str(_get_field(pos, "symbol", "")).upper()
+        if not symbol:
+            continue
+        rows.append(
+            {
+                "user_id": user_id,
+                "environment": environment,
+                "symbol": symbol,
+                "qty": float(_get_field(pos, "qty", 0) or 0),
+                "avg_entry_price": float(_get_field(pos, "avg_entry_price", 0) or 0),
+                "unrealized_pnl": float(_get_field(pos, "unrealized_pl", 0) or 0),
+                "strategy_id": None,
+                "updated_at": now,
+            }
+        )
+    return rows
+
+
+async def _upsert_orders(conn: Any, rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    query = """
+        INSERT INTO orders (
+            order_id, user_id, environment, symbol, side, qty, type, status, submitted_at, filled_at, strategy_id
+        ) VALUES (
+            $1, $2::uuid, $3, $4, $5, $6, $7, $8, $9::timestamptz, $10::timestamptz, $11
+        )
+        ON CONFLICT (order_id) DO UPDATE SET
+            symbol = EXCLUDED.symbol,
+            side = EXCLUDED.side,
+            qty = EXCLUDED.qty,
+            type = EXCLUDED.type,
+            status = EXCLUDED.status,
+            submitted_at = COALESCE(EXCLUDED.submitted_at, orders.submitted_at),
+            filled_at = COALESCE(EXCLUDED.filled_at, orders.filled_at),
+            strategy_id = COALESCE(orders.strategy_id, EXCLUDED.strategy_id)
+    """
+    params = [
+        (
+            row["order_id"],
+            row["user_id"],
+            row["environment"],
+            row["symbol"],
+            row["side"],
+            row["qty"],
+            row["type"],
+            row["status"],
+            row["submitted_at"],
+            row["filled_at"],
+            row["strategy_id"],
+        )
+        for row in rows
+    ]
+    await conn.executemany(query, params)
+
+
+async def _upsert_trades(conn: Any, rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    query = """
+        INSERT INTO trades (
+            fill_id, user_id, environment, filled_at, symbol, side, qty, price, strategy_id, strategy_name
+        ) VALUES (
+            $1, $2::uuid, $3, $4::timestamptz, $5, $6, $7, $8, $9, $10
+        )
+        ON CONFLICT (fill_id) DO UPDATE SET
+            filled_at = EXCLUDED.filled_at,
+            symbol = EXCLUDED.symbol,
+            side = EXCLUDED.side,
+            qty = EXCLUDED.qty,
+            price = EXCLUDED.price,
+            strategy_id = COALESCE(trades.strategy_id, EXCLUDED.strategy_id),
+            strategy_name = COALESCE(trades.strategy_name, EXCLUDED.strategy_name)
+    """
+    params = [
+        (
+            row["fill_id"],
+            row["user_id"],
+            row["environment"],
+            row["filled_at"],
+            row["symbol"],
+            row["side"],
+            row["qty"],
+            row["price"],
+            row["strategy_id"],
+            row["strategy_name"],
+        )
+        for row in rows
+    ]
+    await conn.executemany(query, params)
+
+
+async def _replace_positions(
+    conn: Any,
+    *,
+    user_id: str,
+    environment: str,
+    rows: list[dict[str, Any]],
+) -> None:
+    async with conn.transaction():
+        await conn.execute(
+            "DELETE FROM positions WHERE user_id = $1::uuid AND environment = $2",
+            user_id,
+            environment,
+        )
+        if not rows:
+            return
+        query = """
+            INSERT INTO positions (
+                user_id, environment, symbol, qty, avg_entry_price, unrealized_pnl, strategy_id, updated_at
+            ) VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8::timestamptz)
+        """
+        params = [
+            (
+                row["user_id"],
+                row["environment"],
+                row["symbol"],
+                row["qty"],
+                row["avg_entry_price"],
+                row["unrealized_pnl"],
+                row["strategy_id"],
+                row["updated_at"],
+            )
+            for row in rows
+        ]
+        await conn.executemany(query, params)
+
+
+async def _sync_alpaca_snapshot(
+    conn: Any,
+    *,
+    env: str,
+    user_id: str,
+    sync_orders: bool = False,
+    sync_positions: bool = False,
+) -> None:
+    if not (sync_orders or sync_positions):
+        return
+    settings = get_settings()
+    if not settings.alpaca_api_key or not settings.alpaca_secret_key:
+        return
+
+    cache_hits: list[str] = []
+    if sync_orders:
+        order_key = f"trading:orders:{env}:{user_id}"
+        if SYNC_CACHE.get(order_key) is not None:
+            cache_hits.append("orders")
+            sync_orders = False
+    if sync_positions:
+        pos_key = f"trading:positions:{env}:{user_id}"
+        if SYNC_CACHE.get(pos_key) is not None:
+            cache_hits.append("positions")
+            sync_positions = False
+    if not (sync_orders or sync_positions):
+        return
+
+    client = AlpacaClient(settings, env)
+    try:
+        if sync_orders:
+            raw_orders = await anyio.to_thread.run_sync(lambda: client.get_orders(status="all", limit=500))
+            if raw_orders is not None:
+                order_rows = _normalize_alpaca_orders(raw_orders, user_id=user_id, environment=env)
+                await _upsert_orders(conn, order_rows)
+                trade_rows = _normalize_filled_orders_to_trades(
+                    raw_orders,
+                    user_id=user_id,
+                    environment=env,
+                )
+                await _upsert_trades(conn, trade_rows)
+                SYNC_CACHE.set(f"trading:orders:{env}:{user_id}", True, ttl=ORDER_SYNC_TTL)
+                logger.info(
+                    "trading.sync orders env=%s count=%s trades=%s",
+                    env,
+                    len(order_rows),
+                    len(trade_rows),
+                )
+            else:
+                logger.warning("trading.sync orders skipped env=%s reason=alpaca_none", env)
+
+        if sync_positions:
+            raw_positions = await anyio.to_thread.run_sync(client.get_positions)
+            if raw_positions is not None:
+                position_rows = _normalize_alpaca_positions(
+                    raw_positions,
+                    user_id=user_id,
+                    environment=env,
+                )
+                await _replace_positions(
+                    conn,
+                    user_id=user_id,
+                    environment=env,
+                    rows=position_rows,
+                )
+                SYNC_CACHE.set(f"trading:positions:{env}:{user_id}", True, ttl=POSITION_SYNC_TTL)
+                logger.info("trading.sync positions env=%s count=%s", env, len(position_rows))
+            else:
+                logger.warning("trading.sync positions skipped env=%s reason=alpaca_none", env)
+    except Exception as exc:
+        logger.warning(
+            "trading.sync failed env=%s sync_orders=%s sync_positions=%s cache_hits=%s error=%s",
+            env,
+            sync_orders,
+            sync_positions,
+            ",".join(cache_hits) if cache_hits else "-",
+            exc,
+        )
 
 
 def _parse_symbols(raw: str | None) -> list[str]:
@@ -245,6 +576,12 @@ async def list_orders(
     conn=Depends(get_db_connection),
 ):
     resolved_user_id = _resolve_user_id(user_id)
+    await _sync_alpaca_snapshot(
+        conn,
+        env=env,
+        user_id=resolved_user_id,
+        sync_orders=True,
+    )
     items = await fetch_orders(
         conn,
         user_id=resolved_user_id,
@@ -263,6 +600,12 @@ async def get_order(
     conn=Depends(get_db_connection),
 ):
     resolved_user_id = _resolve_user_id(user_id)
+    await _sync_alpaca_snapshot(
+        conn,
+        env=env,
+        user_id=resolved_user_id,
+        sync_orders=True,
+    )
     item = await fetch_order_by_id(
         conn,
         user_id=resolved_user_id,
@@ -281,6 +624,12 @@ async def list_positions(
     conn=Depends(get_db_connection),
 ):
     resolved_user_id = _resolve_user_id(user_id)
+    await _sync_alpaca_snapshot(
+        conn,
+        env=env,
+        user_id=resolved_user_id,
+        sync_positions=True,
+    )
     items = await fetch_positions(
         conn,
         user_id=resolved_user_id,

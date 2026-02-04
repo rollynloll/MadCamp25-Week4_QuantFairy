@@ -12,17 +12,26 @@ export interface UiOrder {
   strategy: string;
 }
 
+const normalizeToken = (value: string | null | undefined) => {
+  const raw = (value ?? "").trim();
+  if (!raw) return "";
+  return raw.includes(".") ? raw.split(".").pop() ?? raw : raw;
+};
+
 export function mapOrder(o: TradingOrder): UiOrder {
   const price = o.limit_price ?? o.avg_fill_price ?? null;
+  const side = normalizeToken(o.side).toUpperCase();
+  const type = normalizeToken(o.type).replaceAll("_", " ").toUpperCase();
+  const status = normalizeToken(o.status).toUpperCase();
   return {
     id: o.order_id,
     symbol: o.symbol,
-    side: o.side.toUpperCase() as UiOrder["side"],
-    type: o.type.replace("_", " ").toUpperCase() as UiOrder["type"],
+    side: (side || "BUY") as UiOrder["side"],
+    type: (type || "MARKET") as UiOrder["type"],
     qty: o.qty ?? 0,
     filled: o.filled_qty ?? 0,
     price,
-    status: o.status,
+    status: status || "PENDING",
     strategy: o.strategy?.name ?? "-",
   };
 }

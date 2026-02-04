@@ -12,6 +12,8 @@ export default function OpenOrders({ orders, filledOrders = [], view, onViewChan
   const { tr } = useLanguage();
   const activeOrders = view === "open" ? orders : filledOrders;
   const isOpen = view === "open";
+  const gridCols =
+    "grid-cols-[minmax(140px,1.3fr)_80px_84px_92px_82px_92px_86px_110px_minmax(120px,1fr)]";
 
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
@@ -43,57 +45,61 @@ export default function OpenOrders({ orders, filledOrders = [], view, onViewChan
         </div>
       </div>
 
-      <div className="space-y-1 max-h-[360px] overflow-y-auto pr-1">
-        <div className="grid grid-cols-9 gap-4 px-3 py-2 text-xs text-gray-500 font-medium border-b border-gray-800 sticky top-0 bg-[#0d1117] z-10">
-          <div>{tr("Order ID", "주문 번호")}</div>
-          <div>{tr("Symbol", "종목")}</div>
-          <div>{tr("Side", "구분")}</div>
-          <div>{tr("Type", "종류")}</div>
-          <div className="text-right">{tr("Qty", "수량")}</div>
-          <div className="text-right">{tr("Filled", "체결량")}</div>
-          <div className="text-right">{tr("Price", "기격")}</div>
-          <div>{tr("Status", "상태")}</div>
-          <div>{tr("Strategy", "전략")}</div>
+      <div className="max-h-[360px] overflow-auto pr-1">
+        <div className={`sticky top-0 z-10 hidden ${gridCols} gap-4 border-b border-gray-800 bg-[#0d1117] px-3 py-2 text-xs font-medium text-gray-500 md:grid`}>
+          <div className="truncate">{tr("Order ID", "주문 번호")}</div>
+          <div className="truncate">{tr("Symbol", "종목")}</div>
+          <div className="truncate">{tr("Side", "구분")}</div>
+          <div className="truncate">{tr("Type", "종류")}</div>
+          <div className="truncate text-right">{tr("Qty", "수량")}</div>
+          <div className="truncate text-right">{tr("Filled", "체결량")}</div>
+          <div className="truncate text-right">{tr("Price", "가격")}</div>
+          <div className="truncate">{tr("Status", "상태")}</div>
+          <div className="truncate">{tr("Strategy", "전략")}</div>
         </div>
 
-        {activeOrders.map((order) => (
+        <div className="space-y-1">
+          {activeOrders.map((order) => (
           <div
             key={order.id}
-            className="grid grid-cols-9 gap-4 px-3 py-3 hover:bg-gray-800/50 rounded transition-colors text-sm"
+            className="rounded px-3 py-3 text-sm transition-colors hover:bg-gray-800/50"
           >
-            <div className="font-mono text-gray-400">{order.id}</div>
-            <div className="font-semibold">{order.symbol}</div>
-            <div
-              className={`font-semibold ${
-                order.side === "BUY" ? "text-green-500" : "text-red-500"
-              }`}
-            >
-              {order.side}
-            </div>
-            <div className="text-gray-400">{order.type}</div>
-            <div className="text-right font-mono">{order.qty}</div>
-            <div className="text-right font-mono text-gray-400">
-              {order.filled}
-            </div>
-            <div className="text-right font-mono">
-              {typeof order.price === "number" ? `$${order.price.toFixed(2)}` : "-"}
-            </div>
-            <div>
-              <span
-                className={`px-2 py-0.5 rounded text-xs ${
-                  order.status === "PENDING"
-                    ? "bg-yellow-600/20 text-yellow-400"
-                    : order.status === "PARTIAL"
-                    ? "bg-blue-600/20 text-blue-400"
-                    : "bg-green-600/20 text-green-400"
+            <div className={`flex flex-col gap-2 md:grid ${gridCols} md:items-center md:gap-4`}>
+              <div className="min-w-0 font-mono text-gray-400 md:truncate">{order.id}</div>
+              <div className="min-w-0 font-semibold md:truncate">{order.symbol}</div>
+              <div
+                className={`font-semibold ${
+                  order.side === "BUY" ? "text-green-500" : "text-red-500"
                 }`}
               >
-                {order.status}
-              </span>
+                {order.side}
+              </div>
+              <div className="min-w-0 truncate text-gray-400">{order.type}</div>
+              <div className="font-mono md:text-right">{order.qty}</div>
+              <div className="font-mono text-gray-400 md:text-right">
+                {order.filled}
+              </div>
+              <div className="font-mono md:text-right">
+                {typeof order.price === "number" ? `$${order.price.toFixed(2)}` : "-"}
+              </div>
+              <div className="min-w-0">
+                <span
+                  className={`inline-block rounded px-2 py-0.5 text-xs ${
+                    order.status === "PENDING"
+                      ? "bg-yellow-600/20 text-yellow-400"
+                      : order.status === "PARTIAL"
+                      ? "bg-blue-600/20 text-blue-400"
+                      : "bg-green-600/20 text-green-400"
+                  }`}
+                >
+                  {order.status}
+                </span>
+              </div>
+              <div className="min-w-0 truncate text-xs text-gray-500">{order.strategy}</div>
             </div>
-            <div className="text-xs text-gray-500">{order.strategy}</div>
           </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   );
