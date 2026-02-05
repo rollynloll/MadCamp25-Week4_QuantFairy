@@ -11,7 +11,13 @@ from fastapi import APIRouter, Query
 from app.alpaca.client import AlpacaAccount, AlpacaClient
 from app.core.config import get_settings
 from app.core.errors import APIError
-from app.core.ttl_cache import TTLCache
+from app.core.alpaca_cache import (
+    ALPACA_CACHE,
+    _cache_key,
+    get_account_cached as _get_account_cached,
+    get_history_cached as _get_history_cached,
+    get_positions_cached as _get_positions_cached,
+)
 from app.core.time import now_kst
 from app.services.backtest_runner import build_price_frame, resolve_universe
 from app.services.data_provider import load_price_series
@@ -66,11 +72,7 @@ SortLiteral = Literal["pnl", "pnl_pct", "value", "symbol"]
 OrderLiteral = Literal["asc", "desc"]
 AttributionByLiteral = Literal["strategy", "sector"]
 
-ACCOUNT_CACHE_TTL = 10.0
-POSITIONS_CACHE_TTL = 10.0
-HISTORY_CACHE_TTL = 15.0
 ORDERS_SYNC_CACHE_TTL = 5.0
-ALPACA_CACHE = TTLCache(default_ttl=10.0, maxsize=256)
 
 
 def _resolve_user_id() -> str:
@@ -145,47 +147,6 @@ def _format_timestamp(ts: Any) -> str:
     return str(ts)
 
 
-def _cache_key(prefix: str, env: str, *parts: str) -> str:
-    suffix = ":".join(parts) if parts else ""
-    return f"{prefix}:{env}:{suffix}"
-
-
-def _get_account_cached(client: AlpacaClient):
-    key = _cache_key("alpaca:account", client.environment)
-    cached = ALPACA_CACHE.get(key)
-    if cached is not None:
-        return cached
-    result = client.get_account()
-    if result.account is not None:
-        ALPACA_CACHE.set(key, result, ttl=ACCOUNT_CACHE_TTL)
-    return result
-
-
-def _get_positions_cached(client: AlpacaClient):
-    key = _cache_key("alpaca:positions", client.environment)
-    cached = ALPACA_CACHE.get(key)
-    if cached is not None:
-        return cached
-    result = client.get_positions()
-    if result is not None:
-        ALPACA_CACHE.set(key, result, ttl=POSITIONS_CACHE_TTL)
-    return result
-
-
-def _get_history_cached(client: AlpacaClient, period: str | None, timeframe: str | None):
-    key = _cache_key(
-        "alpaca:history",
-        client.environment,
-        period or "default",
-        timeframe or "default",
-    )
-    cached = ALPACA_CACHE.get(key)
-    if cached is not None:
-        return cached
-    result = client.get_portfolio_history(period=period, timeframe=timeframe)
-    if result is not None:
-        ALPACA_CACHE.set(key, result, ttl=HISTORY_CACHE_TTL)
-    return result
 
 
 def _require_account(client: AlpacaClient):
@@ -471,6 +432,7 @@ def _build_rebalance_orders(
     extra_symbol_targets: Optional[Dict[str, float]] = None,
     price_overrides: Optional[Dict[str, float]] = None,
     scale_override: Optional[float] = None,
+    sell_untracked_positions: bool = False,
 ) -> List[Dict[str, Any]]:
     if equity <= 0:
         return []
@@ -528,6 +490,23 @@ def _build_rebalance_orders(
                 {"symbol": pos["symbol"], "delta_value": 0.0, "price": price},
             )
             entry["delta_value"] += delta_value
+
+    if sell_untracked_positions:
+        for strategy_id, current in grouped.items():
+            if strategy_id in cleaned_weights:
+                continue
+            for pos in current["positions"]:
+                abs_value = pos["abs_value"]
+                if abs_value <= 0:
+                    continue
+                price = _to_float(pos.get("current_price", 0.0))
+                if price <= 0:
+                    continue
+                entry = symbol_deltas.setdefault(
+                    pos["symbol"],
+                    {"symbol": pos["symbol"], "delta_value": 0.0, "price": price},
+                )
+                entry["delta_value"] -= abs_value
 
     if extra_symbol_targets:
         for symbol, target_value in extra_symbol_targets.items():
@@ -1585,8 +1564,42 @@ async def rebalance_portfolio(
     positions_repo = PositionsRepository(settings)
     targets_repo = RebalanceTargetsRepository(settings)
     runs_repo = RebalanceRunsRepository(settings)
-    rows = positions_repo.list(user_id, env, limit=500)
-    positions = _normalize_position_rows(rows)
+    strategies_repo = StrategiesRepository(settings)
+    raw_positions = _get_positions_cached(client) or []
+    positions = _normalize_positions(raw_positions)
+
+    existing_orders = orders_repo.list_recent(user_id, env, limit=2000)
+    existing_positions_rows = positions_repo.list(user_id, env, limit=2000)
+    symbol_strategy_map: Dict[str, str] = {}
+    for row in existing_orders:
+        symbol = str(row.get("symbol", "")).upper()
+        strategy_id = row.get("strategy_id")
+        if symbol and strategy_id and symbol not in symbol_strategy_map:
+            symbol_strategy_map[symbol] = str(strategy_id)
+    for row in existing_positions_rows:
+        symbol = str(row.get("symbol", "")).upper()
+        strategy_id = row.get("strategy_id")
+        if symbol and strategy_id and symbol not in symbol_strategy_map:
+            symbol_strategy_map[symbol] = str(strategy_id)
+
+    strategy_name_map: Dict[str, str] = {}
+    try:
+        for row in strategies_repo.list(user_id):
+            sid = row.get("strategy_id")
+            name = row.get("name")
+            if sid and name:
+                strategy_name_map[str(sid)] = str(name)
+    except Exception:
+        strategy_name_map = {}
+
+    for pos in positions:
+        symbol = str(pos.get("symbol", "")).upper()
+        strategy_id = symbol_strategy_map.get(symbol)
+        if not strategy_id:
+            continue
+        pos.setdefault("strategy", {})
+        pos["strategy"]["user_strategy_id"] = strategy_id
+        pos["strategy"]["name"] = strategy_name_map.get(strategy_id, pos["strategy"].get("name", "Unassigned"))
 
     target_weights = payload.target_weights or {}
     if payload.strategy_ids:
@@ -1747,6 +1760,7 @@ async def rebalance_portfolio(
             extra_symbol_targets=extra_symbol_targets or None,
             price_overrides=price_overrides or None,
             scale_override=scale,
+            sell_untracked_positions=(payload.target_source == "strategy"),
         )
 
     # Cash-only guard: do not rely on broker margin buying power.
@@ -1771,17 +1785,33 @@ async def rebalance_portfolio(
     expected_sell_notional = sum(_to_float(order.get("notional", 0.0), 0.0) for order in sell_orders)
     expected_buy_notional = sum(_to_float(order.get("notional", 0.0), 0.0) for order in buy_orders)
     max_cash_only_buy_notional = max(0.0, account.cash) + max(0.0, expected_sell_notional)
-    if payload.mode == "execute" and expected_buy_notional > (max_cash_only_buy_notional + 1.0):
-        raise APIError(
-            "MARGIN_NOT_ALLOWED",
-            "Rebalance blocked: expected buy notional exceeds cash + sell proceeds.",
-            details=[
-                {"field": "cash", "reason": f"{account.cash:.2f}"},
-                {"field": "expected_sell_notional", "reason": f"{expected_sell_notional:.2f}"},
-                {"field": "expected_buy_notional", "reason": f"{expected_buy_notional:.2f}"},
-            ],
-            status_code=422,
-        )
+    if expected_buy_notional > (max_cash_only_buy_notional + 1.0):
+        if payload.mode != "execute":
+            logger.warning(
+                "rebalance.cash_guard preview cash=%.2f sells=%.2f buys=%.2f",
+                account.cash,
+                expected_sell_notional,
+                expected_buy_notional,
+            )
+        elif not sell_orders:
+            logger.warning(
+                "rebalance.cash_guard no_sells cash=%.2f buys=%.2f",
+                account.cash,
+                expected_buy_notional,
+            )
+            buy_orders = []
+            orders = []
+            expected_buy_notional = 0.0
+        else:
+            logger.warning(
+                "rebalance.cash_guard sell_only cash=%.2f sells=%.2f buys=%.2f",
+                account.cash,
+                expected_sell_notional,
+                expected_buy_notional,
+            )
+            buy_orders = []
+            orders = sell_orders
+            expected_buy_notional = 0.0
 
     logger.info(
         "rebalance.orders count=%s target_cash_pct=%.2f cash=%.2f buy_notional=%.2f sell_notional=%.2f",

@@ -13,8 +13,8 @@ import { useDashboardContext } from "@/contexts/DashboardContext";
 
 export default function Portfolio() {
   const { tr } = useLanguage();
-  const { refreshUserStrategies } = useDashboardContext();
-  const [env] = useState<Env>("paper");
+  const { data: dashboardData, refreshUserStrategies } = useDashboardContext();
+  const env = (dashboardData?.mode.environment ?? "paper") as Env;
   const [range] = useState<Range>("1M");
   const [showBenchmark] = useState(false);
 
@@ -56,6 +56,11 @@ export default function Portfolio() {
       return hasSavedTarget ? next : prev;
     });
   }, [resolvedStrategies, data?.rebalanceTargets]);
+
+  useEffect(() => {
+    if (!data) return;
+    loadActivity(true);
+  }, [env, data?.summary?.as_of]);
 
   if (loading) return <div className="text-gray-400">Lodaing...</div>;
   if (error) return <div className="text-red-400">{error}</div>;
@@ -185,6 +190,7 @@ export default function Portfolio() {
       });
       setSaveStatus(tr(`Saved at ${timeLabel}`, `${timeLabel} 저장 완료`));
       refreshUserStrategies();
+      loadActivity(true);
       setTimeout(() => setSaveStatus(null), 3000);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to save targets";
