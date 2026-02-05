@@ -1,8 +1,6 @@
-
 import { useLanguage } from "@/contexts/LanguageContext";
 import type { UiOrder } from "@/utils/tradingOrderUtils";
 import type { OrderScope } from "@/api/trading";
-import { useMemo } from "react";
 
 const GRID_COLS =
   "grid-cols-[minmax(140px,1.3fr)_80px_84px_92px_82px_92px_86px_110px_minmax(120px,1fr)]";
@@ -39,9 +37,6 @@ export default function OpenOrders({ orders, filledOrders = [], allOrders = [], 
       : orders;
   const isOpen = activeView === "open";
   const isFilled = activeView === "filled";
-  const gridCols =
-    "grid-cols-[minmax(140px,1.3fr)_80px_84px_92px_82px_92px_86px_110px_minmax(120px,1fr)]";
-
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
       <div className="flex items-center justify-between mb-4">
