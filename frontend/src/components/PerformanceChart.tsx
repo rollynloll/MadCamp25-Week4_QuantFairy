@@ -1,5 +1,5 @@
 import type { Range } from "@/types/dashboard";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useLanguage } from "@/contexts/LanguageContext";
 
@@ -17,6 +17,7 @@ interface Props {
 }
 
 export default function PerformanceChart({ data, range, onRangeChange, loading }: Props) {
+  const yAxisWidth = 64;
   const ranges: Range[] = ["1D", "1W", "1M", "3M", "1Y", "ALL"];
   
   const rangeLabels: Record<Range, string> = {
@@ -33,6 +34,21 @@ export default function PerformanceChart({ data, range, onRangeChange, loading }
   const [metric, setMetric] = useState<Metric>("equity");
   const metricKey = metric === "equity" ? "equity" : "daily_pnl";
   const { tr } = useLanguage();
+
+  const yDomain = useMemo<[number, number]>(() => {
+    if (!data.length) return [0, 1];
+    const values = data
+      .map((item) => Number(item[metricKey as keyof CurvePoint]))
+      .filter((value) => Number.isFinite(value));
+    if (!values.length) return [0, 1];
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const span = max - min;
+    const pad = span > 0 ? span * 0.2 : Math.max(Math.abs(max) * 0.01, 1);
+    return [min - pad, max + pad];
+  }, [data, metricKey]);
+  const isYAxisTruncated = yDomain[0] > 0 || yDomain[1] < 0;
+
   const formatTick = (value: string) => {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
@@ -117,7 +133,13 @@ export default function PerformanceChart({ data, range, onRangeChange, loading }
               tickFormatter={formatTick}
               interval={resolveInterval()}
             />
-            <YAxis stroke="#6b7280" style={{ fontSize: 12 }} tickFormatter={formatYAxis} />
+            <YAxis
+              stroke="#6b7280"
+              style={{ fontSize: 12 }}
+              tickFormatter={formatYAxis}
+              domain={yDomain}
+              width={yAxisWidth}
+            />
             <Tooltip
               contentStyle={{
                 backgroundColor: "#1f2937",
@@ -126,9 +148,26 @@ export default function PerformanceChart({ data, range, onRangeChange, loading }
                 fontSize: 12,
               }}
             />
-            <Area type="monotone" dataKey={metricKey} stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorValue)" />
+            <Area
+              type="linear"
+              dataKey={metricKey}
+              stroke="#3b82f6"
+              strokeWidth={2.4}
+              dot={{ r: 2, fill: "#93c5fd", stroke: "#3b82f6", strokeWidth: 1 }}
+              activeDot={{ r: 4.5, fill: "#dbeafe", stroke: "#3b82f6", strokeWidth: 1.5 }}
+              fillOpacity={1}
+              fill="url(#colorValue)"
+            />
           </AreaChart>
         </ResponsiveContainer>
+        {isYAxisTruncated ? (
+          <div
+            className="pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded border border-blue-500/40 bg-[#0b1220]/90 px-1.5 py-0.5 text-[11px] font-semibold leading-none tracking-tight text-blue-300 shadow-[0_0_12px_rgba(59,130,246,0.25)]"
+            style={{ left: `${yAxisWidth}px` }}
+          >
+            ~~~
+          </div>
+        ) : null}
         {loading ? (
           <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-400 bg-[#0d1117]/40">
             Updating...

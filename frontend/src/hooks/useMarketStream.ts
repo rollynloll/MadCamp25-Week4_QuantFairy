@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { OrderBook, OrderBookLevel, RecentTrade } from "@/types/trading";
 import { API_BASE_URL } from "@/api/base";
-import { getTradingBars } from "@/api/trading";
+import { getTradingBars, getTradingQuote } from "@/api/trading";
 
 export interface BarPoint {
   time: string;
@@ -148,6 +148,7 @@ export function useMarketStream(symbol: string, timeframe: MarketTimeframe = "1D
   const lastTradeRef = useRef<number | null>(null);
   const hasStreamedBars = useRef(false);
   const timeframeRef = useRef<MarketTimeframe>(timeframe);
+  const lastQuoteUpdateMsRef = useRef<number>(0);
   const feed = "iex";
 
   useEffect(() => {
@@ -201,6 +202,7 @@ export function useMarketStream(symbol: string, timeframe: MarketTimeframe = "1D
         const ask = Number(msg.ask ?? 0);
         const bidSize = Number(msg.bid_size ?? 0);
         const askSize = Number(msg.ask_size ?? 0);
+        lastQuoteUpdateMsRef.current = Date.now();
         setOrderBook((prev) => {
           const makeLevel = (price: number, size: number): OrderBookLevel => ({
             price,
@@ -317,6 +319,63 @@ export function useMarketStream(symbol: string, timeframe: MarketTimeframe = "1D
       }
     };
   }, [symbol]);
+
+  useEffect(() => {
+    if (!symbol) return;
+    let cancelled = false;
+
+    const applyQuote = async () => {
+      try {
+        const quote = await getTradingQuote({ symbol, feed });
+        if (cancelled) return;
+        const bid = Number(quote.bid ?? 0);
+        const ask = Number(quote.ask ?? 0);
+        const bidSize = Number(quote.bid_size ?? 0);
+        const askSize = Number(quote.ask_size ?? 0);
+        if (bid <= 0 && ask <= 0) return;
+
+        const makeLevel = (price: number, size: number): OrderBookLevel => ({
+          price,
+          size: Number.isFinite(size) && size > 0 ? size : 1,
+          total: price * (Number.isFinite(size) && size > 0 ? size : 1),
+        });
+        let applied = false;
+        setOrderBook((prev) => {
+          const shouldOverrideFromRest =
+            prev.bids.length === 0 ||
+            prev.asks.length === 0 ||
+            Date.now() - lastQuoteUpdateMsRef.current > 12_000;
+          if (!shouldOverrideFromRest) {
+            return prev;
+          }
+          applied = true;
+          return {
+            bids: bid > 0 ? [makeLevel(bid, bidSize)] : [],
+            asks: ask > 0 ? [makeLevel(ask, askSize)] : [],
+          };
+        });
+        if (applied) {
+          lastQuoteUpdateMsRef.current = Date.now();
+          const fallbackMid = quote.mid ?? (bid > 0 && ask > 0 ? (bid + ask) / 2 : bid || ask);
+          if (fallbackMid && fallbackMid > 0) {
+            lastTradeRef.current = fallbackMid;
+          }
+        }
+      } catch {
+        // ignore quote polling failures; websocket/historical data may still work
+      }
+    };
+
+    void applyQuote();
+    const timer = window.setInterval(() => {
+      void applyQuote();
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [symbol, feed]);
 
   useEffect(() => {
     if (!symbol) return;

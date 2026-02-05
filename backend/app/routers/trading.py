@@ -26,6 +26,7 @@ from app.schemas.trading import (
     PositionListResponse,
     LastFillResponse,
     BarsResponse,
+    QuoteResponse,
 )
 from app.services.data_provider import load_price_series
 from app.services.trading_service import (
@@ -42,11 +43,15 @@ logger = logging.getLogger("uvicorn.error")
 try:  # optional alpaca-py data client
     from alpaca.data.historical import StockHistoricalDataClient
     from alpaca.data.requests import StockBarsRequest
+    from alpaca.data.requests import StockLatestQuoteRequest
+    from alpaca.data.requests import StockLatestTradeRequest
     from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
     from alpaca.data.enums import DataFeed, Adjustment
 except Exception:  # pragma: no cover - optional dependency
     StockHistoricalDataClient = None
     StockBarsRequest = None
+    StockLatestQuoteRequest = None
+    StockLatestTradeRequest = None
     TimeFrame = None
     TimeFrameUnit = None
     DataFeed = None
@@ -96,6 +101,13 @@ def _to_datetime(value: Any) -> datetime | None:
     return None
 
 
+def _to_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _normalize_enum_text(value: Any, default: str = "") -> str:
     if value is None:
         return default
@@ -105,6 +117,77 @@ def _normalize_enum_text(value: Any, default: str = "") -> str:
     if "." in text:
         text = text.split(".")[-1]
     return text.lower()
+
+
+def _extract_latest_quote(payload: Any, symbol: str) -> dict[str, Any] | None:
+    quote_obj = None
+    symbol_key = symbol.upper()
+    if isinstance(payload, dict):
+        quote_obj = payload.get(symbol_key) or payload.get(symbol)
+    if quote_obj is None and hasattr(payload, "data"):
+        data = getattr(payload, "data", None)
+        if isinstance(data, dict):
+            quote_obj = data.get(symbol_key) or data.get(symbol)
+    if quote_obj is None and hasattr(payload, "get"):
+        try:
+            quote_obj = payload.get(symbol_key) or payload.get(symbol)
+        except Exception:
+            quote_obj = None
+    if quote_obj is None:
+        return None
+
+    bid = _to_float(_get_field(quote_obj, "bid_price", _get_field(quote_obj, "bp")), 0.0)
+    ask = _to_float(_get_field(quote_obj, "ask_price", _get_field(quote_obj, "ap")), 0.0)
+    bid_size = _to_float(_get_field(quote_obj, "bid_size", _get_field(quote_obj, "bs")), 0.0)
+    ask_size = _to_float(_get_field(quote_obj, "ask_size", _get_field(quote_obj, "as")), 0.0)
+    timestamp = _to_iso(_get_field(quote_obj, "timestamp", _get_field(quote_obj, "t")))
+    if bid <= 0 and ask <= 0:
+        return None
+    mid = ((bid + ask) / 2.0) if bid > 0 and ask > 0 else (bid if bid > 0 else ask)
+    spread = (ask - bid) if bid > 0 and ask > 0 else None
+    return {
+        "bid": bid if bid > 0 else None,
+        "ask": ask if ask > 0 else None,
+        "bid_size": bid_size if bid_size > 0 else None,
+        "ask_size": ask_size if ask_size > 0 else None,
+        "mid": mid if mid and mid > 0 else None,
+        "spread": spread if spread is not None and spread >= 0 else None,
+        "timestamp": timestamp,
+        "source": "quote",
+    }
+
+
+def _extract_latest_trade(payload: Any, symbol: str) -> dict[str, Any] | None:
+    trade_obj = None
+    symbol_key = symbol.upper()
+    if isinstance(payload, dict):
+        trade_obj = payload.get(symbol_key) or payload.get(symbol)
+    if trade_obj is None and hasattr(payload, "data"):
+        data = getattr(payload, "data", None)
+        if isinstance(data, dict):
+            trade_obj = data.get(symbol_key) or data.get(symbol)
+    if trade_obj is None and hasattr(payload, "get"):
+        try:
+            trade_obj = payload.get(symbol_key) or payload.get(symbol)
+        except Exception:
+            trade_obj = None
+    if trade_obj is None:
+        return None
+    price = _to_float(_get_field(trade_obj, "price", _get_field(trade_obj, "p")), 0.0)
+    size = _to_float(_get_field(trade_obj, "size", _get_field(trade_obj, "s")), 0.0)
+    timestamp = _to_iso(_get_field(trade_obj, "timestamp", _get_field(trade_obj, "t")))
+    if price <= 0:
+        return None
+    return {
+        "bid": price,
+        "ask": price,
+        "bid_size": size if size > 0 else 1.0,
+        "ask_size": size if size > 0 else 1.0,
+        "mid": price,
+        "spread": 0.0,
+        "timestamp": timestamp,
+        "source": "trade_fallback",
+    }
 
 
 def _normalize_filled_orders_to_trades(
@@ -868,6 +951,127 @@ async def get_last_fill(
     if not item:
         raise APIError("NOT_FOUND", "No trades for symbol", status_code=404)
     return item
+
+
+@router.get("/quote", response_model=QuoteResponse)
+async def get_quote(
+    symbol: str,
+    feed: Optional[str] = Query(default=None),
+):
+    settings = get_settings()
+    if not settings.alpaca_api_key or not settings.alpaca_secret_key:
+        raise APIError("CONFIG_ERROR", "Alpaca keys missing", status_code=400)
+    if (
+        StockHistoricalDataClient is None
+        or StockLatestQuoteRequest is None
+        or StockLatestTradeRequest is None
+    ):
+        raise APIError("SERVER_ERROR", "alpaca data client unavailable", status_code=500)
+
+    data_feed = feed or settings.alpaca_data_feed
+    parsed_feed = _parse_data_feed(data_feed)
+    client = StockHistoricalDataClient(
+        settings.alpaca_api_key,
+        settings.alpaca_secret_key,
+    )
+
+    quote_payload = await anyio.to_thread.run_sync(
+        lambda: client.get_stock_latest_quote(
+            StockLatestQuoteRequest(
+                symbol_or_symbols=[symbol],
+                feed=parsed_feed,
+            )
+        )
+    )
+    quote = _extract_latest_quote(quote_payload, symbol)
+    if quote is not None:
+        logger.info(
+            "alpaca.quote symbol=%s feed=%s bid=%s ask=%s source=quote",
+            symbol,
+            data_feed,
+            quote["bid"],
+            quote["ask"],
+        )
+        return {
+            "symbol": symbol.upper(),
+            "feed": data_feed,
+            **quote,
+        }
+
+    trade_payload = await anyio.to_thread.run_sync(
+        lambda: client.get_stock_latest_trade(
+            StockLatestTradeRequest(
+                symbol_or_symbols=[symbol],
+                feed=parsed_feed,
+            )
+        )
+    )
+    trade_quote = _extract_latest_trade(trade_payload, symbol)
+    if trade_quote is not None:
+        logger.info(
+            "alpaca.quote symbol=%s feed=%s price=%s source=trade_fallback",
+            symbol,
+            data_feed,
+            trade_quote["mid"],
+        )
+        return {
+            "symbol": symbol.upper(),
+            "feed": data_feed,
+            **trade_quote,
+        }
+
+    # Market-closed fallback: use the latest daily close as a synthetic 1-level quote.
+    bars_payload = await anyio.to_thread.run_sync(
+        lambda: client.get_stock_bars(
+            StockBarsRequest(
+                symbol_or_symbols=[symbol],
+                timeframe=TimeFrame.Day,
+                limit=5,
+                feed=parsed_feed,
+                adjustment=Adjustment.ALL if Adjustment is not None else None,
+            )
+        )
+    )
+    raw_bars = []
+    if bars_payload is not None and hasattr(bars_payload, "data"):
+        raw_bars = bars_payload.data.get(symbol, []) or bars_payload.data.get(symbol.upper(), [])
+    if raw_bars:
+        last_bar = raw_bars[-1]
+        close_price = _to_float(_bar_attr(last_bar, "c", "close"), 0.0)
+        close_ts = _to_iso(_bar_attr(last_bar, "t", "timestamp", "time"))
+        if close_price > 0:
+            logger.info(
+                "alpaca.quote symbol=%s feed=%s close=%s source=close_fallback",
+                symbol,
+                data_feed,
+                close_price,
+            )
+            return {
+                "symbol": symbol.upper(),
+                "feed": data_feed,
+                "bid": close_price,
+                "ask": close_price,
+                "bid_size": 1.0,
+                "ask_size": 1.0,
+                "mid": close_price,
+                "spread": 0.0,
+                "timestamp": close_ts,
+                "source": "close_fallback",
+            }
+
+    logger.warning("alpaca.quote symbol=%s feed=%s source=none", symbol, data_feed)
+    return {
+        "symbol": symbol.upper(),
+        "feed": data_feed,
+        "bid": None,
+        "ask": None,
+        "bid_size": None,
+        "ask_size": None,
+        "mid": None,
+        "spread": None,
+        "timestamp": None,
+        "source": "none",
+    }
 
 
 @router.get("/bars", response_model=BarsResponse)

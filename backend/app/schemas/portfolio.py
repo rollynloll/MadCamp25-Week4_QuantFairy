@@ -375,6 +375,22 @@ class PortfolioRebalanceResponse(BaseModel):
     alpaca_positions: Optional[List[PositionItem]] = None
 
 
+class RebalanceTargetItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    strategy_id: str
+    target_weight_pct: float
+    target_cash_pct: float
+    updated_at: str
+
+
+class PortfolioRebalanceTargetsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    env: EnvLiteral
+    items: List[RebalanceTargetItem]
+
+
 class ActivityItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

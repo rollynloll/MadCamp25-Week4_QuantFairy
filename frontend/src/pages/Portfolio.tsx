@@ -5,7 +5,7 @@ import StrategiesTable from "@/components/portfolio/StrategiesTable";
 import StrategyEditDrawer from "@/components/portfolio/StrategyEditDrawer";
 import { usePortfolioPageData } from "@/hooks/usePortfolio";
 import type { AlertItem, BotRun, Env, Order, Range, StrategyState, UserStrategyListItem } from "@/types/portfolio";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { rebalancePortfolio } from "@/api/portfolio";
 import { setUserStrategyState } from "@/api/userStrategies";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -32,6 +32,30 @@ export default function Portfolio() {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const { data, view, loading, error, loadActivity } = usePortfolioPageData(env, range, showBenchmark);
+  const resolvedStrategies: UserStrategyListItem[] = (data?.userStrategies?.items ?? []).map(
+    (strategy) => ({
+      ...strategy,
+      state: strategyStateOverrides[strategy.user_strategy_id] ?? strategy.state,
+    })
+  );
+
+  useEffect(() => {
+    if (!resolvedStrategies.length || !data?.rebalanceTargets) return;
+    setTargetWeights((prev) => {
+      if (Object.keys(prev).length > 0) return prev;
+      const next: Record<string, number> = {};
+      let hasSavedTarget = false;
+      for (const item of data.rebalanceTargets.items ?? []) {
+        const strategyId = String(item.strategy_id ?? "");
+        if (!strategyId) continue;
+        const parsed = Number(item.target_weight_pct);
+        if (!Number.isFinite(parsed) || parsed < 0) continue;
+        next[strategyId] = parsed;
+        hasSavedTarget = true;
+      }
+      return hasSavedTarget ? next : prev;
+    });
+  }, [resolvedStrategies, data?.rebalanceTargets]);
 
   if (loading) return <div className="text-gray-400">Lodaing...</div>;
   if (error) return <div className="text-red-400">{error}</div>;
@@ -46,13 +70,6 @@ export default function Portfolio() {
     entry.count += 1;
     strategyValueMap.set(key, entry);
   }
-  const resolvedStrategies: UserStrategyListItem[] = (data.userStrategies?.items ?? []).map(
-    (strategy) => ({
-      ...strategy,
-      state: strategyStateOverrides[strategy.user_strategy_id] ?? strategy.state,
-    })
-  );
-
   const allocationStrategies = resolvedStrategies
     .filter((strategy) => strategy.state !== "stopped")
     .map((strategy) => {
@@ -74,19 +91,26 @@ export default function Portfolio() {
   });
 
   const activityItems = data.activity?.items ?? [];
+  const normalizeOrderStatus = (raw: unknown): Order["status"] => {
+    let status = String(raw ?? "pending").trim().toLowerCase();
+    if (status.includes(".")) status = status.split(".").pop() || status;
+    if (status === "partially_filled") status = "partial";
+    if (status === "canceled") status = "cancelled";
+    if (status === "filled" || status === "partial" || status === "cancelled") {
+      return status as Order["status"];
+    }
+    return "pending";
+  };
   const orders: Order[] = activityItems
     .filter((item) => item.type === "order")
     .map((item, index) => {
       const sideRaw = String(item.data?.side ?? "buy").toUpperCase();
-      const statusRaw = String(item.data?.status ?? "pending").toLowerCase();
-      const status: Order["status"] =
-        statusRaw === "filled" || statusRaw === "partial" || statusRaw === "cancelled"
-          ? (statusRaw as Order["status"])
-          : "pending";
+      const status = normalizeOrderStatus(item.data?.status);
+      const type: Order["type"] = sideRaw === "SELL" ? "SELL" : "BUY";
       return {
         id: Number(item.id) || index,
         time: item.t,
-        type: sideRaw === "SELL" ? "SELL" : "BUY",
+        type,
         symbol: String(item.data?.symbol ?? "-"),
         qty: Number(item.data?.qty ?? 0),
         status,
@@ -160,6 +184,7 @@ export default function Portfolio() {
         second: "2-digit",
       });
       setSaveStatus(tr(`Saved at ${timeLabel}`, `${timeLabel} 저장 완료`));
+      refreshUserStrategies();
       setTimeout(() => setSaveStatus(null), 3000);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to save targets";

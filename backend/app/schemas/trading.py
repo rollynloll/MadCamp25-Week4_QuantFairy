@@ -30,6 +30,13 @@ class KillSwitchResponse(BaseModel):
     enabled: bool
 
 
+class StrategyRef(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    name: str
+
+
 class OrderItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -42,6 +49,7 @@ class OrderItem(BaseModel):
     status: str | None
     filled_at: str | None
     strategy_id: str | None
+    strategy: StrategyRef | None = None
 
 
 class OrderListResponse(BaseModel):
@@ -97,3 +105,18 @@ class BarsResponse(BaseModel):
     timeframe: str
     feed: str | None
     bars: list[BarItem]
+
+
+class QuoteResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    symbol: str
+    feed: str | None
+    bid: float | None
+    ask: float | None
+    bid_size: float | None
+    ask_size: float | None
+    mid: float | None
+    spread: float | None
+    timestamp: str | None
+    source: Literal["quote", "trade_fallback", "close_fallback", "none"]

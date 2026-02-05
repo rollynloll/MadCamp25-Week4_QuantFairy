@@ -1,6 +1,8 @@
-import { useMemo } from "react";
+
 import { useLanguage } from "@/contexts/LanguageContext";
 import type { UiOrder } from "@/utils/tradingOrderUtils";
+import type { OrderScope } from "@/api/trading";
+import { useMemo } from "react";
 
 const GRID_COLS =
   "grid-cols-[minmax(140px,1.3fr)_80px_84px_92px_82px_92px_86px_110px_minmax(120px,1fr)]";
@@ -8,17 +10,37 @@ const GRID_COLS =
 type Props = {
   orders: UiOrder[];
   filledOrders?: UiOrder[];
-  view?: "open" | "filled";
-  onViewChange?: (v: "open" | "filled") => void;
+  allOrders?: UiOrder[];
+  view?: OrderScope;
+  onViewChange?: (v: OrderScope) => void;
 };
 
-export default function OpenOrders({ orders, filledOrders = [], view, onViewChange }: Props) {
+const badgeClassByStatus: Record<string, string> = {
+  PENDING: "bg-yellow-600/20 text-yellow-400",
+  NEW: "bg-yellow-600/20 text-yellow-400",
+  ACCEPTED: "bg-yellow-600/20 text-yellow-400",
+  PARTIAL: "bg-blue-600/20 text-blue-400",
+  PARTIALLY_FILLED: "bg-blue-600/20 text-blue-400",
+  FILLED: "bg-green-600/20 text-green-400",
+  CANCELED: "bg-gray-600/20 text-gray-400",
+  CANCELLED: "bg-gray-600/20 text-gray-400",
+  REJECTED: "bg-red-600/20 text-red-400",
+  EXPIRED: "bg-zinc-600/20 text-zinc-300",
+};
+
+export default function OpenOrders({ orders, filledOrders = [], allOrders = [], view, onViewChange }: Props) {
   const { tr } = useLanguage();
-  const isOpen = view === "open";
-  const activeOrders = useMemo(
-    () => (view === "open" ? orders : filledOrders),
-    [view, orders, filledOrders]
-  );
+  const activeView = view ?? "open";
+  const activeOrders =
+    activeView === "filled"
+      ? filledOrders
+      : activeView === "all"
+      ? allOrders
+      : orders;
+  const isOpen = activeView === "open";
+  const isFilled = activeView === "filled";
+  const gridCols =
+    "grid-cols-[minmax(140px,1.3fr)_80px_84px_92px_82px_92px_86px_110px_minmax(120px,1fr)]";
 
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
@@ -40,12 +62,23 @@ export default function OpenOrders({ orders, filledOrders = [], view, onViewChan
             type="button"
             onClick={() => onViewChange?.("filled")}
             className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
-              !isOpen
+              isFilled
                 ? "bg-blue-600/20 text-blue-400"
                 : "bg-gray-800 hover:bg-gray-700 text-gray-300"
             }`}
           >
             {tr("Filled", "체결")}
+          </button>
+          <button
+            type="button"
+            onClick={() => onViewChange?.("all")}
+            className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+              activeView === "all"
+                ? "bg-blue-600/20 text-blue-400"
+                : "bg-gray-800 hover:bg-gray-700 text-gray-300"
+            }`}
+          >
+            {tr("All", "전체")}
           </button>
         </div>
       </div>
@@ -90,11 +123,7 @@ export default function OpenOrders({ orders, filledOrders = [], view, onViewChan
               <div className="min-w-0">
                 <span
                   className={`inline-block rounded px-2 py-0.5 text-xs ${
-                    order.status === "PENDING"
-                      ? "bg-yellow-600/20 text-yellow-400"
-                      : order.status === "PARTIAL"
-                      ? "bg-blue-600/20 text-blue-400"
-                      : "bg-green-600/20 text-green-400"
+                    badgeClassByStatus[order.status] || "bg-zinc-600/20 text-zinc-300"
                   }`}
                 >
                   {order.status}

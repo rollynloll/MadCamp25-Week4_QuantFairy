@@ -10,9 +10,10 @@ import { useTradingPositions } from "@/hooks/useTradingPositions";
 import { useMarketStream } from "@/hooks/useMarketStream";
 import { mapOrder } from "@/utils/tradingOrderUtils";
 import { mapPosition } from "@/utils/tradingPositionUtils";
+import type { OrderScope } from "@/api/trading";
 
 export default function Trading() {
-  const [orderScope, setOrderScope] = useState<"open" | "filled">("open");
+  const [orderScope, setOrderScope] = useState<OrderScope>("open");
   const [timeframe, setTimeframe] = useState<"1D" | "1W" | "1M" | "3M" | "1Y">("1D");
   const { items: openOrderItems } = useTradingOrders("open");
   const { items: filledOrderItems } = useTradingOrders("filled");
@@ -49,6 +50,7 @@ export default function Trading() {
       <OpenOrders
         orders={openOrdersUi}
         filledOrders={filledOrdersUi}
+        allOrders={allOrdersUi}
         view={orderScope}
         onViewChange={setOrderScope}
       />

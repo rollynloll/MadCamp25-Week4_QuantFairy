@@ -36,6 +36,7 @@ from app.schemas.portfolio import (
     PortfolioPositionsResponse,
     PortfolioRebalanceRequest,
     PortfolioRebalanceResponse,
+    PortfolioRebalanceTargetsResponse,
     PortfolioSummaryResponse,
     RangeLiteral,
     StrategyStateRequest,
@@ -50,6 +51,8 @@ from app.storage.my_strategies_repo import MyStrategiesRepository
 from app.storage.orders_repo import OrdersRepository
 from app.storage.positions_repo import PositionsRepository
 from app.storage.public_strategies_repo import PublicStrategiesRepository
+from app.storage.rebalance_runs_repo import RebalanceRunsRepository
+from app.storage.rebalance_targets_repo import RebalanceTargetsRepository
 from app.storage.strategies_repo import StrategiesRepository
 from app.storage.user_settings_repo import UserSettingsRepository
 
@@ -66,6 +69,7 @@ AttributionByLiteral = Literal["strategy", "sector"]
 ACCOUNT_CACHE_TTL = 10.0
 POSITIONS_CACHE_TTL = 10.0
 HISTORY_CACHE_TTL = 15.0
+ORDERS_SYNC_CACHE_TTL = 5.0
 ALPACA_CACHE = TTLCache(default_ttl=10.0, maxsize=256)
 
 
@@ -105,6 +109,25 @@ def _to_float(value: Any, default: float = 0.0) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _to_iso(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
+
+
+def _normalize_enum_text(value: Any, default: str = "") -> str:
+    if value is None:
+        return default
+    text = str(value).strip()
+    if not text:
+        return default
+    if "." in text:
+        text = text.split(".")[-1]
+    return text.lower()
 
 
 def _to_pct(value: Any) -> float:
@@ -280,6 +303,83 @@ def _normalize_position_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]
             }
         )
     return items
+
+
+def _normalize_alpaca_orders_for_db(
+    raw_orders: Any,
+    *,
+    user_id: str,
+    environment: str,
+    existing_by_order_id: Dict[str, str],
+    existing_by_symbol: Dict[str, str],
+) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for order in raw_orders or []:
+        order_id = _get_field(order, "id") or _get_field(order, "client_order_id")
+        symbol = str(_get_field(order, "symbol", "")).upper()
+        if not order_id or not symbol:
+            continue
+        strategy_id = existing_by_order_id.get(str(order_id)) or existing_by_symbol.get(symbol)
+        rows.append(
+            {
+                "order_id": str(order_id),
+                "user_id": user_id,
+                "environment": environment,
+                "symbol": symbol,
+                "side": _normalize_enum_text(_get_field(order, "side", "buy"), default="buy"),
+                "qty": _to_float(_get_field(order, "qty", 0.0), 0.0),
+                "type": _normalize_enum_text(_get_field(order, "type", "market"), default="market"),
+                "status": _normalize_enum_text(_get_field(order, "status", "unknown"), default="unknown"),
+                "submitted_at": _to_iso(_get_field(order, "submitted_at")),
+                "filled_at": _to_iso(_get_field(order, "filled_at")),
+                "strategy_id": strategy_id,
+            }
+        )
+    return rows
+
+
+def _sync_orders_snapshot_if_needed(*, settings: Any, env: str, user_id: str) -> None:
+    key = _cache_key("alpaca:orders-sync", env, user_id)
+    if ALPACA_CACHE.get(key) is not None:
+        return
+
+    client = AlpacaClient(settings, env)
+    raw_orders = client.get_orders(status="all", limit=500)
+    if raw_orders is None:
+        return
+
+    orders_repo = OrdersRepository(settings)
+    positions_repo = PositionsRepository(settings)
+
+    existing_orders = orders_repo.list_recent(user_id, env, limit=2000)
+    existing_positions = positions_repo.list(user_id, env, limit=2000)
+
+    existing_by_order_id: Dict[str, str] = {}
+    existing_by_symbol: Dict[str, str] = {}
+    for row in existing_orders:
+        order_id = row.get("order_id")
+        strategy_id = row.get("strategy_id")
+        symbol = str(row.get("symbol", "")).upper()
+        if order_id and strategy_id:
+            existing_by_order_id[str(order_id)] = str(strategy_id)
+        if symbol and strategy_id and symbol not in existing_by_symbol:
+            existing_by_symbol[symbol] = str(strategy_id)
+    for row in existing_positions:
+        symbol = str(row.get("symbol", "")).upper()
+        strategy_id = row.get("strategy_id")
+        if symbol and strategy_id and symbol not in existing_by_symbol:
+            existing_by_symbol[symbol] = str(strategy_id)
+
+    rows = _normalize_alpaca_orders_for_db(
+        raw_orders,
+        user_id=user_id,
+        environment=env,
+        existing_by_order_id=existing_by_order_id,
+        existing_by_symbol=existing_by_symbol,
+    )
+    orders_repo.upsert_many(rows)
+    ALPACA_CACHE.set(key, True, ttl=ORDERS_SYNC_CACHE_TTL)
+    logger.info("portfolio.sync_orders env=%s count=%s", env, len(rows))
 
 
 def _positions_exposure(
@@ -466,6 +566,37 @@ def _build_rebalance_orders(
     return orders
 
 
+def _build_flatten_to_cash_orders(
+    positions: List[Dict[str, Any]],
+    *,
+    min_notional: float = 1.0,
+) -> List[Dict[str, Any]]:
+    orders: List[Dict[str, Any]] = []
+    for pos in positions:
+        qty = abs(_to_float(pos.get("qty", 0.0), 0.0))
+        if qty <= 0:
+            continue
+        price = _to_float(pos.get("current_price", 0.0), 0.0)
+        if price <= 0:
+            price = _to_float(pos.get("avg_entry_price", 0.0), 0.0)
+        if price <= 0:
+            continue
+        side = "buy" if pos.get("side") == "short" else "sell"
+        notional = qty * price
+        if notional < min_notional:
+            continue
+        orders.append(
+            {
+                "symbol": pos.get("symbol"),
+                "side": side,
+                "qty": qty,
+                "notional": notional,
+                "estimated_price": price,
+            }
+        )
+    return orders
+
+
 def _drawdown_curve(equity_curve: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     drawdown: List[Dict[str, Any]] = []
     peak = None
@@ -537,9 +668,17 @@ def _build_summary_response(
     positions: List[Dict[str, Any]],
     user_settings: Dict[str, Any],
 ) -> Dict[str, Any]:
-    today_pnl_value = 0.0
-    for pos in raw_positions:
-        today_pnl_value += _to_float(_get_field(pos, "unrealized_intraday_pl", 0))
+    # Keep Portfolio summary PnL aligned with Dashboard by using open-position unrealized PnL.
+    today_pnl_value = sum(
+        _to_float(pos.get("unrealized_pnl", {}).get("value", 0))
+        for pos in positions
+    )
+    if abs(today_pnl_value) < 1e-9 and raw_positions:
+        intraday_total = 0.0
+        for pos in raw_positions:
+            intraday_total += _to_float(_get_field(pos, "unrealized_intraday_pl", 0))
+        if abs(intraday_total) > 1e-9:
+            today_pnl_value = intraday_total
     today_pnl_pct = (today_pnl_value / account.equity * 100) if account.equity else 0.0
 
     long_count = len([p for p in positions if p.get("side") == "long"])
@@ -1328,6 +1467,31 @@ async def set_kill_switch(
     return KillSwitchResponse(enabled=payload.enabled)
 
 
+@router.get(
+    "/portfolio/rebalance-targets",
+    response_model=PortfolioRebalanceTargetsResponse,
+    summary="Latest saved rebalance targets",
+)
+async def get_rebalance_targets(
+    env: EnvLiteral = Query(..., description="paper or live"),
+):
+    settings = get_settings()
+    user_id = _resolve_user_id()
+    repo = RebalanceTargetsRepository(settings)
+    rows = repo.list(user_id, env)
+    items = [
+        {
+            "strategy_id": str(row.get("strategy_id")),
+            "target_weight_pct": float(row.get("target_weight_pct", 0) or 0),
+            "target_cash_pct": float(row.get("target_cash_pct", 0) or 0),
+            "updated_at": str(row.get("updated_at") or now_kst().isoformat()),
+        }
+        for row in rows
+        if row.get("strategy_id")
+    ]
+    return {"env": env, "items": items}
+
+
 @router.post(
     "/portfolio/rebalance",
     response_model=PortfolioRebalanceResponse,
@@ -1387,8 +1551,40 @@ async def rebalance_portfolio(
         account.equity,
         account.cash,
     )
+    orders_repo = OrdersRepository(settings)
+    canceled_before_rebalance: Dict[str, Any] | None = None
+    if payload.mode == "execute":
+        canceled_before_rebalance = client.cancel_open_orders(limit=500)
+        deleted_count = orders_repo.delete_open_orders(user_id, env, limit=2000)
+        remaining_open = 0
+        try:
+            raw_orders_after_cancel = client.get_orders(status="all", limit=500) or []
+            final_statuses = {"filled", "canceled", "cancelled", "rejected", "expired"}
+            remaining_open = sum(
+                1
+                for order in raw_orders_after_cancel
+                if _normalize_enum_text(_get_field(order, "status", "unknown"), default="unknown")
+                not in final_statuses
+            )
+        except Exception:
+            remaining_open = 0
+        logger.info(
+            "rebalance.pre_execute_reset canceled=%s failed=%s db_deleted_open=%s remaining_open=%s",
+            canceled_before_rebalance.get("canceled", 0) if canceled_before_rebalance else 0,
+            canceled_before_rebalance.get("failed", 0) if canceled_before_rebalance else 0,
+            deleted_count,
+            remaining_open,
+        )
+        if remaining_open > 0:
+            raise APIError(
+                "OPEN_ORDERS_REMAIN",
+                "Some open orders are still pending cancellation. Retry rebalance in a few seconds.",
+                status_code=409,
+            )
 
     positions_repo = PositionsRepository(settings)
+    targets_repo = RebalanceTargetsRepository(settings)
+    runs_repo = RebalanceRunsRepository(settings)
     rows = positions_repo.list(user_id, env, limit=500)
     positions = _normalize_position_rows(rows)
 
@@ -1404,10 +1600,11 @@ async def rebalance_portfolio(
             status_code=422,
         )
 
+    inferred_cash_pct = (account.cash / account.equity * 100) if account.equity else 0.0
     target_cash_pct = (
         payload.target_cash_pct
         if payload.target_cash_pct is not None
-        else (account.cash / account.equity * 100 if account.equity else 0.0)
+        else max(0.0, min(100.0, inferred_cash_pct))
     )
 
     cleaned_weights: Dict[str, float] = {}
@@ -1426,17 +1623,41 @@ async def rebalance_portfolio(
 
     investable_pct = max(0.0, 100.0 - target_cash_pct)
     total_target = sum(cleaned_weights.values())
-    if total_target <= 0:
+    full_cash_mode = total_target <= 0 and target_cash_pct >= 99.99
+    if total_target <= 0 and not full_cash_mode:
         raise APIError(
             "VALIDATION_ERROR",
             "Total target weight must be greater than zero",
             status_code=422,
         )
-    scale = 1.0
-    if total_target > investable_pct and investable_pct > 0:
+    scale = 0.0 if full_cash_mode else 1.0
+    if not full_cash_mode and total_target > investable_pct and investable_pct > 0:
         scale = investable_pct / total_target
+    allow_new_positions = bool(payload.allow_new_positions) and not full_cash_mode
 
-    grouped = _aggregate_position_values(positions)
+    targets_repo.replace_for_env(
+        user_id=user_id,
+        environment=env,
+        targets=cleaned_weights,
+        target_cash_pct=target_cash_pct,
+    )
+
+    rebalance_id = f"rb_{now_kst().strftime('%Y%m%d_%H%M%S')}"
+    runs_repo.create(
+        {
+            "run_id": rebalance_id,
+            "user_id": user_id,
+            "environment": env,
+            "mode": payload.mode,
+            "status": "running" if payload.mode == "execute" else "preview",
+            "target_source": payload.target_source,
+            "strategy_ids": payload.strategy_ids or [],
+            "target_weights": cleaned_weights,
+            "target_cash_pct": target_cash_pct,
+            "allow_new_positions": allow_new_positions,
+        }
+    )
+
     symbol_strategy_scores: Dict[str, Dict[str, float]] = {}
     existing_symbol_strategy: Dict[str, str] = {}
 
@@ -1446,82 +1667,129 @@ async def rebalance_portfolio(
         bucket = symbol_strategy_scores.setdefault(symbol, {})
         bucket[strategy_id] = bucket.get(strategy_id, 0.0) + float(value)
 
-    for strategy_id, current in grouped.items():
-        best_value = -1.0
-        for pos in current["positions"]:
-            symbol = pos["symbol"]
-            abs_value = float(pos.get("abs_value", 0.0))
-            add_symbol_strategy_score(symbol, strategy_id, abs_value)
-            if abs_value > best_value:
-                best_value = abs_value
-                existing_symbol_strategy[symbol] = strategy_id
-
-    for strategy_id, weight_pct in cleaned_weights.items():
-        current = grouped.get(strategy_id)
-        current_value = current["value"] if current else 0.0
-        if current_value <= 0:
-            continue
-        target_value = account.equity * (weight_pct * scale / 100.0)
-        for pos in current["positions"]:
-            abs_value = float(pos.get("abs_value", 0.0))
-            if abs_value <= 0:
+    if full_cash_mode:
+        for pos in positions:
+            symbol = pos.get("symbol")
+            if not symbol:
                 continue
-            target_pos_value = target_value * abs_value / current_value
-            delta_value = abs(target_pos_value - abs_value)
-            if delta_value <= 0:
-                continue
-            add_symbol_strategy_score(pos["symbol"], strategy_id, delta_value)
+            strategy_id = str(pos.get("strategy", {}).get("user_strategy_id") or "unassigned")
+            existing_symbol_strategy[symbol] = strategy_id
+            add_symbol_strategy_score(symbol, strategy_id, abs(_to_float(pos.get("market_value", 0.0), 0.0)))
+        orders = _build_flatten_to_cash_orders(positions)
+    else:
+        grouped = _aggregate_position_values(positions)
+        for strategy_id, current in grouped.items():
+            best_value = -1.0
+            for pos in current["positions"]:
+                symbol = pos["symbol"]
+                abs_value = float(pos.get("abs_value", 0.0))
+                add_symbol_strategy_score(symbol, strategy_id, abs_value)
+                if abs_value > best_value:
+                    best_value = abs_value
+                    existing_symbol_strategy[symbol] = strategy_id
 
-    allow_new_positions = bool(payload.allow_new_positions)
-    extra_symbol_targets: Dict[str, float] = {}
-    price_overrides: Dict[str, float] = {}
-    if allow_new_positions:
         for strategy_id, weight_pct in cleaned_weights.items():
             current = grouped.get(strategy_id)
             current_value = current["value"] if current else 0.0
-            if current_value > 0:
+            if current_value <= 0:
                 continue
             target_value = account.equity * (weight_pct * scale / 100.0)
-            if target_value <= 0:
-                continue
-            weights, price_map = _compute_live_strategy_targets(
-                settings=settings,
-                user_id=user_id,
-                strategy_id=strategy_id,
-            )
-            if not weights:
-                continue
-            missing_prices = [s for s in weights.keys() if s not in price_map]
-            if missing_prices:
-                raise APIError(
-                    "DATA_NOT_FOUND",
-                    f"Missing prices for {strategy_id}",
-                    details=[{"field": "symbols", "reason": s} for s in missing_prices],
-                    status_code=404,
-                )
-            for symbol, symbol_weight in weights.items():
-                symbol_target_value = target_value * float(symbol_weight)
-                extra_symbol_targets[symbol] = extra_symbol_targets.get(symbol, 0.0) + symbol_target_value
-                add_symbol_strategy_score(symbol, strategy_id, abs(symbol_target_value))
-            for symbol, price in price_map.items():
-                if symbol not in price_overrides and price > 0:
-                    price_overrides[symbol] = price
+            for pos in current["positions"]:
+                abs_value = float(pos.get("abs_value", 0.0))
+                if abs_value <= 0:
+                    continue
+                target_pos_value = target_value * abs_value / current_value
+                delta_value = abs(target_pos_value - abs_value)
+                if delta_value <= 0:
+                    continue
+                add_symbol_strategy_score(pos["symbol"], strategy_id, delta_value)
 
-    orders = _build_rebalance_orders(
-        equity=account.equity,
-        positions=positions,
-        target_weights=cleaned_weights,
-        target_cash_pct=target_cash_pct,
-        allow_missing_positions=allow_new_positions,
-        extra_symbol_targets=extra_symbol_targets or None,
-        price_overrides=price_overrides or None,
-        scale_override=scale,
-    )
+        extra_symbol_targets: Dict[str, float] = {}
+        price_overrides: Dict[str, float] = {}
+        if allow_new_positions:
+            for strategy_id, weight_pct in cleaned_weights.items():
+                current = grouped.get(strategy_id)
+                current_value = current["value"] if current else 0.0
+                if current_value > 0:
+                    continue
+                target_value = account.equity * (weight_pct * scale / 100.0)
+                if target_value <= 0:
+                    continue
+                weights, price_map = _compute_live_strategy_targets(
+                    settings=settings,
+                    user_id=user_id,
+                    strategy_id=strategy_id,
+                )
+                if not weights:
+                    continue
+                missing_prices = [s for s in weights.keys() if s not in price_map]
+                if missing_prices:
+                    raise APIError(
+                        "DATA_NOT_FOUND",
+                        f"Missing prices for {strategy_id}",
+                        details=[{"field": "symbols", "reason": s} for s in missing_prices],
+                        status_code=404,
+                    )
+                for symbol, symbol_weight in weights.items():
+                    symbol_target_value = target_value * float(symbol_weight)
+                    extra_symbol_targets[symbol] = extra_symbol_targets.get(symbol, 0.0) + symbol_target_value
+                    add_symbol_strategy_score(symbol, strategy_id, abs(symbol_target_value))
+                for symbol, price in price_map.items():
+                    if symbol not in price_overrides and price > 0:
+                        price_overrides[symbol] = price
+
+        orders = _build_rebalance_orders(
+            equity=account.equity,
+            positions=positions,
+            target_weights=cleaned_weights,
+            target_cash_pct=target_cash_pct,
+            allow_missing_positions=allow_new_positions,
+            extra_symbol_targets=extra_symbol_targets or None,
+            price_overrides=price_overrides or None,
+            scale_override=scale,
+        )
+
+    # Cash-only guard: do not rely on broker margin buying power.
+    sell_orders = [order for order in orders if order.get("side") == "sell"]
+    buy_orders = [order for order in orders if order.get("side") == "buy"]
+    # If account cash is already negative, force deleveraging first (sell-only pass).
+    if account.cash < -1.0 and buy_orders:
+        logger.warning(
+            "rebalance.margin_guard negative_cash=%.2f forcing_sell_only sells=%s buys=%s",
+            account.cash,
+            len(sell_orders),
+            len(buy_orders),
+        )
+        if not sell_orders:
+            raise APIError(
+                "MARGIN_DELEVERAGE_REQUIRED",
+                "Account cash is negative. Reduce leverage first before placing new buy orders.",
+                status_code=422,
+            )
+        buy_orders = []
+    orders = sell_orders + buy_orders
+    expected_sell_notional = sum(_to_float(order.get("notional", 0.0), 0.0) for order in sell_orders)
+    expected_buy_notional = sum(_to_float(order.get("notional", 0.0), 0.0) for order in buy_orders)
+    max_cash_only_buy_notional = max(0.0, account.cash) + max(0.0, expected_sell_notional)
+    if payload.mode == "execute" and expected_buy_notional > (max_cash_only_buy_notional + 1.0):
+        raise APIError(
+            "MARGIN_NOT_ALLOWED",
+            "Rebalance blocked: expected buy notional exceeds cash + sell proceeds.",
+            details=[
+                {"field": "cash", "reason": f"{account.cash:.2f}"},
+                {"field": "expected_sell_notional", "reason": f"{expected_sell_notional:.2f}"},
+                {"field": "expected_buy_notional", "reason": f"{expected_buy_notional:.2f}"},
+            ],
+            status_code=422,
+        )
 
     logger.info(
-        "rebalance.orders count=%s target_cash_pct=%.2f",
+        "rebalance.orders count=%s target_cash_pct=%.2f cash=%.2f buy_notional=%.2f sell_notional=%.2f",
         len(orders),
         target_cash_pct,
+        account.cash,
+        expected_buy_notional,
+        expected_sell_notional,
     )
 
     symbol_strategy_map: Dict[str, str] = {}
@@ -1541,7 +1809,6 @@ async def rebalance_portfolio(
     except Exception:
         strategy_name_map = {}
 
-    rebalance_id = f"rb_{now_kst().strftime('%Y%m%d_%H%M%S')}"
     submitted_results: List[Dict[str, Any]] = []
     order_rows: List[Dict[str, Any]] = []
     if payload.mode == "execute":
@@ -1587,6 +1854,10 @@ async def rebalance_portfolio(
                     "submitted_at": str(submitted_at) if submitted_at else now_kst().isoformat(),
                     "filled_at": str(filled_at) if filled_at else None,
                     "strategy_id": symbol_strategy_map.get(order["symbol"]),
+                    "rebalance_run_id": rebalance_id,
+                    "source": "rebalance",
+                    "requested_notional": order["notional"],
+                    "estimated_price": order["estimated_price"],
                 }
             )
             logger.info(
@@ -1602,7 +1873,7 @@ async def rebalance_portfolio(
     alpaca_positions = None
     if payload.mode == "execute":
         if order_rows:
-            OrdersRepository(settings).upsert_many(order_rows)
+            orders_repo.upsert_many(order_rows)
         raw_positions = client.get_positions() or []
         alpaca_positions = _normalize_positions(raw_positions)
         for pos in alpaca_positions:
@@ -1625,6 +1896,41 @@ async def rebalance_portfolio(
                 environment=env,
                 positions=alpaca_positions,
             ),
+        )
+        submit_failed = sum(1 for row in submitted_results if row.get("status") == "failed")
+        run_status = status
+        if submitted_results and submit_failed == len(submitted_results):
+            run_status = "failed"
+        elif submit_failed > 0:
+            run_status = "partial_failed"
+        runs_repo.update(
+            rebalance_id,
+            {
+                "status": run_status,
+                "orders_preview": orders,
+                "submitted": submitted_results,
+                "error": None
+                if not canceled_before_rebalance
+                else (
+                    f"canceled_before_rebalance={canceled_before_rebalance.get('canceled', 0)}"
+                    + (
+                        f",cancel_failed={canceled_before_rebalance.get('failed', 0)}"
+                        if canceled_before_rebalance.get("failed", 0)
+                        else ""
+                    )
+                ),
+                "finished_at": now_kst().isoformat(),
+            },
+        )
+    else:
+        runs_repo.update(
+            rebalance_id,
+            {
+                "status": status,
+                "orders_preview": orders,
+                "submitted": [],
+                "finished_at": now_kst().isoformat(),
+            },
         )
     return {
         "env": env,
@@ -1676,6 +1982,10 @@ async def get_portfolio_activity(
     items: List[ActivityItem] = []
 
     if wants("orders"):
+        try:
+            _sync_orders_snapshot_if_needed(settings=settings, env=env, user_id=user_id)
+        except Exception as exc:
+            logger.warning("portfolio.sync_orders failed env=%s error=%s", env, exc)
         order_rows = OrdersRepository(settings).list_recent(user_id, env, limit=limit)
         for row in order_rows:
             symbol_value = str(row.get("symbol", "")).upper()
@@ -1697,6 +2007,8 @@ async def get_portfolio_activity(
                         "status": row.get("status") or "pending",
                         "user_strategy_id": strategy_value_str,
                         "order_type": row.get("type"),
+                        "rebalance_run_id": row.get("rebalance_run_id"),
+                        "source": row.get("source") or "rebalance",
                     },
                 }
             )

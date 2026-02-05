@@ -13,6 +13,7 @@ import type {
   PortfolioAttributionResponse,
   PortfolioRebalanceRequest,
   PortfolioRebalanceResponse,
+  PortfolioRebalanceTargetsResponse,
 } from "@/types/portfolio";
 
 async function parseErrorMessage(res: Response, fallback: string) {
@@ -154,6 +155,18 @@ export async function rebalancePortfolio(
 
   if (!res.ok) {
     throw new Error(await parseErrorMessage(res, `Failed to rebalance (${res.status})`));
+  }
+  return res.json();
+}
+
+export async function getPortfolioRebalanceTargets(
+  env: Env
+): Promise<PortfolioRebalanceTargetsResponse> {
+  const res = await fetch(buildApiUrl("/portfolio/rebalance-targets", { env }), {
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    throw new Error(await parseErrorMessage(res, `Failed to load rebalance targets (${res.status})`));
   }
   return res.json();
 }
