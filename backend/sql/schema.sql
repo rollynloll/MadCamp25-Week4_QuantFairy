@@ -15,6 +15,7 @@ create table if not exists public_strategies (
   public_strategy_id text primary key,
   name text not null,
   one_liner text,
+  one_liner_ko text,
   category text,
   tags jsonb not null default '[]'::jsonb,
   risk_level text not null default 'mid',
@@ -29,7 +30,9 @@ create table if not exists public_strategies (
   supported_assets jsonb not null default '[]'::jsonb,
   supported_timeframes jsonb not null default '[]'::jsonb,
   full_description text,
+  full_description_ko text,
   thesis text,
+  thesis_ko text,
   rules jsonb not null default '{}'::jsonb,
   param_schema jsonb not null default '{}'::jsonb,
   default_params jsonb not null default '{}'::jsonb,
@@ -48,6 +51,9 @@ create table if not exists public_strategies (
 -- Migrations for existing public_strategies
 alter table if exists public_strategies add column if not exists entrypoint text;
 alter table if exists public_strategies add column if not exists code_version text;
+alter table if exists public_strategies add column if not exists one_liner_ko text;
+alter table if exists public_strategies add column if not exists full_description_ko text;
+alter table if exists public_strategies add column if not exists thesis_ko text;
 
 create index if not exists idx_public_strategies_updated_at on public_strategies(updated_at);
 create index if not exists idx_public_strategies_adds_count on public_strategies(adds_count);

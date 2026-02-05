@@ -19,9 +19,21 @@ export default function StrategyDetailModal({
   fallbackTitle
 }: StrategyDetailModalProps) {
   if (!open) return null;
-  const { tr } = useLanguage();
+  const { tr, language } = useLanguage();
 
   const title = detail?.name ?? fallbackTitle ?? "Strategy detail";
+  const oneLiner =
+    language === "ko"
+      ? detail?.one_liner_ko || detail?.one_liner
+      : detail?.one_liner || detail?.one_liner_ko;
+  const description =
+    language === "ko"
+      ? detail?.full_description_ko || detail?.full_description
+      : detail?.full_description || detail?.full_description_ko;
+  const thesis =
+    language === "ko"
+      ? detail?.thesis_ko || detail?.thesis
+      : detail?.thesis || detail?.thesis_ko;
 
   return (
     <div
@@ -35,8 +47,8 @@ export default function StrategyDetailModal({
         <div className="flex items-center justify-between border-b border-gray-800 px-6 py-4">
           <div>
             <h2 className="text-lg font-semibold">{title}</h2>
-            {detail?.one_liner && (
-              <p className="text-xs text-gray-400 mt-1">{detail.one_liner}</p>
+            {oneLiner && (
+              <p className="text-xs text-gray-400 mt-1">{oneLiner}</p>
             )}
           </div>
           <button
@@ -110,11 +122,11 @@ export default function StrategyDetailModal({
               <section>
                 <h3 className="text-sm font-semibold mb-2 mt-10">{tr("Description", "설명")}</h3>
                 <p className="text-gray-300 whitespace-pre-line">
-                  {detail.full_description}
+                  {description}
                 </p>
-                {detail.thesis && (
+                {thesis && (
                   <p className="text-gray-400 mt-3 whitespace-pre-line">
-                    {detail.thesis}
+                    {thesis}
                   </p>
                 )}
               </section>
