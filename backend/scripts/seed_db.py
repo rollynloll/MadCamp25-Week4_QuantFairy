@@ -126,6 +126,7 @@ async def main() -> None:
                 "public_strategy_id": "momentum_top10_12m_v1",
                 "name": "Momentum Top-10 (12M)",
                 "one_liner": "Top-N by 12M return, monthly rebalance",
+                "one_liner_ko": "12개월 수익률 상위 N개를 매수하고 월간 리밸런싱",
                 "category": "momentum",
                 "tags": ["momentum", "cross-sectional"],
                 "risk_level": "mid",
@@ -155,6 +156,20 @@ async def main() -> None:
                 "default_params": {"lookback_days": 252, "top_n": 10, "rebalance": "monthly"},
                 "supported_assets": ["US_Equity"],
                 "supported_timeframes": ["1D"],
+                "full_description": (
+                    "This strategy ranks the universe by 12-month total return and buys the top N names. "
+                    "It rebalances monthly and equal-weights positions, replacing laggards with new leaders. "
+                    "It is designed for diversified large-cap universes and can be vulnerable during sharp momentum reversals."
+                ),
+                "full_description_ko": (
+                    "이 전략은 12개월 누적 수익률로 종목을 순위화해 상위 N개를 매수합니다. "
+                    "매달 리밸런싱하며 동일 비중으로 보유하고, 성과가 떨어진 종목은 새로운 상위 종목으로 교체합니다. "
+                    "대형주 분산 유니버스에 적합하지만 모멘텀 급반전 구간에서는 손실이 커질 수 있습니다."
+                ),
+                "thesis": (
+                    "Persistent relative strength can be harvested by periodically rotating into recent winners while keeping turnover manageable."
+                ),
+                "thesis_ko": "최근 강세 종목의 상대적 강도를 활용하되, 월 단위 교체로 과도한 회전율을 줄입니다.",
                 "known_failure_modes": ["Sideways markets", "Regime shifts"],
                 "risk_disclaimer": "Backtests are illustrative and not investment advice.",
                 "sample_backtest_spec": {
@@ -182,6 +197,7 @@ async def main() -> None:
                 "public_strategy_id": "trend_sma200_v1",
                 "name": "Trend SMA200",
                 "one_liner": "Risk-on above 200D SMA, else cash",
+                "one_liner_ko": "벤치마크가 200일 이동평균 위이면 위험자산, 아래면 현금",
                 "category": "trend",
                 "tags": ["trend", "sma"],
                 "risk_level": "low",
@@ -210,6 +226,18 @@ async def main() -> None:
                 "default_params": {"benchmark_symbol": "SPY", "sma_window": 200},
                 "supported_assets": ["US_Equity"],
                 "supported_timeframes": ["1D"],
+                "full_description": (
+                    "A simple trend filter on the benchmark: if price is above the 200-day moving average, "
+                    "the strategy stays invested; if below, it shifts to cash. The signal is checked daily "
+                    "to reduce drawdowns in prolonged bear markets. It can underperform in sideways markets due to whipsaws."
+                ),
+                "full_description_ko": (
+                    "벤치마크가 200일 이동평균 위에 있으면 위험자산을 보유하고, 아래로 내려가면 현금으로 전환하는 단순 추세 필터입니다. "
+                    "일별로 신호를 확인해 하락장 손실을 줄이는 데 도움이 될 수 있습니다. "
+                    "횡보장에서는 잦은 신호 전환으로 성과가 약해질 수 있습니다."
+                ),
+                "thesis": "Long-term moving averages help separate trending regimes from risk-off periods.",
+                "thesis_ko": "장기 이동평균을 통해 추세 구간과 위험 구간을 구분합니다.",
                 "known_failure_modes": ["Whipsaws in choppy regimes"],
                 "risk_disclaimer": "Backtests are illustrative and not investment advice.",
                 "sample_backtest_spec": {
@@ -237,6 +265,7 @@ async def main() -> None:
                 "public_strategy_id": "rsi_mean_reversion_v1",
                 "name": "RSI Mean Reversion",
                 "one_liner": "Buy RSI < 30, exit RSI > 50",
+                "one_liner_ko": "RSI가 30 아래면 매수, 50 위면 청산",
                 "category": "mean_reversion",
                 "tags": ["rsi", "mean_reversion"],
                 "risk_level": "mid",
@@ -266,6 +295,18 @@ async def main() -> None:
                 "default_params": {"symbol": "SPY", "rsi_window": 14, "entry_rsi": 30, "exit_rsi": 50},
                 "supported_assets": ["US_Equity"],
                 "supported_timeframes": ["1D"],
+                "full_description": (
+                    "This mean reversion strategy uses RSI on a single benchmark (default SPY). "
+                    "It buys when RSI falls below the entry threshold and exits when RSI rebounds above the exit level. "
+                    "It tends to work best in range-bound markets and can struggle during strong trends."
+                ),
+                "full_description_ko": (
+                    "단일 벤치마크(기본 SPY)에 RSI를 적용하는 평균회귀 전략입니다. "
+                    "RSI가 진입 기준 아래로 내려가면 매수하고, 반등해 종료 기준을 넘으면 매도합니다. "
+                    "횡보장에서 유리하지만 강한 추세에서는 손실이 커질 수 있습니다."
+                ),
+                "thesis": "Short-term oversold conditions often revert toward the mean.",
+                "thesis_ko": "단기 과매도 구간은 평균으로 되돌아갈 가능성이 높습니다.",
                 "known_failure_modes": ["Strong trend markets"],
                 "risk_disclaimer": "Backtests are illustrative and not investment advice.",
                 "sample_backtest_spec": {
@@ -300,12 +341,17 @@ async def main() -> None:
                 [
                     "name",
                     "one_liner",
+                    "one_liner_ko",
                     "category",
                     "tags",
                     "risk_level",
                     "version",
                     "author_name",
                     "author_type",
+                    "full_description",
+                    "full_description_ko",
+                    "thesis",
+                    "thesis_ko",
                     "rules",
                     "requirements",
                     "param_schema",

@@ -28,6 +28,7 @@ export interface PublicStrategyListItem {
   public_strategy_id: string;
   name: string;
   one_liner: string;
+  one_liner_ko?: string;
   category: string;
   tags: string[];
   risk_level: RiskLevel;
@@ -63,7 +64,9 @@ export interface PublicStrategyRecommendedPreset {
 
 export interface PublicStrategyDetail extends PublicStrategyListItem {
   full_description: string;
+  full_description_ko?: string;
   thesis?: string;
+  thesis_ko?: string;
   rules?: string[] | string;
   param_schema: Record<string, unknown>;
   default_params: Record<string, JsonValue>;

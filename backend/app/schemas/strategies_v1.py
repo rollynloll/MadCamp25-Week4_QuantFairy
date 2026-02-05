@@ -57,6 +57,7 @@ class PublicStrategyListItem(BaseModel):
     public_strategy_id: str
     name: str
     one_liner: str
+    one_liner_ko: Optional[str] = None
     category: str
     tags: List[str]
     risk_level: Literal["low", "mid", "high"]
@@ -112,7 +113,9 @@ class PublicStrategyDetail(PublicStrategyListItem):
     model_config = ConfigDict(extra="forbid")
 
     full_description: str
+    full_description_ko: Optional[str] = None
     thesis: str
+    thesis_ko: Optional[str] = None
     rules: RulesBlock
     param_schema: Dict[str, Any]
     default_params: Dict[str, Any]

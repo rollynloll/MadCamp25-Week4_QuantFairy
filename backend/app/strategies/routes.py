@@ -104,6 +104,7 @@ def _format_public_strategy(row: dict) -> dict:
         "public_strategy_id": row["public_strategy_id"],
         "name": row.get("name", ""),
         "one_liner": row.get("one_liner", ""),
+        "one_liner_ko": row.get("one_liner_ko"),
         "category": row.get("category", ""),
         "tags": row.get("tags", []) or [],
         "risk_level": row.get("risk_level", "mid"),
@@ -139,7 +140,9 @@ def _format_public_detail(row: dict) -> dict:
     base.update(
         {
             "full_description": row.get("full_description") or "",
+            "full_description_ko": row.get("full_description_ko") or "",
             "thesis": row.get("thesis") or "",
+            "thesis_ko": row.get("thesis_ko") or "",
             "rules": rules,
             "param_schema": row.get("param_schema", {}) or {},
             "default_params": row.get("default_params", {}) or {},
