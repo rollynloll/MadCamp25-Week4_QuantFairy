@@ -4,7 +4,6 @@ import {
   Briefcase,
   LayoutDashboard,
   LineChart,
-  Layers,
   TrendingUp,
 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
