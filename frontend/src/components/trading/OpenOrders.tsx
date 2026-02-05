@@ -1,6 +1,11 @@
+
 import { useLanguage } from "@/contexts/LanguageContext";
 import type { UiOrder } from "@/utils/tradingOrderUtils";
 import type { OrderScope } from "@/api/trading";
+import { useMemo } from "react";
+
+const GRID_COLS =
+  "grid-cols-[minmax(140px,1.3fr)_80px_84px_92px_82px_92px_86px_110px_minmax(120px,1fr)]";
 
 type Props = {
   orders: UiOrder[];
@@ -79,7 +84,7 @@ export default function OpenOrders({ orders, filledOrders = [], allOrders = [], 
       </div>
 
       <div className="max-h-[360px] overflow-auto pr-1">
-        <div className={`sticky top-0 z-10 hidden ${gridCols} gap-4 border-b border-gray-800 bg-[#0d1117] px-3 py-2 text-xs font-medium text-gray-500 md:grid`}>
+        <div className={`sticky top-0 z-10 hidden ${GRID_COLS} gap-4 border-b border-gray-800 bg-[#0d1117] px-3 py-2 text-xs font-medium text-gray-500 md:grid`}>
           <div className="truncate">{tr("Order ID", "주문 번호")}</div>
           <div className="truncate">{tr("Symbol", "종목")}</div>
           <div className="truncate">{tr("Side", "구분")}</div>
@@ -97,7 +102,7 @@ export default function OpenOrders({ orders, filledOrders = [], allOrders = [], 
             key={order.id}
             className="rounded px-3 py-3 text-sm transition-colors hover:bg-gray-800/50"
           >
-            <div className={`flex flex-col gap-2 md:grid ${gridCols} md:items-center md:gap-4`}>
+            <div className={`flex flex-col gap-2 md:grid ${GRID_COLS} md:items-center md:gap-4`}>
               <div className="min-w-0 font-mono text-gray-400 md:truncate">{order.id}</div>
               <div className="min-w-0 font-semibold md:truncate">{order.symbol}</div>
               <div

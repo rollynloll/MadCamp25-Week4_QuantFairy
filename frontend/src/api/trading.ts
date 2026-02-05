@@ -9,6 +9,17 @@ import type {
 
 export type OrderScope = "open" | "filled" | "all";
 
+const JSON_HEADERS = { "Content-Type": "application/json" };
+
+async function handleJson<T>(res: Response, fallback: string): Promise<T> {
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    const message = body?.error?.message ?? `${fallback} (${res.status})`;
+    throw new Error(message);
+  }
+  return res.json();
+}
+
 export async function getTradingOrders(params: {
   scope: OrderScope;
   limit?: number;
@@ -16,52 +27,30 @@ export async function getTradingOrders(params: {
 }): Promise<TradingOrdersResponse> {
   const { scope, limit = 50, cursor } = params;
 
-  const res = await fetch(buildApiUrl("/trading/orders", {
-    scope,
-    limit,
-    cursor: cursor ?? undefined
-  }), {
-    headers: { "Content-Type": "application/json" }
-  });
+  const res = await fetch(
+    buildApiUrl("/trading/orders", {
+      scope,
+      limit,
+      cursor: cursor ?? undefined,
+    }),
+    { headers: JSON_HEADERS }
+  );
 
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    const message =
-      body?.error?.message ?? `Failed to load orders (${res.status})`;
-    throw new Error(message);
-  }
-
-  return res.json();
+  return handleJson<TradingOrdersResponse>(res, "Failed to load orders");
 }
 
 export async function getTradingOrder(orderId: string): Promise<TradingOrderDetail> {
   const res = await fetch(buildApiUrl(`/trading/orders/${orderId}`), {
-    headers: { "Content-Type": "application/json" }
+    headers: JSON_HEADERS,
   });
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    const message =
-      body?.error?.message ?? `Failed to load order (${res.status})`;
-    throw new Error(message);
-  }
-
-  return res.json();
+  return handleJson<TradingOrderDetail>(res, "Failed to load order");
 }
 
 export async function getTradingPositions(): Promise<TradingPositionsResponse> {
   const res = await fetch(buildApiUrl("/trading/positions"), {
-    headers: { "Content-Type": "application/json" }
+    headers: JSON_HEADERS,
   });
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    const message =
-      body?.error?.message ?? `Failed to load positions (${res.status})`;
-    throw new Error(message);
-  }
-
-  return res.json();
+  return handleJson<TradingPositionsResponse>(res, "Failed to load positions");
 }
 
 export async function getTradingBars(params: {
@@ -78,19 +67,9 @@ export async function getTradingBars(params: {
       limit,
       feed: feed ?? undefined,
     }),
-    {
-      headers: { "Content-Type": "application/json" },
-    }
+    { headers: JSON_HEADERS }
   );
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    const message =
-      body?.error?.message ?? `Failed to load bars (${res.status})`;
-    throw new Error(message);
-  }
-
-  return res.json();
+  return handleJson<TradingBarsResponse>(res, "Failed to load bars");
 }
 
 export async function getTradingQuote(params: {

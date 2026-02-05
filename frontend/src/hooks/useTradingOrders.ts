@@ -1,6 +1,6 @@
+import { useCallback, useEffect, useState } from "react";
 import { getTradingOrders, type OrderScope } from "@/api/trading";
 import type { TradingOrder } from "@/types/trading";
-import { useCallback, useEffect, useState } from "react";
 
 export function useTradingOrders(scope: OrderScope) {
   const [items, setItems] = useState<TradingOrder[]>([]);
@@ -11,7 +11,6 @@ export function useTradingOrders(scope: OrderScope) {
   const fetchOrders = useCallback(async () => {
     setLoading(true);
     setError(null);
-
     try {
       const res = await getTradingOrders({ scope, limit: 50 });
       setItems(res.items ?? []);
