@@ -22,6 +22,8 @@ def _to_float(value: Any) -> float:
 
 
 def _order_row_to_dict(row: asyncpg.Record) -> Dict[str, Any]:
+    strategy_id = row.get("strategy_id")
+    strategy_name = row.get("strategy_name")
     return {
         "order_id": row["order_id"],
         "submitted_at": _to_iso(row.get("submitted_at")),
@@ -31,7 +33,15 @@ def _order_row_to_dict(row: asyncpg.Record) -> Dict[str, Any]:
         "qty": _to_float(row.get("qty")),
         "status": row.get("status"),
         "filled_at": _to_iso(row.get("filled_at")),
-        "strategy_id": row.get("strategy_id"),
+        "strategy_id": strategy_id,
+        "strategy": (
+            {
+                "id": str(strategy_id),
+                "name": str(strategy_name) if strategy_name else str(strategy_id),
+            }
+            if strategy_id
+            else None
+        ),
     }
 
 
@@ -56,7 +66,7 @@ async def fetch_orders(
 ) -> List[Dict[str, Any]]:
     where = ""
     params = [user_id, environment, limit]
-    status_norm = r"regexp_replace(lower(trim(coalesce(status, ''))), '^.*\.', '')"
+    status_norm = r"regexp_replace(lower(trim(coalesce(o.status, ''))), '^.*\.', '')"
     if scope == "open":
         where = (
             f"AND {status_norm} NOT IN "
@@ -66,12 +76,17 @@ async def fetch_orders(
         where = f"AND {status_norm} = 'filled'"
 
     query = f"""
-        SELECT order_id, submitted_at, symbol, side, type, qty, status, filled_at, strategy_id
-        FROM orders
-        WHERE user_id = $1
-          AND environment = $2
+        SELECT
+          o.order_id, o.submitted_at, o.symbol, o.side, o.type, o.qty, o.status, o.filled_at, o.strategy_id,
+          us.name AS strategy_name
+        FROM orders o
+        LEFT JOIN user_strategies us
+          ON us.strategy_id = o.strategy_id
+         AND us.user_id = o.user_id
+        WHERE o.user_id = $1
+          AND o.environment = $2
           {where}
-        ORDER BY submitted_at DESC NULLS LAST
+        ORDER BY o.submitted_at DESC NULLS LAST
         LIMIT $3
     """
     rows = await conn.fetch(query, *params)
@@ -86,11 +101,16 @@ async def fetch_order_by_id(
     order_id: str,
 ) -> Dict[str, Any] | None:
     query = """
-        SELECT order_id, submitted_at, symbol, side, type, qty, status, filled_at, strategy_id
-        FROM orders
-        WHERE user_id = $1
-          AND environment = $2
-          AND order_id = $3
+        SELECT
+          o.order_id, o.submitted_at, o.symbol, o.side, o.type, o.qty, o.status, o.filled_at, o.strategy_id,
+          us.name AS strategy_name
+        FROM orders o
+        LEFT JOIN user_strategies us
+          ON us.strategy_id = o.strategy_id
+         AND us.user_id = o.user_id
+        WHERE o.user_id = $1
+          AND o.environment = $2
+          AND o.order_id = $3
         LIMIT 1
     """
     row = await conn.fetchrow(query, user_id, environment, order_id)

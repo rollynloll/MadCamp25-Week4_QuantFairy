@@ -187,6 +187,51 @@ create table if not exists orders (
 
 create index if not exists idx_orders_user_env_submitted on orders(user_id, environment, submitted_at desc);
 
+alter table if exists orders add column if not exists rebalance_run_id text;
+alter table if exists orders add column if not exists source text not null default 'rebalance';
+alter table if exists orders add column if not exists requested_notional numeric;
+alter table if exists orders add column if not exists estimated_price numeric;
+create index if not exists idx_orders_rebalance_run_id on orders(rebalance_run_id);
+
+-- Rebalance targets (latest target allocation saved from Portfolio)
+create table if not exists rebalance_targets (
+  target_id bigserial primary key,
+  user_id uuid not null references app_users(id) on delete cascade,
+  environment text not null default 'paper',
+  strategy_id text not null references user_strategies(strategy_id) on delete cascade,
+  target_weight_pct numeric not null default 0,
+  target_cash_pct numeric not null default 0,
+  updated_at timestamptz not null default now()
+);
+
+create unique index if not exists uq_rebalance_targets_user_env_strategy
+  on rebalance_targets(user_id, environment, strategy_id);
+create index if not exists idx_rebalance_targets_user_env
+  on rebalance_targets(user_id, environment, updated_at desc);
+
+-- Rebalance runs (one row per save/execute action)
+create table if not exists rebalance_runs (
+  run_id text primary key,
+  user_id uuid not null references app_users(id) on delete cascade,
+  environment text not null default 'paper',
+  mode text not null,
+  status text not null,
+  target_source text not null,
+  strategy_ids jsonb not null default '[]'::jsonb,
+  target_weights jsonb not null default '{}'::jsonb,
+  target_cash_pct numeric,
+  allow_new_positions boolean not null default false,
+  orders_preview jsonb not null default '[]'::jsonb,
+  submitted jsonb not null default '[]'::jsonb,
+  error text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  finished_at timestamptz
+);
+
+create index if not exists idx_rebalance_runs_user_env_created
+  on rebalance_runs(user_id, environment, created_at desc);
+
 -- Bot runs
 create table if not exists bot_runs (
   run_id text primary key,

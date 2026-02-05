@@ -32,6 +32,6 @@ export function mapOrder(o: TradingOrder): UiOrder {
     filled: o.filled_qty ?? 0,
     price,
     status: status || "PENDING",
-    strategy: o.strategy?.name ?? "-",
+    strategy: o.strategy?.name ?? o.strategy?.id ?? o.strategy_id ?? "-",
   };
 }

@@ -53,6 +53,13 @@ def _range_to_alpaca_period(range_value: str) -> str:
     }.get(range_value, "1M")
 
 
+def _range_to_alpaca_timeframe(range_value: str) -> str:
+    # Intraday detail for 1D chart; keep daily bars for longer windows.
+    if range_value == "1D":
+        return "1Min"
+    return "1D"
+
+
 def _equity_curve_fallback(equity_value: float) -> List[dict]:
     return [{"t": now_kst(), "equity": equity_value}]
 
@@ -142,6 +149,24 @@ def _sanitize_equity_curve(points: List[dict]) -> List[dict]:
     if any(item["equity"] > 0 for item in cleaned):
         cleaned = [item for item in cleaned if item["equity"] > 0]
     return cleaned
+
+
+def _downsample_equity_to_hourly(points: List[dict]) -> List[dict]:
+    if not points:
+        return []
+    bucketed: Dict[str, dict] = {}
+    for point in points:
+        ts = point.get("t")
+        if ts is None:
+            continue
+        try:
+            dt = parse_datetime(str(ts))
+        except Exception:
+            continue
+        key = dt.replace(minute=0, second=0, microsecond=0).isoformat()
+        bucketed[key] = point
+    downsampled = sorted(bucketed.values(), key=lambda item: str(item.get("t", "")))
+    return _sanitize_equity_curve(downsampled)
 
 
 def _ensure_latest_equity_point(
@@ -610,11 +635,14 @@ async def get_dashboard(
 
     history_curve: List[dict] = []
     try:
+        history_timeframe = _range_to_alpaca_timeframe(range)
         history = alpaca.get_portfolio_history(
             period=_range_to_alpaca_period(range),
-            timeframe="1D",
+            timeframe=history_timeframe,
         )
         history_curve = _history_to_equity_points(history)
+        if range == "1D":
+            history_curve = _downsample_equity_to_hourly(history_curve)
         history_curve, _ = _ensure_latest_equity_point(history_curve, equity)
         if history_curve:
             portfolio_repo.replace_equity_curve_range(

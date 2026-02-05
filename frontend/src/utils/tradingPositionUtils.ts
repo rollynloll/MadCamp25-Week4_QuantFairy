@@ -18,6 +18,6 @@ export function mapPosition(p: TradingPositionItem): Position {
     currentPrice,
     pnl,
     pnlPct,
-    strategy: p.strategy?.name ?? "-",
+    strategy: p.strategy?.name ?? p.strategy?.id ?? p.strategy_id ?? "Unassigned",
   };
 }

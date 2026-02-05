@@ -11,6 +11,7 @@ import type {
   PortfolioActivityResponse,
   PortfolioAttributionResponse,
   UserStrategiesResponse,
+  PortfolioRebalanceTargetsResponse,
 } from "@/types/portfolio";
 
 import {
@@ -21,6 +22,7 @@ import {
   getPortfolioKpi,
   getPortfolioActivity,
   getPortfolioAttribution,
+  getPortfolioRebalanceTargets,
 } from "@/api/portfolio";
 import { getUserStrategies } from "@/api/userStrategies";
 
@@ -29,6 +31,7 @@ type PortfolioPageData = {
   positions: PortfolioPositionsResponse;
   allocation: PortfolioAllocationResponse;
   userStrategies: UserStrategiesResponse;
+  rebalanceTargets: PortfolioRebalanceTargetsResponse;
   performance?: PortfolioPerformanceResponse;
   drawdown?: PortfolioDrawdownResponse;
   kpi?: PortfolioKpiResponse;
@@ -76,10 +79,11 @@ export function usePortfolioPageData(env: Env, range: Range, showBenchmark: bool
 
       try {
         // 병렬 로딩 (overview + positions + strategies)
-        const [overview, positions, userStrategies] = await Promise.all([
+        const [overview, positions, userStrategies, rebalanceTargets] = await Promise.all([
           getPortfolioOverview(env),
           getPortfolioPositions(env),
           getUserStrategies(env),
+          getPortfolioRebalanceTargets(env).catch(() => ({ env, items: [] })),
         ]);
 
         if (!isMounted) return;
@@ -89,6 +93,7 @@ export function usePortfolioPageData(env: Env, range: Range, showBenchmark: bool
           positions,
           allocation: overview.allocation,
           userStrategies,
+          rebalanceTargets,
         });
       } catch (err) {
         if (!isMounted) return;
@@ -139,8 +144,10 @@ export function usePortfolioPageData(env: Env, range: Range, showBenchmark: bool
 
   useEffect(() => {
     if (!data) return;
+    // Only refetch analytics when query params or base snapshot changes.
+    // This avoids refetch loops caused by data updates from analytics responses.
     loadAnalytics(true);
-  }, [range, showBenchmark, data]);
+  }, [env, range, showBenchmark, data?.summary?.as_of]);
 
   const loadActivity = async () => {
     if (!data) return;

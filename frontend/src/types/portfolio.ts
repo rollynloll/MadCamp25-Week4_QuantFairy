@@ -229,6 +229,16 @@ export type PortfolioRebalanceResponse = {
   }>;
 };
 
+export type PortfolioRebalanceTargetsResponse = {
+  env: Env;
+  items: Array<{
+    strategy_id: string;
+    target_weight_pct: number;
+    target_cash_pct: number;
+    updated_at: string;
+  }>;
+};
+
 export type UserStrategyListItem = {
   user_strategy_id: string;
   name: string;

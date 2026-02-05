@@ -4,6 +4,7 @@ import type {
   TradingOrderDetail,
   TradingPositionsResponse,
   TradingBarsResponse,
+  TradingQuoteResponse,
 } from "@/types/trading";
 
 export type OrderScope = "open" | "filled" | "all";
@@ -86,6 +87,31 @@ export async function getTradingBars(params: {
     const body = await res.json().catch(() => null);
     const message =
       body?.error?.message ?? `Failed to load bars (${res.status})`;
+    throw new Error(message);
+  }
+
+  return res.json();
+}
+
+export async function getTradingQuote(params: {
+  symbol: string;
+  feed?: string;
+}): Promise<TradingQuoteResponse> {
+  const { symbol, feed } = params;
+  const res = await fetch(
+    buildApiUrl("/trading/quote", {
+      symbol,
+      feed: feed ?? undefined,
+    }),
+    {
+      headers: { "Content-Type": "application/json" },
+    }
+  );
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    const message =
+      body?.error?.message ?? `Failed to load quote (${res.status})`;
     throw new Error(message);
   }
 

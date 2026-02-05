@@ -184,6 +184,72 @@ class AlpacaClient:
             logger.error("alpaca.get_orders failed status=%s error=%s", status, exc)
             return None
 
+    def is_market_open(self) -> bool | None:
+        client = self._get_client()
+        if client is None:
+            return None
+        try:  # pragma: no cover - depends on Alpaca
+            clock = client.get_clock()
+            is_open = bool(getattr(clock, "is_open", False))
+            logger.info("alpaca.get_clock ok is_open=%s", is_open)
+            return is_open
+        except Exception as exc:
+            logger.error("alpaca.get_clock failed error=%s", exc)
+            return None
+
+    def cancel_open_orders(self, limit: int = 500) -> dict:
+        """Cancel currently open Alpaca orders, used before after-hours rebalance reruns."""
+        client = self._get_client()
+        if client is None:
+            return {"requested": 0, "canceled": 0, "failed": 0, "canceled_ids": [], "failed_ids": []}
+        try:  # pragma: no cover - depends on Alpaca
+            all_orders = self.get_orders(status="all", limit=limit) or []
+            final_statuses = {"filled", "canceled", "cancelled", "rejected", "expired"}
+            open_orders = []
+            for order in all_orders:
+                status = getattr(order, "status", None)
+                status_text = str(status or "").strip().lower()
+                if "." in status_text:
+                    status_text = status_text.split(".")[-1]
+                if status_text in final_statuses:
+                    continue
+                open_orders.append(order)
+            canceled_ids: list[str] = []
+            failed_ids: list[str] = []
+            for order in open_orders:
+                order_id = getattr(order, "id", None) or getattr(order, "client_order_id", None)
+                if not order_id:
+                    continue
+                try:
+                    client.cancel_order_by_id(str(order_id))
+                    canceled_ids.append(str(order_id))
+                except Exception:
+                    failed_ids.append(str(order_id))
+            logger.info(
+                "alpaca.cancel_open_orders requested=%s canceled=%s failed=%s",
+                len(open_orders),
+                len(canceled_ids),
+                len(failed_ids),
+            )
+            return {
+                "requested": len(all_orders),
+                "open_detected": len(open_orders),
+                "canceled": len(canceled_ids),
+                "failed": len(failed_ids),
+                "canceled_ids": canceled_ids,
+                "failed_ids": failed_ids,
+            }
+        except Exception as exc:
+            logger.error("alpaca.cancel_open_orders failed error=%s", exc)
+            return {
+                "requested": 0,
+                "open_detected": 0,
+                "canceled": 0,
+                "failed": 0,
+                "canceled_ids": [],
+                "failed_ids": [],
+            }
+
     def submit_market_order(
         self,
         *,

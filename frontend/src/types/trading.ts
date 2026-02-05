@@ -20,6 +20,7 @@ export interface TradingOrder {
   limit_price: number | null;
   avg_fill_price: number | null;
   status: OrderStatus;
+  strategy_id?: string | null;
   strategy?: { id: string; name: string } | null;
 };
 
@@ -53,6 +54,7 @@ export type TradingPositionItem = {
   market_price: number;
   unrealized_pnl: number;
   unrealized_pnl_pct: number;
+  strategy_id?: string | null;
   strategy?: { id: string; name: string } | null;
 };
 
@@ -99,4 +101,17 @@ export type TradingBarsResponse = {
   timeframe: string;
   feed: string | null;
   bars: TradingBarItem[];
+};
+
+export type TradingQuoteResponse = {
+  symbol: string;
+  feed: string | null;
+  bid: number | null;
+  ask: number | null;
+  bid_size: number | null;
+  ask_size: number | null;
+  mid: number | null;
+  spread: number | null;
+  timestamp: string | null;
+  source: "quote" | "trade_fallback" | "close_fallback" | "none";
 };
