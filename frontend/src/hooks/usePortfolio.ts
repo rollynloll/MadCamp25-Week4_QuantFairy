@@ -149,9 +149,9 @@ export function usePortfolioPageData(env: Env, range: Range, showBenchmark: bool
     loadAnalytics(true);
   }, [env, range, showBenchmark, data?.summary?.as_of]);
 
-  const loadActivity = async () => {
+  const loadActivity = async (force = false) => {
     if (!data) return;
-    if (data.activity) return;
+    if (!force && data.activity) return;
     if (extrasLoading.activity) return;
     setExtrasLoading((prev) => ({ ...prev, activity: true }));
     setExtrasError(null);

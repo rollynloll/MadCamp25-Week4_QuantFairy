@@ -10,6 +10,7 @@ from fastapi import APIRouter, Header, Query
 
 from app.alpaca.client import AlpacaClient
 from app.core.config import get_settings
+from app.core.alpaca_cache import get_account_cached, get_positions_cached
 from app.core.time import now_kst, parse_datetime, plus_hours
 from app.core.user import resolve_user_id
 from app.schemas.dashboard import DashboardResponse
@@ -272,9 +273,10 @@ def _normalize_filled_orders_to_trades(
 
 
 def _build_strategy_hints(strategies: List[dict]) -> tuple[Dict[str, str], str | None, List[str]]:
-    running = [row for row in strategies if str(row.get("state", "")).lower() in {"running", "paused"}]
+    running = [row for row in strategies if str(row.get("state", "")).lower() == "running"]
     if not running:
         return {}, None, []
+    running = sorted(running, key=lambda row: str(row.get("strategy_id") or ""))
     hints: Dict[str, str] = {}
     no_hint_ids: list[str] = []
     for row in running:
@@ -399,8 +401,9 @@ async def get_dashboard(
     kill_switch = bool(user_settings.get("kill_switch", False))
 
     alpaca = AlpacaClient(settings, environment)
-    account_result = alpaca.get_account()
+    account_result = get_account_cached(alpaca)
     broker_state = "connected" if account_result.account else "down"
+    raw_positions: List[Any] = []
     if account_result.account:
         try:
             strategy_rows = strategies_repo.list(resolved_user_id)
@@ -455,7 +458,7 @@ async def get_dashboard(
             )
             trades_repo.upsert_many(trade_rows)
 
-            raw_positions = alpaca.get_positions() or []
+            raw_positions = get_positions_cached(alpaca) or []
             position_rows = _normalize_positions(
                 raw_positions, user_id=resolved_user_id, environment=environment
             )
@@ -723,7 +726,17 @@ async def get_dashboard(
     return_pct = ((last_equity - first_equity) / first_equity) * 100 if first_equity else 0.0
     max_drawdown_pct = _max_drawdown_pct(equity_curve)
 
-    today_pnl_value = sum(float(s["pnl_today"]["value"]) for s in active_strategies)
+    positions_for_pnl = positions_repo.list(resolved_user_id, environment, limit=1000)
+    today_pnl_value = sum(
+        _to_float(pos.get("unrealized_pnl", pos.get("unrealized_pl", 0.0)))
+        for pos in positions_for_pnl
+    )
+    if abs(today_pnl_value) < 1e-9 and raw_positions:
+        intraday_total = 0.0
+        for pos in raw_positions:
+            intraday_total += _to_float(_get_field(pos, "unrealized_intraday_pl", 0))
+        if abs(intraday_total) > 1e-9:
+            today_pnl_value = intraday_total
     today_pnl_pct = (today_pnl_value / equity * 100) if equity else 0.0
 
     positions_count = positions_repo.count(resolved_user_id, environment)
