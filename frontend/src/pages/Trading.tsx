@@ -17,13 +17,20 @@ export default function Trading() {
   const [timeframe, setTimeframe] = useState<"1D" | "1W" | "1M" | "3M" | "1Y">("1D");
   const { items: openOrderItems } = useTradingOrders("open");
   const { items: filledOrderItems } = useTradingOrders("filled");
-  const { items: allOrderItems } = useTradingOrders("all");
-  const openOrdersUi = openOrderItems.map(mapOrder);
-  const filledOrdersUi = filledOrderItems.map(mapOrder);
-  const allOrdersUi = allOrderItems.map(mapOrder);
+  const { openOrdersUi, filledOrdersUi } = useMemo(() => {
+    const merged = new Map<string, ReturnType<typeof mapOrder>>();
+    [...openOrderItems, ...filledOrderItems].forEach((order) => {
+      merged.set(order.order_id, mapOrder(order));
+    });
+    const all = Array.from(merged.values());
+    return {
+      openOrdersUi: all.filter((order) => order.status !== "FILLED"),
+      filledOrdersUi: all.filter((order) => order.status === "FILLED"),
+    };
+  }, [openOrderItems, filledOrderItems]);
 
   const { items: positionItems } = useTradingPositions();
-  const positionsForTable = positionItems.map(mapPosition);
+  const positionsForTable = useMemo(() => positionItems.map(mapPosition), [positionItems]);
 
   const [selectedSymbol, setSelectedSymbol] = useState(
     positionsForTable[0]?.symbol ?? "AAPL"

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { TrendingDown, TrendingUp } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import CustomTooltip from "@/components/trading/CustomTooltip";
@@ -54,7 +54,12 @@ const estimatePointsPerDay = (bars: BarPoint[]) => {
 
 export default function GraphCurve({ symbol, name, bars, timeframe, onTimeframeChange }: Props) {
   const { tr } = useLanguage();
-  const pointsPerDay = useMemo(() => estimatePointsPerDay(bars), [bars]);
+  const lastBarsRef = useRef<BarPoint[]>([]);
+  if (bars.length > 0) {
+    lastBarsRef.current = bars;
+  }
+  const displayBars = bars.length > 0 ? bars : lastBarsRef.current;
+  const pointsPerDay = useMemo(() => estimatePointsPerDay(displayBars), [displayBars]);
   const tickInterval = useMemo(() => {
     if (timeframe === "1D") return 20;
     if (timeframe === "1Y") return 20;
@@ -62,17 +67,19 @@ export default function GraphCurve({ symbol, name, bars, timeframe, onTimeframeC
   }, [timeframe, pointsPerDay]);
   const chartData = useMemo(
     () =>
-      bars.map((bar) => ({
+      displayBars.map((bar) => ({
         time: formatTime(bar.time),
         rawTime: bar.time,
         price: Number(bar.close.toFixed(2)),
         volume: bar.volume,
       })),
-    [bars]
+    [displayBars]
   );
 
+  const isUpdating = bars.length === 0;
+
   const stats = useMemo(() => {
-    if (!bars.length) {
+    if (!displayBars.length) {
       return {
         hasData: false,
         currentPrice: 0,
@@ -85,14 +92,14 @@ export default function GraphCurve({ symbol, name, bars, timeframe, onTimeframeC
         avgVolume: 0,
       };
     }
-    const currentPrice = bars[bars.length - 1].close;
-    const openPrice = bars[0].open;
+    const currentPrice = displayBars[displayBars.length - 1].close;
+    const openPrice = displayBars[0].open;
     const change = currentPrice - openPrice;
     const changePercent = openPrice ? (change / openPrice) * 100 : 0;
-    const high = Math.max(...bars.map((bar) => bar.high));
-    const low = Math.min(...bars.map((bar) => bar.low));
-    const volumeTotal = bars.reduce((sum, bar) => sum + bar.volume, 0);
-    const avgVolume = volumeTotal / bars.length;
+    const high = Math.max(...displayBars.map((bar) => bar.high));
+    const low = Math.min(...displayBars.map((bar) => bar.low));
+    const volumeTotal = displayBars.reduce((sum, bar) => sum + bar.volume, 0);
+    const avgVolume = volumeTotal / displayBars.length;
     return {
       hasData: true,
       currentPrice,
@@ -104,7 +111,7 @@ export default function GraphCurve({ symbol, name, bars, timeframe, onTimeframeC
       volumeTotal,
       avgVolume,
     };
-  }, [bars]);
+  }, [displayBars]);
 
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
@@ -157,7 +164,7 @@ export default function GraphCurve({ symbol, name, bars, timeframe, onTimeframeC
       </div>
 
       {/* Chart */}
-      <div className="h-[500px]">
+      <div className="h-[500px] relative">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={chartData}>
             <defs>
@@ -201,6 +208,11 @@ export default function GraphCurve({ symbol, name, bars, timeframe, onTimeframeC
             />
           </AreaChart>
         </ResponsiveContainer>
+        {isUpdating ? (
+          <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-300 bg-[#0d1117]/40">
+            Updating...
+          </div>
+        ) : null}
       </div>
 
       {/* Quick Stats */}

@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { Position } from "@/types/portfolio";
 import { useLanguage } from "@/contexts/LanguageContext";
 
@@ -9,6 +10,18 @@ type Props = {
 
 export default function PositionsTrade({ positions, selectedSymbol, onSelect }: Props) {
   const { tr } = useLanguage();
+  const rows = useMemo(
+    () =>
+      positions.map((pos) => ({
+        ...pos,
+        qtyLabel: `${pos.qty > 0 ? "+" : ""}${pos.qty}`,
+        avgPriceLabel: `$${pos.avgPrice.toFixed(2)}`,
+        currentPriceLabel: `$${pos.currentPrice.toFixed(2)}`,
+        pnlLabel: `${pos.pnl >= 0 ? "+" : ""}$${pos.pnl.toFixed(2)}`,
+        pnlPctLabel: `${pos.pnl >= 0 ? "+" : ""}${pos.pnlPct.toFixed(2)}%`,
+      })),
+    [positions]
+  );
   return (
     <div className="bg-[#0d1117] border border-gray-800 rounded">
       <div className="px-4 py-3 border-b border-gray-800">
@@ -28,7 +41,7 @@ export default function PositionsTrade({ positions, selectedSymbol, onSelect }: 
             </tr>
           </thead>
           <tbody>
-            {positions.map((pos) => (
+            {rows.map((pos) => (
               <tr
                 key={pos.symbol}
                 onClick={() => onSelect?.(pos.symbol)}
@@ -45,19 +58,19 @@ export default function PositionsTrade({ positions, selectedSymbol, onSelect }: 
                   <div className="text-xs text-gray-500">{pos.name}</div>
                 </td>
                 <td className={`text-right py-3 px-4 font-mono ${pos.side === "long" ? "text-green-500" : "text-red-500"}`}>
-                  {pos.qty > 0 ? "+" : ""}{pos.qty}
+                  {pos.qtyLabel}
                 </td>
                 <td className="text-right py-3 px-4 font-mono text-gray-400">
-                  ${pos.avgPrice.toFixed(2)}
+                  {pos.avgPriceLabel}
                 </td>
                 <td className="text-right py-3 px-4 font-mono">
-                  ${pos.currentPrice.toFixed(2)}
+                  {pos.currentPriceLabel}
                 </td>
                 <td className={`text-right py-3 px-4 font-mono font-semibold ${pos.pnl >= 0 ? "text-green-500" : "text-red-500"}`}>
-                  {pos.pnl >= 0 ? "+" : ""}${pos.pnl.toFixed(2)}
+                  {pos.pnlLabel}
                 </td>
                 <td className={`text-right py-3 px-4 font-mono ${pos.pnl >= 0 ? "text-green-500" : "text-red-500"}`}>
-                  {pos.pnl >= 0 ? "+" : ""}{pos.pnlPct.toFixed(2)}%
+                  {pos.pnlPctLabel}
                 </td>
                 <td className="py-3 px-4 text-gray-500">{pos.strategy}</td>
               </tr>

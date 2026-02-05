@@ -65,7 +65,7 @@ function resolve(key: string, lang: Language) {
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [language, setLanguage] = useState<Language>(() => {
     const stored = localStorage.getItem("language");
-    return stored === "en" || stored === "ko" ? stored : "en";
+    return stored === "en" || stored === "ko" ? stored : "ko";
   });
 
   useEffect(() => {
@@ -77,7 +77,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
       language,
       setLanguage,
       t: (key) => resolve(key, language),
-      tr: (en, ko) => (language === "en" ? en : ko),
+      tr: (en, ko) => (language === "ko" ? ko : en),
     };
   }, [language]);
 
