@@ -17,13 +17,14 @@ export default function Trading() {
   const [timeframe, setTimeframe] = useState<"1D" | "1W" | "1M" | "3M" | "1Y">("1D");
   const { items: openOrderItems } = useTradingOrders("open");
   const { items: filledOrderItems } = useTradingOrders("filled");
-  const { openOrdersUi, filledOrdersUi } = useMemo(() => {
+  const { openOrdersUi, filledOrdersUi, allOrdersUi } = useMemo(() => {
     const merged = new Map<string, ReturnType<typeof mapOrder>>();
     [...openOrderItems, ...filledOrderItems].forEach((order) => {
       merged.set(order.order_id, mapOrder(order));
     });
     const all = Array.from(merged.values());
     return {
+      allOrdersUi: all,
       openOrdersUi: all.filter((order) => order.status !== "FILLED"),
       filledOrdersUi: all.filter((order) => order.status === "FILLED"),
     };
