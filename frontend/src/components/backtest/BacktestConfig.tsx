@@ -43,12 +43,12 @@ export default function BacktestConfig({
       : [""];
 
   return (
-    <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
+    <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold mb-4">{tr("Configuration", "\uC124\uC815")}</h2>
         <button
           type="button"
-          className="text-xs text-gray-300 border border-gray-800 px-2 py-1 rounded hover:text-white hover:border-gray-600 transition-colors disabled:opacity-50"
+          className="text-xs text-gray-300 border border-gray-800 px-2 py-1 rounded hover:text-gray-100 hover:border-gray-600 transition-colors disabled:opacity-50"
           onClick={onAddStrategy}
           disabled={!hasStrategies}
         >
@@ -64,7 +64,7 @@ export default function BacktestConfig({
                   Strategy {index + 1} 
                 </label>
                 <select
-                  className="w-full bg-[#0a0d14] border border-gray-800 rounded px-3 py-2 text-sm"
+                  className="w-full bg-gray-950 border border-gray-800 rounded px-3 py-2 text-sm"
                   value={value}
                   onChange={(event) => onStrategyChange(index, event.target.value)}
                   disabled={!hasStrategies}
@@ -83,7 +83,7 @@ export default function BacktestConfig({
               <div className="col-span-1 flex items-end">
                 <button
                   type="button"
-                  className="w-full text-xs text-gray-300 border border-gray-800 px-2 py-2 rounded hover:text-white hover:border-gray-600 transition-colors disabled:opacity-50"
+                  className="w-full text-xs text-gray-300 border border-gray-800 px-2 py-2 rounded hover:text-gray-100 hover:border-gray-600 transition-colors disabled:opacity-50"
                   onClick={() => onRemoveStrategy(index)}
                   disabled={selectedValues.length <= 1}
                 >
@@ -102,7 +102,7 @@ export default function BacktestConfig({
             type="text"
             value={initialCapital}
             onChange={(event) => onInitialCapitalChange(event.target.value)}
-            className="w-full bg-[#0a0d14] border border-gray-800 rounded px-3 py-2 text-sm font-mono"
+            className="w-full bg-gray-950 border border-gray-800 rounded px-3 py-2 text-sm font-mono"
           />
         </div>
         <div>
@@ -113,7 +113,7 @@ export default function BacktestConfig({
             type="text"
             value={commission}
             onChange={(event) => onCommissionChange(event.target.value)}
-            className="w-full bg-[#0a0d14] border border-gray-800 rounded px-3 py-2 text-sm font-mono"
+            className="w-full bg-gray-950 border border-gray-800 rounded px-3 py-2 text-sm font-mono"
           />
         </div>
         <div>
@@ -124,7 +124,7 @@ export default function BacktestConfig({
             type="text"
             value={slippage}
             onChange={(event) => onSlippageChange(event.target.value)}
-            className="w-full bg-[#0a0d14] border border-gray-800 rounded px-3 py-2 text-sm font-mono"
+            className="w-full bg-gray-950 border border-gray-800 rounded px-3 py-2 text-sm font-mono"
           />
         </div>
         </div>

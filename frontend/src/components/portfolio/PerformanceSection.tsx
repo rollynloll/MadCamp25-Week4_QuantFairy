@@ -34,7 +34,7 @@ export default function PerformanceSection({
       <h2 className="font-semibold mb-4">{tr("Performance", "성과")}</h2>
       <div className="grid grid-cols-2 gap-6">
         {/* Equity Curve */}
-        <div className="bg-[#0d1117] border border-gray-800 rounded p-4">
+        <div className="bg-gray-900 border border-gray-800 rounded p-4">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-medium">{tr("Equity Curve", "자산 곡선")}</h3>
             <div className="flex items-center gap-3">
@@ -82,7 +82,7 @@ export default function PerformanceSection({
 
         {/* Drawdown + Metrics */}
         <div className="space-y-4">
-          <div className="bg-[#0d1117] border border-gray-800 rounded p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded p-4">
             <h3 className="text-sm font-medium mb-4">{tr("Drawdown", "낙폭")}</h3>
             <ResponsiveContainer width="100%" height={140}>
               <AreaChart data={drawdownData}>
@@ -114,7 +114,7 @@ export default function PerformanceSection({
             </ResponsiveContainer>
           </div>
 
-          <div className="bg-[#0d1117] border border-gray-800 rounded p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded p-4">
             <div className="grid grid-cols-3 gap-4 text-sm">
               <div>
                 <div className="text-xs text-gray-500 mb-1">{tr("CAGR", "연평균 수익률")}</div>

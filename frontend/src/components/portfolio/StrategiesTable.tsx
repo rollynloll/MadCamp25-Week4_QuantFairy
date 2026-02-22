@@ -22,7 +22,7 @@ export default function StrategiesTable({
   const { tr } = useLanguage();
 
   return (
-    <div className="bg-[#0d1117] border border-gray-800 rounded">
+    <div className="bg-gray-900 border border-gray-800 rounded">
       <div className="px-4 py-3 border-b border-gray-800">
         <h2 className="font-semibold">{tr("My Strategies", "내 전략")}</h2>
       </div>

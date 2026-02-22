@@ -16,7 +16,7 @@ export default function AttributionSection({ attribution }: AttributionSectionPr
   }));
 
   return (
-    <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
+    <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold">{tr("Attribution", "기여도")}</h2>
         <span className="text-xs text-gray-500">
@@ -30,7 +30,7 @@ export default function AttributionSection({ attribution }: AttributionSectionPr
           {rows.map((row) => (
             <div
               key={row.key}
-              className="flex items-center justify-between rounded border border-gray-800 bg-[#0a0d14] px-4 py-3 text-sm"
+              className="flex items-center justify-between rounded border border-gray-800 bg-gray-950 px-4 py-3 text-sm"
             >
               <div className="font-medium">{row.label}</div>
               <div className="flex items-center gap-6 text-xs text-gray-400">

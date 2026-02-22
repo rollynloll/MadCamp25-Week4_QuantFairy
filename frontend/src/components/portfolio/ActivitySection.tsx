@@ -22,12 +22,12 @@ export default function ActivitySection({
 }: ActivityProps) {
   const { tr } = useLanguage();
   return (
-    <div className="bg-[#0d1117] border border-gray-800 rounded">
+    <div className="bg-gray-900 border border-gray-800 rounded">
       <div className="flex border-b border-gray-800">
         <button
           onClick={() => onTabChange("orders")}
           className={`px-6 py-3 text-sm font-medium transition-colors ${
-            tab === "orders" ? "text-white border-b-2 border-blue-500" : "text-gray-500"
+            tab === "orders" ? "text-gray-100 border-b-2 border-blue-500" : "text-gray-500"
           }`}
         >
           {tr("Orders", "주문")}
@@ -35,7 +35,7 @@ export default function ActivitySection({
         <button
           onClick={() => onTabChange("trades")}
           className={`px-6 py-3 text-sm font-medium transition-colors ${
-            tab === "trades" ? "text-white border-b-2 border-blue-500" : "text-gray-500"
+            tab === "trades" ? "text-gray-100 border-b-2 border-blue-500" : "text-gray-500"
           }`}
         >
           {tr("Trades", "체결 내역")}
@@ -43,7 +43,7 @@ export default function ActivitySection({
         <button
           onClick={() => onTabChange("alerts")}
           className={`px-6 py-3 text-sm font-medium transition-colors ${
-            tab === "alerts" ? "text-white border-b-2 border-blue-500" : "text-gray-500"
+            tab === "alerts" ? "text-gray-100 border-b-2 border-blue-500" : "text-gray-500"
           }`}
         >
           {tr("Alerts", "알림")}
@@ -51,7 +51,7 @@ export default function ActivitySection({
         <button
           onClick={() => onTabChange("runs")}
           className={`px-6 py-3 text-sm font-medium transition-colors ${
-            tab === "runs" ? "text-white border-b-2 border-blue-500" : "text-gray-500"
+            tab === "runs" ? "text-gray-100 border-b-2 border-blue-500" : "text-gray-500"
           }`}
         >
           {tr("Bot Runs", "봇 실행 기록")}

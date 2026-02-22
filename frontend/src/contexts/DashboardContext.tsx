@@ -71,6 +71,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   }, [range, refreshKey]);
 
   useEffect(() => {
+    if (!data) return;
     let isMounted = true;
     const env = data?.mode.environment ?? "paper";
     setUserStrategiesLoading(true);
@@ -78,6 +79,11 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       .then((result) => {
         if (isMounted) {
           setUserStrategies(result.items);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setUserStrategies(null);
         }
       })
       .finally(() => {

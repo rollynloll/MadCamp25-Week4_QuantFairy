@@ -114,7 +114,7 @@ export default function GraphCurve({ symbol, name, bars, timeframe, onTimeframeC
   }, [displayBars]);
 
   return (
-    <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
+    <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
           <div className="flex items-center gap-3">
@@ -209,7 +209,7 @@ export default function GraphCurve({ symbol, name, bars, timeframe, onTimeframeC
           </AreaChart>
         </ResponsiveContainer>
         {isUpdating ? (
-          <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-300 bg-[#0d1117]/40">
+          <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-300 bg-gray-900/40">
             Updating...
           </div>
         ) : null}

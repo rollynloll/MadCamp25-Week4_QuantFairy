@@ -223,7 +223,7 @@ export default function StrategyPage() {
           onClick={() => setActiveTab("visual")}
           className={`px-3 py-1.5 rounded border text-xs font-medium ${
             activeTab === "visual"
-              ? "border-blue-500 text-white bg-blue-500/10"
+              ? "border-blue-500 text-gray-100 bg-blue-500/10"
               : "border-gray-800 text-gray-400 hover:text-gray-200"
           }`}
         >
@@ -234,7 +234,7 @@ export default function StrategyPage() {
           onClick={() => setActiveTab("code")}
           className={`px-3 py-1.5 rounded border text-xs font-medium ${
             activeTab === "code"
-              ? "border-blue-500 text-white bg-blue-500/10"
+              ? "border-blue-500 text-gray-100 bg-blue-500/10"
               : "border-gray-800 text-gray-400 hover:text-gray-200"
           }`}
         >

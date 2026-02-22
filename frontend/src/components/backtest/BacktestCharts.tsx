@@ -32,7 +32,7 @@ export default function BacktestCharts({
         height={hasMultipleStrategies ? 420 : 300}
       />
       {hasMultipleStrategies ? (
-        <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6 text-sm text-gray-400">
+        <div className="bg-gray-900 border border-gray-800 rounded-lg p-6 text-sm text-gray-400">
           {tr(
             "Monthly Returns are disabled when comparing multiple strategies.",
             "Monthly Returns는 여러 전략 비교 시 비활성화됩니다. 전략이 하나일 때만 표시됩니다."

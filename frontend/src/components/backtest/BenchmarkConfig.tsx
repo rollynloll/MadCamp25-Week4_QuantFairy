@@ -43,12 +43,12 @@ export default function BenchmarkConfig({
       ];
 
   return (
-    <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
+    <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold">{tr("Benchmark", "벤치마크")}</h2>
         <button
           type="button"
-          className="text-xs text-gray-300 border border-gray-800 px-2 py-1 rounded hover:text-white hover:border-gray-600 transition-colors disabled:opacity-50"
+          className="text-xs text-gray-300 border border-gray-800 px-2 py-1 rounded hover:text-gray-100 hover:border-gray-600 transition-colors disabled:opacity-50"
           onClick={onAddBenchmark}
           disabled={!hasBenchmarks}
         >
@@ -64,7 +64,7 @@ export default function BenchmarkConfig({
               </label>
               <div className="flex gap-2">
                 <select
-                  className="flex-1 bg-[#0a0d14] border border-gray-800 rounded px-3 py-2 text-sm"
+                  className="flex-1 bg-gray-950 border border-gray-800 rounded px-3 py-2 text-sm"
                   value={config.symbol}
                   onChange={(event) => onBenchmarkChange(index, event.target.value)}
                   disabled={!hasBenchmarks}
@@ -81,7 +81,7 @@ export default function BenchmarkConfig({
                 </select>
                 <button
                   type="button"
-                  className="text-xs text-gray-300 border border-gray-800 px-2 rounded hover:text-white hover:border-gray-600 transition-colors disabled:opacity-50"
+                  className="text-xs text-gray-300 border border-gray-800 px-2 rounded hover:text-gray-100 hover:border-gray-600 transition-colors disabled:opacity-50"
                   onClick={() => onRemoveBenchmark(index)}
                   disabled={resolvedConfigs.length <= 1}
                 >
@@ -97,7 +97,7 @@ export default function BenchmarkConfig({
                 type="text"
                 value={config.initialCapital}
                 onChange={(event) => onBenchmarkInitialCapitalChange(index, event.target.value)}
-                className="w-full bg-[#0a0d14] border border-gray-800 rounded px-3 py-2 text-sm font-mono"
+                className="w-full bg-gray-950 border border-gray-800 rounded px-3 py-2 text-sm font-mono"
               />
             </div>
             <div>
@@ -108,7 +108,7 @@ export default function BenchmarkConfig({
                 type="text"
                 value={config.commission}
                 onChange={(event) => onBenchmarkCommissionChange(index, event.target.value)}
-                className="w-full bg-[#0a0d14] border border-gray-800 rounded px-3 py-2 text-sm font-mono"
+                className="w-full bg-gray-950 border border-gray-800 rounded px-3 py-2 text-sm font-mono"
               />
             </div>
             <div>
@@ -119,7 +119,7 @@ export default function BenchmarkConfig({
                 type="text"
                 value={config.slippage}
                 onChange={(event) => onBenchmarkSlippageChange(index, event.target.value)}
-                className="w-full bg-[#0a0d14] border border-gray-800 rounded px-3 py-2 text-sm font-mono"
+                className="w-full bg-gray-950 border border-gray-800 rounded px-3 py-2 text-sm font-mono"
               />
             </div>
           </div>

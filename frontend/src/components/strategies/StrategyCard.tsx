@@ -26,7 +26,7 @@ export default function StrategyCard({
 
   return (
     <div
-      className="bg-[#0d1117] border border-gray-800 rounded-lg p-6 hover:border-gray-700 transition-colors cursor-pointer"
+      className="bg-gray-900 border border-gray-800 rounded-lg p-6 hover:border-gray-700 transition-colors cursor-pointer"
       role="button"
       tabIndex={0}
       onClick={() => onSelect?.(strategy)}

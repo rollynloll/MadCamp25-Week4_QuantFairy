@@ -5,7 +5,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 export default function MonthlyReturnsChart({ data }: { data: MonthlyReturn[] }) {
   const { tr } = useLanguage();
   return (
-    <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
+    <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
       <h2 className="text-lg font-semibold mb-6">{tr("Monthly Returns", "월간 수익률")}</h2>
       <ResponsiveContainer width="100%" height={200}>
         <BarChart data={data}>

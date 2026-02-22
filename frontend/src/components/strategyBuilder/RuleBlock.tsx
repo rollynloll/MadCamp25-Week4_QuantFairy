@@ -21,7 +21,7 @@ export default function RuleBlock({
   const { tr } = useLanguage();
 
   return (
-    <div className="rounded-lg border border-gray-800 bg-[#0a0d14] p-4">
+    <div className="rounded-lg border border-gray-800 bg-gray-950 p-4">
       <div className="flex items-center justify-between mb-3">
         <div>
           <div className="text-sm font-semibold text-gray-200">{block.title}</div>
@@ -30,7 +30,7 @@ export default function RuleBlock({
         <button
           type="button"
           onClick={() => onAddRule(block.id)}
-          className="text-xs px-2 py-1 rounded border border-gray-700 text-gray-300 hover:text-white"
+          className="text-xs px-2 py-1 rounded border border-gray-700 text-gray-300 hover:text-gray-100"
         >
           {tr("Add Rule", "규칙 추가")}
         </button>
@@ -76,7 +76,7 @@ export default function RuleBlock({
                     e.stopPropagation();
                     onAddCondition(block.id, rule.id);
                   }}
-                  className="text-[11px] px-2 py-1 rounded border border-gray-700 text-gray-300 hover:text-white"
+                  className="text-[11px] px-2 py-1 rounded border border-gray-700 text-gray-300 hover:text-gray-100"
                 >
                   {tr("Add Condition", "조건 추가")}
                 </button>

@@ -41,7 +41,7 @@ export default function StrategyDetailModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-3xl rounded-xl border border-gray-800 bg-[#0d1117] shadow-xl"
+        className="w-full max-w-3xl rounded-xl border border-gray-800 bg-gray-900 shadow-xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-gray-800 px-6 py-4">

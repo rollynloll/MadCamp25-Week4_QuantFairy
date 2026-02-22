@@ -18,10 +18,10 @@ export default function RecentTrades({ data }: { data: RecentTrade[] }) {
     "grid-cols-[96px_72px_64px_80px_96px_minmax(120px,1fr)]";
 
   return (
-    <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6 flex h-[460px] flex-col">
+    <div className="bg-gray-900 border border-gray-800 rounded-lg p-6 flex h-[460px] flex-col">
       <h2 className="text-lg font-semibold mb-4">{tr("Recent Trades", "최근 거래 내역")}</h2>
       <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-        <div className={`sticky top-0 z-10 hidden ${gridCols} gap-3 border-b border-gray-800 bg-[#0d1117] px-3 py-2 text-xs font-medium text-gray-500 md:grid`}>
+        <div className={`sticky top-0 z-10 hidden ${gridCols} gap-3 border-b border-gray-800 bg-gray-900 px-3 py-2 text-xs font-medium text-gray-500 md:grid`}>
           <span>{tr("Time", "시간")}</span>
           <span>{tr("Symbol", "종목")}</span>
           <span>{tr("Side", "구분")}</span>
@@ -34,7 +34,7 @@ export default function RecentTrades({ data }: { data: RecentTrade[] }) {
           {data.map((trade) => (
             <div
               key={trade.fill_id}
-              className="rounded bg-[#0a0d14] px-3 py-2 text-sm transition-colors hover:bg-gray-800/50"
+              className="rounded bg-gray-950 px-3 py-2 text-sm transition-colors hover:bg-gray-800/50"
             >
               <div className={`flex flex-col gap-1 md:grid ${gridCols} md:items-center md:gap-3`}>
                 <span className="font-mono text-xs text-gray-500">

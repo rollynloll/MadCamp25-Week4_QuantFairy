@@ -12,7 +12,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const { data } = useDashboardContext();
 
   return (
-    <div className="flex h-screen bg-[#0a0d14] text-gray-100">
+    <div className="flex h-screen bg-gray-950 text-gray-100">
       <SideBar />
       <div className="flex flex-col flex-1">
         <Header

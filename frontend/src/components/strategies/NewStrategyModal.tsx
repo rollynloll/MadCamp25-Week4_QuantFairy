@@ -222,7 +222,7 @@ export default function NewStrategyModal({
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 p-6" onClick={onClose}>
       <div
-        className="w-full max-w-2xl rounded-xl border border-gray-800 bg-[#0d1117] shadow-xl"
+        className="w-full max-w-2xl rounded-xl border border-gray-800 bg-gray-900 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-gray-800 px-6 py-4">
@@ -247,7 +247,7 @@ export default function NewStrategyModal({
               <select
                 value={templateId}
                 onChange={(e) => setTemplateId(e.target.value)}
-                className="bg-[#0a0d14] border border-gray-800 rounded px-2 py-1 text-xs text-gray-200"
+                className="bg-gray-950 border border-gray-800 rounded px-2 py-1 text-xs text-gray-200"
               >
                 {templates.map((tpl) => (
                   <option key={tpl.id} value={tpl.id}>
@@ -258,7 +258,7 @@ export default function NewStrategyModal({
               <button
                 type="button"
                 onClick={applyTemplate}
-                className="inline-flex items-center rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-300 hover:text-white hover:border-gray-600"
+                className="inline-flex items-center rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-300 hover:text-gray-100 hover:border-gray-600"
               >
                 {tr("Apply template", "템플릿 적용")}
               </button>
@@ -303,7 +303,7 @@ export default function NewStrategyModal({
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full bg-[#0a0d14] border border-gray-800 rounded px-3 py-2"
+              className="w-full bg-gray-950 border border-gray-800 rounded px-3 py-2"
               placeholder={tr("My Custom Strategy", "내 커스텀 전략")}
             />
           </div>
@@ -314,7 +314,7 @@ export default function NewStrategyModal({
               <input
                 value={entrypoint}
                 onChange={(e) => setEntrypoint(e.target.value)}
-                className="w-full bg-[#0a0d14] border border-gray-800 rounded px-3 py-2 font-mono text-xs"
+                className="w-full bg-gray-950 border border-gray-800 rounded px-3 py-2 font-mono text-xs"
                 placeholder="compute_target_weights"
               />
             </div>
@@ -323,7 +323,7 @@ export default function NewStrategyModal({
               <textarea
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
-                className="w-full h-48 bg-[#0a0d14] border border-gray-800 rounded px-3 py-2 font-mono text-xs"
+                className="w-full h-48 bg-gray-950 border border-gray-800 rounded px-3 py-2 font-mono text-xs"
               />
             </div>
           </>
@@ -333,7 +333,7 @@ export default function NewStrategyModal({
             <textarea
               value={paramsText}
               onChange={(e) => setParamsText(e.target.value)}
-              className="w-full h-40 bg-[#0a0d14] border border-gray-800 rounded px-3 py-2 font-mono text-xs"
+              className="w-full h-40 bg-gray-950 border border-gray-800 rounded px-3 py-2 font-mono text-xs"
             />
             <div className="mt-2 text-[11px] text-gray-500">
               {tr("Access via ctx.params (e.g. ctx.params.get('lookback_days')).", "ctx.params로 접근 (예: ctx.params.get('lookback_days')).")}
@@ -345,7 +345,7 @@ export default function NewStrategyModal({
             <input
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              className="w-full bg-[#0a0d14] border border-gray-800 rounded px-3 py-2"
+              className="w-full bg-gray-950 border border-gray-800 rounded px-3 py-2"
               placeholder={tr("Memo...", "메모...")}
             />
           </div>

@@ -39,7 +39,7 @@ export default function OpenOrders({ orders, filledOrders = [], allOrders = [], 
   const isOpen = activeView === "open";
   const isFilled = activeView === "filled";
   return (
-    <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
+    <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold">{tr("Orders", "주문 내역")}</h2>
         <div className="flex gap-2">
@@ -80,7 +80,7 @@ export default function OpenOrders({ orders, filledOrders = [], allOrders = [], 
       </div>
 
       <div className="max-h-[360px] overflow-auto pr-1">
-        <div className={`sticky top-0 z-10 hidden ${GRID_COLS} gap-4 border-b border-gray-800 bg-[#0d1117] px-3 py-2 text-xs font-medium text-gray-500 md:grid`}>
+        <div className={`sticky top-0 z-10 hidden ${GRID_COLS} gap-4 border-b border-gray-800 bg-gray-900 px-3 py-2 text-xs font-medium text-gray-500 md:grid`}>
           <div className="truncate">{tr("Order ID", "주문 번호")}</div>
           <div className="truncate">{tr("Symbol", "종목")}</div>
           <div className="truncate">{tr("Side", "구분")}</div>
