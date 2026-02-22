@@ -22,10 +22,10 @@ export default function EquityCurveChart({
   const formatYAxis = (value: number) => new Intl.NumberFormat("en-US").format(value);
   
   return (
-    <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
+    <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-lg font-semibold">{tr("Equity Curve", "자산 곡선")}</h2>
-        <button className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors">
+        <button className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-100 transition-colors">
           <Download className="w-4 h-4" />
           {tr("Export Results", "결과 내보내기")}
         </button>

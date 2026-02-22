@@ -256,8 +256,8 @@ export default function Portfolio() {
       {/* KPI Cards */}
       <PortfolioSummary summary={data.summary} />
 
-      <div className="bg-[#0d1117] border border-gray-800 rounded p-4 text-sm text-gray-300">
-        Rebalancing settings are applied at the <span className="text-white font-semibold">next scheduled rebalance</span>.
+      <div className="bg-gray-900 border border-gray-800 rounded p-4 text-sm text-gray-300">
+        Rebalancing settings are applied at the <span className="text-gray-100 font-semibold">next scheduled rebalance</span>.
         Adjust strategy weights and sector focus. Cash is auto-calculated from the remaining allocation.
       </div>
 

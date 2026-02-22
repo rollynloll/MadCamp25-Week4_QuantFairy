@@ -27,14 +27,14 @@ export default function StrategyHeader({
   const { tr } = useLanguage();
 
   return (
-    <div className="sticky top-0 z-20 -mx-6 px-6 py-4 bg-[#0b0f17]/95 backdrop-blur border-b border-gray-800">
+    <div className="sticky top-0 z-20 -mx-6 px-6 py-4 bg-gray-950/95 backdrop-blur border-b border-gray-800">
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex-1 min-w-[220px]">
             <input
               value={name}
               onChange={(e) => onNameChange(e.target.value)}
-              className="w-full bg-[#0a0d14] border border-gray-800 rounded px-3 py-2 text-sm"
+              className="w-full bg-gray-950 border border-gray-800 rounded px-3 py-2 text-sm"
               placeholder={tr("Strategy Name", "전략 이름")}
             />
           </div>
@@ -42,7 +42,7 @@ export default function StrategyHeader({
             <input
               value={description}
               onChange={(e) => onDescriptionChange(e.target.value)}
-              className="w-full bg-[#0a0d14] border border-gray-800 rounded px-3 py-2 text-sm"
+              className="w-full bg-gray-950 border border-gray-800 rounded px-3 py-2 text-sm"
               placeholder={tr("Short description", "간단 설명")}
             />
           </div>
@@ -50,7 +50,7 @@ export default function StrategyHeader({
             <button
               type="button"
               onClick={onSave}
-              className="px-3 py-2 rounded border border-gray-700 text-sm text-gray-300 hover:text-white hover:border-gray-600"
+              className="px-3 py-2 rounded border border-gray-700 text-sm text-gray-300 hover:text-gray-100 hover:border-gray-600"
             >
               {tr("Save", "저장")}
             </button>
@@ -94,7 +94,7 @@ export default function StrategyHeader({
                 className="px-3 py-1 rounded-full border border-gray-800 bg-gray-900/40 text-xs text-gray-300"
               >
                 <span className="text-gray-500 mr-1">{kpi.label}</span>
-                <span className="font-semibold text-white">{kpi.value}</span>
+                <span className="font-semibold text-gray-100">{kpi.value}</span>
               </div>
             ))}
           </div>

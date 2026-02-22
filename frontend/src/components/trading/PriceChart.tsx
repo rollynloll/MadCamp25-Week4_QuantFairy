@@ -35,7 +35,7 @@ export default function PriceChart({ symbol, bars, lastPrice, status }: PriceCha
   }, [bars]);
 
   return (
-    <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
+    <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-lg font-semibold">{tr("Price", "가격")}</h2>

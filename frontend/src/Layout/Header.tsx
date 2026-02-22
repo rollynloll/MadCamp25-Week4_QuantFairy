@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { AlertCircle, Play, Square, Wifi } from "lucide-react";
+import { AlertCircle, Moon, Play, Square, Sun, Wifi } from "lucide-react";
 import { useKillSwitch } from "@/hooks/useKillSwitch";
 import type { BotState } from "@/types/dashboard";
 import { useBotControl } from "@/hooks/useBotControl";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useTheme } from "@/contexts/ThemeContext";
 
 type TradeMode = "paper" | "live";
 
@@ -17,7 +18,8 @@ export default function Header({ mode, onModeChange, botState }: HeaderProps) {
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== "undefined" ? navigator.onLine : true
   );
-  const { language, setLanguage, t } = useLanguage();
+  const { language, setLanguage, t, tr } = useLanguage();
+  const { theme, toggleTheme } = useTheme();
 
   const { enabled, toggle } = useKillSwitch(false);
   const { state: uiBotState, loading, start, stop } = useBotControl(botState);
@@ -49,14 +51,14 @@ export default function Header({ mode, onModeChange, botState }: HeaderProps) {
   }, []);
 
   return (
-    <header className="h-16 bg-[#0d1117] border-b border-gray-800 flex items-center justify-between px-6">
+    <header className="h-16 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-6">
       <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2 bg-[#0a0d14] rounded-lg p-1">
+        <div className="flex items-center gap-2 bg-gray-950 rounded-lg p-1">
           <button
             onClick={() => handleChange("paper")}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
               mode === "paper"
-                ? "bg-gray-700 text-white"
+                ? "bg-gray-700 text-gray-100"
                 : "text-gray-400 hover:text-gray-200"
             }`}
           >
@@ -145,14 +147,33 @@ export default function Header({ mode, onModeChange, botState }: HeaderProps) {
           <span className="text-xs text-blue-300">{t("header.queued")}</span>
         )}
 
-        <div className="flex items-center gap-10 pl-6 border-l border-gray-800">
+        <div className="flex items-center gap-6 pl-6 border-l border-gray-800">
           <div className="text-right">
             <div className="text-xs text-gray-500">{t("header.accountBalance")}</div>
             <div className="text-sm font-semibold">
               {mode === "paper" ? "$100,000.00" : "$50,245.87"}
             </div>
           </div>
-          <div className="flex items-center gap-1 rounded-full border border-gray-800 bg-[#0a0d14] p-1 text-xs">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label={
+              theme === "dark"
+                ? tr("Switch to light mode", "화이트 모드로 전환")
+                : tr("Switch to dark mode", "다크 모드로 전환")
+            }
+            className="flex items-center gap-2 rounded-full border border-gray-800 bg-gray-950 px-3 py-2 text-xs text-gray-400 transition-colors hover:text-gray-200"
+          >
+            {theme === "dark" ? (
+              <Sun className="w-4 h-4" />
+            ) : (
+              <Moon className="w-4 h-4" />
+            )}
+            <span className="hidden sm:inline">
+              {theme === "dark" ? tr("Light", "화이트") : tr("Dark", "다크")}
+            </span>
+          </button>
+          <div className="flex items-center gap-1 rounded-full border border-gray-800 bg-gray-950 p-1 text-xs">
             <button
               onClick={() => setLanguage("en")}
               className={`px-2 py-1 rounded-full transition-colors ${

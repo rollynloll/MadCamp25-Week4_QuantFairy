@@ -16,7 +16,7 @@ export default function RecentTrades({ trades }: { trades: RecentTrade[] }) {
     [trades]
   );
   return (
-    <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
+    <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
       <h2 className="text-lg font-semibold mb-4">{tr("Recent Trades", "최근 체결")}</h2>
       <div className="space-y-1">
         <div className="text-xs text-gray-500 mb-2 flex justify-between px-2">

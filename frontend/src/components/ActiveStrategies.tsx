@@ -22,7 +22,7 @@ export default function ActiveStrategies({
 }) {
   const { tr } = useLanguage();
   return (
-    <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
+    <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
       <h2 className="text-lg font-semibold mb-4">{tr("Active Strategies", "운용 중인 전략")}</h2>
       {loading ? (
         <div className="text-xs text-gray-500">{tr("Loading strategies...", "전략 불러오는 중...")}</div>
@@ -33,7 +33,7 @@ export default function ActiveStrategies({
           {data.map((strategy) => (
             <div
               key={strategy.strategy_id}
-              className="p-4 bg-[#0a0d14] border border-gray-800 rounded-lg hover:border-gray-700 transition-colors"
+              className="p-4 bg-gray-950 border border-gray-800 rounded-lg hover:border-gray-700 transition-colors"
             >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">

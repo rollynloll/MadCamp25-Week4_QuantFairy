@@ -4,6 +4,7 @@ import {
   Briefcase,
   LayoutDashboard,
   LineChart,
+  Settings,
   TrendingUp,
 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -26,7 +27,7 @@ const navItems: NavItem[] = [
 export default function SideBar() {
   const { t } = useLanguage();
   return (
-    <aside className="w-64 bg-[#0d1117] border-r border-gray-800 flex flex-col">
+    <aside className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col">
       <div className="h-16 flex items-center px-6 border-b border-gray-800">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">
@@ -62,6 +63,26 @@ export default function SideBar() {
           );
         })}
       </nav>
+
+      <div className="border-t border-gray-800 py-4">
+        <NavLink
+          to="/account"
+          className={({ isActive }) =>
+            `flex items-center gap-3 px-6 py-3 text-sm transition-colors ${
+              isActive
+                ? "bg-blue-600/10 text-blue-400 border-r-2 border-blue-500"
+                : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/50"
+            }`
+          }
+        >
+          {({ isActive }) => (
+            <>
+              <Settings className={`w-5 h-5 ${isActive ? "text-blue-400" : ""}`} />
+              <span>{t("nav.accountSettings")}</span>
+            </>
+          )}
+        </NavLink>
+      </div>
     </aside>
   );
 }

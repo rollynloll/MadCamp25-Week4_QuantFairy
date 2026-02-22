@@ -11,7 +11,7 @@ export default function ConfigPanel({ selectedRule, onParamChange }: ConfigPanel
 
   if (!selectedRule) {
     return (
-      <div className="bg-[#0d1117] border border-gray-800 rounded p-4 h-[560px] max-h-[70vh]">
+      <div className="bg-gray-900 border border-gray-800 rounded p-4 h-[560px] max-h-[70vh]">
         <div className="text-sm font-semibold text-gray-200 mb-2">
           {tr("Config Panel", "설정 패널")}
         </div>
@@ -23,7 +23,7 @@ export default function ConfigPanel({ selectedRule, onParamChange }: ConfigPanel
   }
 
   return (
-    <div className="bg-[#0d1117] border border-gray-800 rounded p-4 h-[560px] max-h-[70vh] overflow-auto">
+    <div className="bg-gray-900 border border-gray-800 rounded p-4 h-[560px] max-h-[70vh] overflow-auto">
       <div className="mb-4">
         <div className="text-sm font-semibold text-gray-200">{selectedRule.name}</div>
         <div className="text-xs text-gray-500 mt-1">
@@ -43,14 +43,14 @@ export default function ConfigPanel({ selectedRule, onParamChange }: ConfigPanel
                 max={param.max}
                 step={param.step ?? 1}
                 onChange={(e) => onParamChange(selectedRule.id, param.id, Number(e.target.value))}
-                className="w-full bg-[#0a0d14] border border-gray-800 rounded px-2 py-1 text-xs"
+                className="w-full bg-gray-950 border border-gray-800 rounded px-2 py-1 text-xs"
               />
             )}
             {param.type === "select" && (
               <select
                 value={String(param.value)}
                 onChange={(e) => onParamChange(selectedRule.id, param.id, e.target.value)}
-                className="w-full bg-[#0a0d14] border border-gray-800 rounded px-2 py-1 text-xs"
+                className="w-full bg-gray-950 border border-gray-800 rounded px-2 py-1 text-xs"
               >
                 {(param.options ?? []).map((opt) => (
                   <option key={opt} value={opt}>

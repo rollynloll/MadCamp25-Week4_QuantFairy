@@ -84,20 +84,20 @@ export default function PerformanceChart({ data, range, onRangeChange, loading }
   };
   
   return (
-    <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
+    <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-lg font-semibold">{tr("Portfolio Performance", "포트폴리오 성과")}</h2>
 
         <div className="flex items-center gap-3 text-sm">
           <button
             onClick={() => setMetric("equity")}
-            className={metric === "equity" ? "text-blue-400" : "text-gray-400 hover:text-white"}
+            className={metric === "equity" ? "text-blue-400" : "text-gray-400 hover:text-gray-100"}
           >
             {tr("Equity", "자산")}
           </button>
           <button
             onClick={() => setMetric("daily_pnl")}
-            className={metric === "daily_pnl" ? "text-blue-400" : "text-gray-400 hover:text-white"}
+            className={metric === "daily_pnl" ? "text-blue-400" : "text-gray-400 hover:text-gray-100"}
           >
             {tr("Daily P&L", "일별 손익")}
           </button>
@@ -108,7 +108,7 @@ export default function PerformanceChart({ data, range, onRangeChange, loading }
             <button
               key={r}
               onClick={() => onRangeChange(r)}
-              className={r === range ? "text-blue-400" : "text-gray-400 hover:text-white"}
+              className={r === range ? "text-blue-400" : "text-gray-400 hover:text-gray-100"}
             >
               {tr(r, rangeLabels[r])}
             </button>
@@ -162,14 +162,14 @@ export default function PerformanceChart({ data, range, onRangeChange, loading }
         </ResponsiveContainer>
         {isYAxisTruncated ? (
           <div
-            className="pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded border border-blue-500/40 bg-[#0b1220]/90 px-1.5 py-0.5 text-[11px] font-semibold leading-none tracking-tight text-blue-300 shadow-[0_0_12px_rgba(59,130,246,0.25)]"
+            className="pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded border border-blue-500/40 bg-gray-900/90 px-1.5 py-0.5 text-[11px] font-semibold leading-none tracking-tight text-blue-300 shadow-[0_0_12px_rgba(59,130,246,0.25)]"
             style={{ left: `${yAxisWidth}px` }}
           >
             ~~~
           </div>
         ) : null}
         {loading ? (
-          <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-400 bg-[#0d1117]/40">
+          <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-400 bg-gray-900/40">
             Updating...
           </div>
         ) : null}

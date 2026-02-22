@@ -12,7 +12,7 @@ export default function KPICard({
   positive,
 }: KPIProps) {
   return (
-    <div className="bg-[#0d1117] border border-gray-800 rounded p-3">
+    <div className="bg-gray-900 border border-gray-800 rounded p-3">
       <div className="text-xs text-gray-500 mb-1">{label}</div>
       <div className={`text-xl font-semibold font-mono ${positive ? "text-green-500" : ""}`}>
         {value}

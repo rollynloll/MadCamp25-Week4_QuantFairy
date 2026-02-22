@@ -10,7 +10,7 @@ export default function BacktestResults({ metrics, trades }: BacktestResultsProp
   const { tr } = useLanguage();
 
   return (
-    <div className="bg-[#0d1117] border border-gray-800 rounded p-4">
+    <div className="bg-gray-900 border border-gray-800 rounded p-4">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-gray-200">
           {tr("Backtest Results", "백테스트 결과")}
@@ -27,7 +27,7 @@ export default function BacktestResults({ metrics, trades }: BacktestResultsProp
           {metrics.map((metric) => (
             <div key={metric.label} className="rounded border border-gray-800 bg-gray-900/40 p-3">
               <div className="text-xs text-gray-500">{metric.label}</div>
-              <div className="text-sm font-semibold text-white mt-1">{metric.value}</div>
+              <div className="text-sm font-semibold text-gray-100 mt-1">{metric.value}</div>
             </div>
           ))}
         </div>

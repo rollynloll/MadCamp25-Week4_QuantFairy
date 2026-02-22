@@ -46,7 +46,7 @@ export default function StrategyEditDrawer({
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex justify-end">
-      <div className="w-[500px] bg-[#0a0d14] border-l border-gray-800 flex flex-col">
+      <div className="w-[500px] bg-gray-950 border-l border-gray-800 flex flex-col">
         {/* Header */}
         <div className="p-4 border-b border-gray-800 flex items-center justify-between">
           <h3 className="font-semibold">
@@ -89,7 +89,7 @@ export default function StrategyEditDrawer({
                   <input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full bg-[#0d1117] border border-gray-800 rounded px-3 py-2 text-sm"
+                    className="w-full bg-gray-900 border border-gray-800 rounded px-3 py-2 text-sm"
                   />
                 </Field>
               </div>
@@ -106,7 +106,7 @@ export default function StrategyEditDrawer({
                           type="number"
                           value={params[key] ?? schema.default ?? ""}
                           onChange={(e) => setParams((prev) => ({ ...prev, [key]: Number(e.target.value) }))}
-                          className="w-full bg-[#0d1117] border border-gray-800 rounded px-3 py-2 text-sm"
+                          className="w-full bg-gray-900 border border-gray-800 rounded px-3 py-2 text-sm"
                         />
                         {(schema.min !== undefined || schema.max !== undefined) && (
                           <div className="text-xs text-gray-500 mt-1">
@@ -132,7 +132,7 @@ export default function StrategyEditDrawer({
                       step="0.01"
                       value={risk.max_weight_per_asset ?? ""}
                       onChange={(e) => setRisk((prev) => ({ ...prev, max_weight_per_asset: Number(e.target.value) }))}
-                      className="w-full bg-[#0d1117] border border-gray-800 rounded px-3 py-2 text-sm"
+                      className="w-full bg-gray-900 border border-gray-800 rounded px-3 py-2 text-sm"
                     />
                   </Field>
 
@@ -142,7 +142,7 @@ export default function StrategyEditDrawer({
                       step="0.01"
                       value={risk.cash_buffer ?? ""}
                       onChange={(e) => setRisk((prev) => ({ ...prev, cash_buffer: Number(e.target.value) }))}
-                      className="w-full bg-[#0d1117] border border-gray-800 rounded px-3 py-2 text-sm"
+                      className="w-full bg-gray-900 border border-gray-800 rounded px-3 py-2 text-sm"
                     />
                   </Field>
 
@@ -152,7 +152,7 @@ export default function StrategyEditDrawer({
                       step="1"
                       value={risk.max_turnover_pct ?? ""}
                       onChange={(e) => setRisk((prev) => ({ ...prev, max_turnover_pct: Number(e.target.value) }))}
-                      className="w-full bg-[#0d1117] border border-gray-800 rounded px-3 py-2 text-sm"
+                      className="w-full bg-gray-900 border border-gray-800 rounded px-3 py-2 text-sm"
                     />
                   </Field>
                 </div>

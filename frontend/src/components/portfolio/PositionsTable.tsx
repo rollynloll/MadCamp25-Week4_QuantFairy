@@ -4,13 +4,13 @@ import { useLanguage } from "@/contexts/LanguageContext";
 export default function PositionsTable({ positions }: { positions: Position[] }) {
   const { tr } = useLanguage();
   return (
-    <div className="bg-[#0d1117] border border-gray-800 rounded">
+    <div className="bg-gray-900 border border-gray-800 rounded">
       <div className="px-4 py-3 border-b border-gray-800">
         <h2 className="font-semibold">{tr("Positions", "포지션")}</h2>
       </div>
       <div className="overflow-auto max-h-[400px]">
         <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-[#0d1117] border-b border-gray-800">
+          <thead className="sticky top-0 bg-gray-900 border-b border-gray-800">
             <tr className="text-xs text-gray-500">
               <th className="text-left py-2 px-4 font-medium">{tr("Symbol", "종목 코드")}</th>
               <th className="text-right py-2 px-4 font-medium">{tr("Quantity", "수량")}</th>

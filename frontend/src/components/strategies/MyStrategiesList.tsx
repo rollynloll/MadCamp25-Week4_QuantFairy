@@ -54,7 +54,7 @@ export default function MyStrategiesList({
             {custom.map((strategy) => (
               <div
                 key={strategy.my_strategy_id}
-                className="bg-[#0d1117] border border-gray-800 rounded-lg p-6"
+                className="bg-gray-900 border border-gray-800 rounded-lg p-6"
               >
                 <div className="flex items-start justify-between gap-6 mb-3">
                   <div>

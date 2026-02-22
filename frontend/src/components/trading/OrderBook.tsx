@@ -26,7 +26,7 @@ export default function OrderBook({ orderBook, symbol, midPrice, spread }: Props
     };
   }, [orderBook, midPrice, spread]);
   return (
-    <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
+    <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold">{tr("Order Book", "호가")}</h2>
         <div className="text-sm text-gray-400 font-mono">{symbol ?? "AAPL"}</div>

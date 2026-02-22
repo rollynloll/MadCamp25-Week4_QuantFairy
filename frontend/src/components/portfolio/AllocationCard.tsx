@@ -55,13 +55,13 @@ export default function AllocationCard({
   });
 
   return (
-    <div className="bg-[#0d1117] border border-gray-800 rounded flex flex-col h-fit max-h-[600px]">
+    <div className="bg-gray-900 border border-gray-800 rounded flex flex-col h-fit max-h-[600px]">
       {/* Tabs */}
       <div className="flex border-b border-gray-800">
         <button
           onClick={() => onTabChange("strategy")}
           className={`flex-1 py-3 text-sm font-medium transition-colors ${
-            tab === "strategy" ? "text-white border-b-2 border-blue-500" : "text-gray-500"
+            tab === "strategy" ? "text-gray-100 border-b-2 border-blue-500" : "text-gray-500"
           }`}
         >
           {tr("Strategy", "전략")}
@@ -69,7 +69,7 @@ export default function AllocationCard({
         <button
           onClick={() => onTabChange("sector")}
           className={`flex-1 py-3 text-sm font-medium transition-colors ${
-            tab === "sector" ? "text-white border-b-2 border-blue-500" : "text-gray-500"
+            tab === "sector" ? "text-gray-100 border-b-2 border-blue-500" : "text-gray-500"
           }`}
         >
           {tr("Sector", "섹터")}
@@ -77,7 +77,7 @@ export default function AllocationCard({
         <button
           onClick={() => onTabChange("exposure")}
           className={`flex-1 py-3 text-sm font-medium transition-colors ${
-            tab === "exposure" ? "text-white border-b-2 border-blue-500" : "text-gray-500"
+            tab === "exposure" ? "text-gray-100 border-b-2 border-blue-500" : "text-gray-500"
           }`}
         >
           {tr("Exposure", "노출 비중")}
@@ -176,7 +176,7 @@ export default function AllocationCard({
                       value={targetValue}
                       disabled={isPaused}
                       onChange={(e) => onTargetWeightChange(strategy.id, Number(e.target.value))}
-                      className="w-14 bg-[#0a0d14] border border-gray-800 rounded px-2 py-1 text-xs text-right font-mono disabled:cursor-not-allowed"
+                      className="w-14 bg-gray-950 border border-gray-800 rounded px-2 py-1 text-xs text-right font-mono disabled:cursor-not-allowed"
                       step="0.5"
                     />
                   </div>
@@ -225,7 +225,7 @@ export default function AllocationCard({
 
       {/* Sticky Action Bar */}
       {tab === "strategy" && (
-        <div className="border-t border-gray-800 p-3 bg-[#0d1117]">
+        <div className="border-t border-gray-800 p-3 bg-gray-900">
           {hasUnsavedChanges && (
             <div className="flex items-center gap-2 text-xs text-yellow-500 mb-2">
               <AlertCircle className="w-3 h-3" />

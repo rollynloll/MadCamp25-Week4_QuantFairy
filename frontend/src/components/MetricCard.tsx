@@ -18,7 +18,7 @@ export default function MetricCard({
   icon,
 }: MetricCardProps) {
   return (
-    <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-5">
+    <div className="bg-gray-900 border border-gray-800 rounded-lg p-5">
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm text-gray-400">{title}</span>
         <div className="text-gray-500">{icon}</div>

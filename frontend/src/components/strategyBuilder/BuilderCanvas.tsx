@@ -22,7 +22,7 @@ export default function BuilderCanvas({
   const { tr } = useLanguage();
 
   return (
-    <div className="bg-[#0d1117] border border-gray-800 rounded p-4 h-[560px] max-h-[70vh] flex flex-col">
+    <div className="bg-gray-900 border border-gray-800 rounded p-4 h-[560px] max-h-[70vh] flex flex-col">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-gray-200">
           {tr("Strategy Builder", "전략 빌더")}

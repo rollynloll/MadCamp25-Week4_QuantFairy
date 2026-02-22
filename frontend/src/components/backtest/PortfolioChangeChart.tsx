@@ -59,7 +59,7 @@ export default function PortfolioChangeChart({
       .filter((item) => item.value > 0)
       .sort((a, b) => b.value - a.value);
     return (
-      <div className="bg-[#1f2937] border border-gray-700 rounded px-3 py-2 text-xs text-gray-100">
+      <div className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs text-gray-100">
         <div className="text-gray-400 mb-1">{label}</div>
         <div className="max-h-40 overflow-y-auto space-y-0.5">
           {items.map((item) => (
@@ -71,7 +71,7 @@ export default function PortfolioChangeChart({
   };
 
   return (
-    <div className="bg-[#0d1117] border border-gray-800 rounded-lg p-6">
+    <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
       <h2 className="text-lg font-semibold mb-6">{tr("Portfolio Holdings (All)", "포트폴리오 보유 내역 (전체)")}</h2>
       <ResponsiveContainer width="100%" height={200}>
         <BarChart data={data}>

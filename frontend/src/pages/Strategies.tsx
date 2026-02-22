@@ -283,7 +283,7 @@ export default function Strategies() {
           </p>
         </div>
         <div className="flex gap-5">
-          <div className="flex items-center rounded-full border border-gray-800 bg-[#0d1117] p-1 text-xs">
+          <div className="flex items-center rounded-full border border-gray-800 bg-gray-900 p-1 text-xs">
             <button
               className={`px-3 py-1 rounded-full transition-colors ${
                 scope === "public"
@@ -319,7 +319,7 @@ export default function Strategies() {
       ) : scope === "private" && myError ? (
         <div className="text-sm text-red-400">{myError}</div>
       ) : scope === "private" && myFromPublic.length === 0 && myCustom.length === 0 ? (
-        <div className="rounded-lg border border-gray-800 bg-[#0d1117] p-6 text-sm text-gray-400">
+        <div className="rounded-lg border border-gray-800 bg-gray-900 p-6 text-sm text-gray-400">
           {tr("No private strategies found.", "내 전략이 없습니다.")}
         </div>
       ) : (
