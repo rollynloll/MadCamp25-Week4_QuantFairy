@@ -1,22 +1,62 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { CheckCircle2, Loader2, AlertCircle, HelpCircle } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { buildApiUrl } from "@/api/base";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 
 type ConnectionStatus = "not_connected" | "connecting" | "connected" | "failed";
 
 export function OnboardingConnect() {
   const navigate = useNavigate();
   const { t } = useLanguage();
+  const [searchParams] = useSearchParams();
   const [status, setStatus] = useState<ConnectionStatus>("not_connected");
+  const [errorDetail, setErrorDetail] = useState("");
+  const ALPACA_SIGNUP_URL = "https://app.alpaca.markets/signup";
 
-  const handleConnect = () => {
-    setStatus("connecting");
-
-    // Simulate connection process
-    setTimeout(() => {
+  useEffect(() => {
+    const statusParam = searchParams.get("status");
+    if (statusParam === "connected") {
       setStatus("connected");
-    }, 2000);
+      setErrorDetail("");
+    } else if (statusParam === "failed") {
+      setStatus("failed");
+      setErrorDetail(t("onboarding.connect.error.oauthFailed"));
+    }
+  }, [searchParams, t]);
+
+  const handleConnect = async () => {
+    setStatus("connecting");
+    setErrorDetail("");
+    try {
+      const supabase = getSupabaseClient();
+      const sessionResult = await supabase.auth.getSession();
+      let userId = sessionResult.data.session?.user?.id;
+      if (!userId) {
+        const refreshResult = await supabase.auth.refreshSession();
+        userId = refreshResult.data.session?.user?.id || userId;
+      }
+      if (!userId) {
+        const { data } = await supabase.auth.getUser();
+        userId = data.user?.id || userId;
+      }
+      if (!userId) {
+        setStatus("failed");
+        setErrorDetail(t("onboarding.connect.error.loginRequired"));
+        return;
+      }
+      const returnTo = `${window.location.origin}/onboarding/connect`;
+      const url = buildApiUrl("/brokers/alpaca/oauth/start", {
+        user_id: userId,
+        environment: "paper",
+        return_to: returnTo,
+      });
+      window.location.href = url;
+    } catch {
+      setStatus("failed");
+      setErrorDetail(t("onboarding.connect.error.oauthFailed"));
+    }
   };
 
   const handleContinue = () => {
@@ -43,9 +83,7 @@ export function OnboardingConnect() {
               <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-sm text-emerald-400">
                 ✓
               </div>
-              <span className="text-sm text-gray-500">
-                {t("onboarding.step.welcome")}
-              </span>
+              <span className="text-sm text-gray-500">Welcome</span>
             </div>
             <div className="w-12 h-px bg-gray-800"></div>
             <div className="flex items-center gap-2">
@@ -53,7 +91,7 @@ export function OnboardingConnect() {
                 2
               </div>
               <span className="text-sm text-emerald-400 font-medium">
-                {t("onboarding.step.connect")}
+                Connect
               </span>
             </div>
             <div className="w-12 h-px bg-gray-800"></div>
@@ -61,9 +99,7 @@ export function OnboardingConnect() {
               <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center text-sm text-gray-500">
                 3
               </div>
-              <span className="text-sm text-gray-500">
-                {t("onboarding.step.setup")}
-              </span>
+              <span className="text-sm text-gray-500">Setup</span>
             </div>
           </div>
 
@@ -135,7 +171,7 @@ export function OnboardingConnect() {
                       {t("onboarding.connect.status.failedTitle")}
                     </p>
                     <p className="text-sm text-gray-500">
-                      {t("onboarding.connect.status.failedDesc")}
+                      {errorDetail || t("onboarding.connect.status.failedDesc")}
                     </p>
                   </>
                 )}
@@ -163,7 +199,7 @@ export function OnboardingConnect() {
             {/* Secondary Link */}
             <div className="text-center mb-6">
               <a
-                href="https://alpaca.markets"
+                href={ALPACA_SIGNUP_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm text-emerald-400 hover:text-emerald-300 transition-colors"

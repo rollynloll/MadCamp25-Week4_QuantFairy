@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 
 export function Login() {
   const navigate = useNavigate();
@@ -10,19 +11,70 @@ export function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const minPasswordLength = 6;
+  const invalidPasswordCharsMessage = t("auth.error.invalidPasswordChars");
+  const sanitizePasswordInput = (value: string) =>
+    value.replace(/[^\x21-\x7E]/g, "");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const resolveAuthError = (message: string) => {
+    const normalized = message.toLowerCase();
+    if (normalized.includes("invalid login credentials")) {
+      return t("auth.error.invalidCredentials");
+    }
+    if (normalized.includes("email not confirmed")) {
+      return t("auth.error.emailNotConfirmed");
+    }
+    return message;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
-    // Mock validation
     if (!email || !password) {
       setError(t("login.error.missing"));
       return;
     }
 
-    // Mock successful login - navigate to home
-    navigate("/");
+    if (!/^[\x21-\x7E]+$/.test(password)) {
+      setError(t("auth.error.invalidPasswordChars"));
+      return;
+    }
+
+    const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+    if (!emailValid) {
+      setError(t("auth.error.invalidEmail"));
+      return;
+    }
+
+    if (password.length < minPasswordLength) {
+      setError(t("auth.error.passwordTooShort"));
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const supabase = getSupabaseClient();
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (authError) {
+        setError(resolveAuthError(authError.message));
+        return;
+      }
+      navigate("/");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
+      setError(
+        message.includes("Missing Supabase env vars")
+          ? t("auth.error.config")
+          : t("auth.error.generic")
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -59,6 +111,7 @@ export function Login() {
                 id="email"
                 type="email"
                 value={email}
+                disabled={isSubmitting}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder={t("form.emailPlaceholder")}
                 className="w-full bg-[#0a0d14] border border-gray-800 rounded-xl px-6 py-4 text-base focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all"
@@ -78,7 +131,19 @@ export function Login() {
                   id="password"
                   type={showPassword ? "text" : "password"}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={isSubmitting}
+                  onChange={(e) => {
+                    const rawValue = e.target.value;
+                    const sanitized = sanitizePasswordInput(rawValue);
+                    if (rawValue !== sanitized) {
+                      if (error !== invalidPasswordCharsMessage) {
+                        setError(invalidPasswordCharsMessage);
+                      }
+                    } else if (error === invalidPasswordCharsMessage) {
+                      setError("");
+                    }
+                    setPassword(sanitized);
+                  }}
                   placeholder="••••••••"
                   className="w-full bg-[#0a0d14] border border-gray-800 rounded-xl px-6 py-4 pr-12 text-base focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all"
                 />
@@ -106,7 +171,12 @@ export function Login() {
             {/* Submit Button */}
             <button
               type="submit"
-              className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-medium py-4 rounded-xl transition-all shadow-lg shadow-emerald-500/20 text-base"
+              disabled={isSubmitting}
+              className={`w-full font-medium py-4 rounded-xl transition-all shadow-lg shadow-emerald-500/20 text-base ${
+                isSubmitting
+                  ? "bg-gray-800 text-gray-500 cursor-not-allowed"
+                  : "bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white"
+              }`}
             >
               {t("login.button")}
             </button>

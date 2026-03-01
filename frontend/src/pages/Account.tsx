@@ -10,6 +10,7 @@ import {
   Bell,
 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 
 export function Account() {
   const navigate = useNavigate();
@@ -23,8 +24,13 @@ export function Account() {
     systemAlerts: false,
   });
 
-  const handleLogout = () => {
-    navigate("/login");
+  const handleLogout = async () => {
+    try {
+      const supabase = getSupabaseClient();
+      await supabase.auth.signOut();
+    } finally {
+      navigate("/login");
+    }
   };
 
   const handleModeChange = (mode: "paper" | "live") => {

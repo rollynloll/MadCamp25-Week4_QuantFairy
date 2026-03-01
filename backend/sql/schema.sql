@@ -117,6 +117,23 @@ create table if not exists user_accounts (
 
 create index if not exists idx_user_accounts_user_env on user_accounts(user_id, environment);
 
+-- Broker OAuth tokens
+create table if not exists broker_tokens (
+  user_id uuid not null references app_users(id) on delete cascade,
+  broker text not null default 'alpaca',
+  environment text not null default 'paper',
+  access_token text not null,
+  refresh_token text,
+  token_type text,
+  scope text,
+  expires_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, broker, environment)
+);
+
+create index if not exists idx_broker_tokens_user_env on broker_tokens(user_id, environment);
+
 -- Portfolio snapshots
 create table if not exists portfolio_snapshots (
   snapshot_id bigserial primary key,

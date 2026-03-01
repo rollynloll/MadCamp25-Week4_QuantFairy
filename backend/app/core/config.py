@@ -18,8 +18,14 @@ class Settings:
     alpaca_base_url: str
     alpaca_data_stream_url: str | None
     alpaca_data_feed: str
+    alpaca_oauth_client_id: str | None
+    alpaca_oauth_client_secret: str | None
+    alpaca_oauth_redirect_url: str | None
+    alpaca_oauth_scope: str | None
     supabase_url: str | None
     supabase_service_role_key: str | None
+    oauth_state_secret: str | None
+    frontend_base_url: str | None
     default_user_id: str | None
     api_token: str | None
     allow_live_trading: bool
@@ -56,8 +62,14 @@ def get_settings() -> Settings:
         alpaca_base_url=os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets"),
         alpaca_data_stream_url=os.getenv("ALPACA_DATA_STREAM_URL"),
         alpaca_data_feed=os.getenv("ALPACA_DATA_FEED", "iex"),
+        alpaca_oauth_client_id=os.getenv("ALPACA_OAUTH_CLIENT_ID"),
+        alpaca_oauth_client_secret=os.getenv("ALPACA_OAUTH_CLIENT_SECRET"),
+        alpaca_oauth_redirect_url=os.getenv("ALPACA_OAUTH_REDIRECT_URL"),
+        alpaca_oauth_scope=os.getenv("ALPACA_OAUTH_SCOPE"),
         supabase_url=os.getenv("SUPABASE_URL"),
         supabase_service_role_key=os.getenv("SUPABASE_SERVICE_ROLE_KEY"),
+        oauth_state_secret=os.getenv("OAUTH_STATE_SECRET"),
+        frontend_base_url=os.getenv("FRONTEND_BASE_URL"),
         default_user_id=os.getenv("DEFAULT_USER_ID"),
         api_token=os.getenv("API_TOKEN"),
         allow_live_trading=_get_bool("ALLOW_LIVE_TRADING", False),

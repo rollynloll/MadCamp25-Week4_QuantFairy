@@ -25,7 +25,7 @@ export function OnboardingWelcome() {
                 1
               </div>
               <span className="text-sm text-emerald-400 font-medium">
-                {t("onboarding.step.welcome")}
+                Welcome
               </span>
             </div>
             <div className="w-12 h-px bg-gray-800"></div>
@@ -33,18 +33,14 @@ export function OnboardingWelcome() {
               <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center text-sm text-gray-500">
                 2
               </div>
-              <span className="text-sm text-gray-500">
-                {t("onboarding.step.connect")}
-              </span>
+              <span className="text-sm text-gray-500">Connect</span>
             </div>
             <div className="w-12 h-px bg-gray-800"></div>
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center text-sm text-gray-500">
                 3
               </div>
-              <span className="text-sm text-gray-500">
-                {t("onboarding.step.setup")}
-              </span>
+              <span className="text-sm text-gray-500">Setup</span>
             </div>
           </div>
 

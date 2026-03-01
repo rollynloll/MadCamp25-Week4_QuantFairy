@@ -100,6 +100,7 @@ async def main() -> None:
                 "positions",
                 "portfolio_snapshots",
                 "user_accounts",
+                "broker_tokens",
                 "user_settings",
                 "user_strategies",
             ):
