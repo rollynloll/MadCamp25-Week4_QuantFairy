@@ -60,6 +60,28 @@ const translations: Record<Language, Record<string, string>> = {
     "signup.termsConnector": "&",
     "signup.termsLabel": "Terms",
     "signup.privacyLabel": "Privacy Policy",
+    "signup.notice.checkEmail":
+      "Check your email to confirm your account before continuing.",
+    "verify.title": "Check your email",
+    "verify.subtitle": "We sent a confirmation link to {email}.",
+    "verify.subtitleNoEmail": "We sent a confirmation link to your email.",
+    "verify.tip": "If you don't see it, check your spam folder.",
+    "verify.resend": "Resend email",
+    "verify.resendSuccess": "Verification email sent.",
+    "verify.resendFail": "Failed to resend. Please try again.",
+    "verify.backToLogin": "Back to login",
+    "auth.error.config":
+      "Supabase is not configured. Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.",
+    "auth.error.invalidCredentials": "Invalid email or password.",
+    "auth.error.invalidEmail": "Please enter a valid email address.",
+    "auth.error.passwordTooShort": "Password must be at least 6 characters.",
+    "auth.error.invalidPasswordChars":
+      "Use only English letters, numbers, and special characters.",
+    "auth.error.invalidNicknameChars":
+      "Nickname can include Korean, English letters, numbers, and special characters.",
+    "auth.error.emailNotConfirmed": "Please confirm your email to sign in.",
+    "auth.error.userExists": "This email is already registered.",
+    "auth.error.generic": "Authentication failed. Please try again.",
     "onboarding.step.welcome": "Welcome",
     "onboarding.step.connect": "Connect",
     "onboarding.step.setup": "Setup",
@@ -87,6 +109,9 @@ const translations: Record<Language, Record<string, string>> = {
     "onboarding.connect.status.failedTitle": "Connection Failed",
     "onboarding.connect.status.failedDesc":
       "Please try again or check your credentials",
+    "onboarding.connect.error.loginRequired": "Please log in first.",
+    "onboarding.connect.error.oauthFailed":
+      "Failed to connect Alpaca. Please try again.",
     "onboarding.connect.button.connect": "Connect Paper Account",
     "onboarding.connect.button.retry": "Retry Connection",
     "onboarding.connect.link.create": "Create an Alpaca Paper Account →",
@@ -201,6 +226,29 @@ const translations: Record<Language, Record<string, string>> = {
     "signup.termsConnector": "및",
     "signup.termsLabel": "이용약관",
     "signup.privacyLabel": "개인정보 처리방침",
+    "signup.notice.checkEmail":
+      "계정을 확인하려면 이메일을 확인해주세요.",
+    "verify.title": "이메일을 확인해주세요",
+    "verify.subtitle": "{email}로 인증 링크를 보냈습니다.",
+    "verify.subtitleNoEmail": "이메일로 인증 링크를 보냈습니다.",
+    "verify.tip": "메일이 보이지 않으면 스팸함을 확인하세요.",
+    "verify.resend": "인증 메일 재전송",
+    "verify.resendSuccess": "인증 메일을 다시 보냈습니다.",
+    "verify.resendFail": "재전송에 실패했습니다. 다시 시도해주세요.",
+    "verify.backToLogin": "로그인으로 돌아가기",
+    "auth.error.config":
+      "Supabase 설정이 없습니다. VITE_SUPABASE_URL과 VITE_SUPABASE_ANON_KEY를 확인하세요.",
+    "auth.error.invalidCredentials": "이메일 또는 비밀번호가 올바르지 않습니다.",
+    "auth.error.invalidEmail": "올바른 이메일 형식을 입력하세요.",
+    "auth.error.passwordTooShort": "비밀번호는 6자 이상이어야 합니다.",
+    "auth.error.invalidPasswordChars":
+      "영문, 숫자, 특수문자만 사용할 수 있습니다.",
+    "auth.error.invalidNicknameChars":
+      "닉네임은 한글, 영문, 숫자, 특수문자만 사용할 수 있습니다.",
+    "auth.error.emailNotConfirmed":
+      "이메일 인증 후 로그인할 수 있습니다.",
+    "auth.error.userExists": "이미 등록된 이메일입니다.",
+    "auth.error.generic": "인증에 실패했습니다. 다시 시도해주세요.",
     "onboarding.step.welcome": "환영",
     "onboarding.step.connect": "연결",
     "onboarding.step.setup": "설정",
@@ -225,6 +273,9 @@ const translations: Record<Language, Record<string, string>> = {
     "onboarding.connect.status.failedTitle": "연결 실패",
     "onboarding.connect.status.failedDesc":
       "다시 시도하거나 자격 증명을 확인하세요",
+    "onboarding.connect.error.loginRequired": "먼저 로그인해주세요.",
+    "onboarding.connect.error.oauthFailed":
+      "Alpaca 연결에 실패했습니다. 다시 시도해주세요.",
     "onboarding.connect.button.connect": "모의 계정 연결",
     "onboarding.connect.button.retry": "재연결",
     "onboarding.connect.link.create": "Alpaca 모의 계정 만들기 →",

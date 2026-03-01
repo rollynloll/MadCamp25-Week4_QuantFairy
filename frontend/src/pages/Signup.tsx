@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 
 export function Signup() {
   const navigate = useNavigate();
@@ -16,14 +17,59 @@ export function Signup() {
     agreeToTerms: false,
   });
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const minPasswordLength = 6;
+  const invalidPasswordCharsMessage = t("auth.error.invalidPasswordChars");
+  const invalidNicknameCharsMessage = t("auth.error.invalidNicknameChars");
+  const sanitizePasswordInput = (value: string) =>
+    value.replace(/[^\x21-\x7E]/g, "");
+  const sanitizeNicknameInput = (value: string) =>
+    value.replace(/[^\x20-\x7E\u1100-\u11FF\u3130-\u318F\uAC00-\uD7A3]/g, "");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const resolveAuthError = (message: string) => {
+    const normalized = message.toLowerCase();
+    if (normalized.includes("user already registered")) {
+      return t("auth.error.userExists");
+    }
+    if (normalized.includes("password should be at least")) {
+      return t("auth.error.passwordTooShort");
+    }
+    return message;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-
-    // Validation
     if (!formData.email || !formData.password || !formData.confirmPassword) {
       setError(t("signup.error.required"));
+      return;
+    }
+
+    if (
+      formData.nickname &&
+      /[^\x20-\x7E\u1100-\u11FF\u3130-\u318F\uAC00-\uD7A3]/.test(
+        formData.nickname
+      )
+    ) {
+      setError(t("auth.error.invalidNicknameChars"));
+      return;
+    }
+
+    if (!/^[\x21-\x7E]+$/.test(formData.password)) {
+      setError(t("auth.error.invalidPasswordChars"));
+      return;
+    }
+
+    const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+      formData.email.trim()
+    );
+    if (!emailValid) {
+      setError(t("auth.error.invalidEmail"));
+      return;
+    }
+
+    if (formData.password.length < minPasswordLength) {
+      setError(t("auth.error.passwordTooShort"));
       return;
     }
 
@@ -37,8 +83,42 @@ export function Signup() {
       return;
     }
 
-    // Mock successful signup - navigate to onboarding
-    navigate("/onboarding/welcome");
+    setIsSubmitting(true);
+    try {
+      const supabase = getSupabaseClient();
+      const metadata = formData.nickname
+        ? { nickname: formData.nickname, display_name: formData.nickname }
+        : undefined;
+      const { data, error: authError } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: {
+          data: metadata,
+          emailRedirectTo: `${window.location.origin}/onboarding/welcome`,
+        },
+      });
+
+      if (authError) {
+        setError(resolveAuthError(authError.message));
+        return;
+      }
+
+      if (data.session) {
+        navigate("/onboarding/welcome");
+        return;
+      }
+
+      navigate(`/auth/verify?email=${encodeURIComponent(formData.email)}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
+      setError(
+        message.includes("Missing Supabase env vars")
+          ? t("auth.error.config")
+          : t("auth.error.generic")
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -75,6 +155,7 @@ export function Signup() {
                 id="email"
                 type="email"
                 value={formData.email}
+                disabled={isSubmitting}
                 onChange={(e) =>
                   setFormData({ ...formData, email: e.target.value })
                 }
@@ -96,9 +177,19 @@ export function Signup() {
                   id="password"
                   type={showPassword ? "text" : "password"}
                   value={formData.password}
-                  onChange={(e) =>
-                    setFormData({ ...formData, password: e.target.value })
-                  }
+                  disabled={isSubmitting}
+                  onChange={(e) => {
+                    const rawValue = e.target.value;
+                    const sanitized = sanitizePasswordInput(rawValue);
+                    if (rawValue !== sanitized) {
+                      if (error !== invalidPasswordCharsMessage) {
+                        setError(invalidPasswordCharsMessage);
+                      }
+                    } else if (error === invalidPasswordCharsMessage) {
+                      setError("");
+                    }
+                    setFormData({ ...formData, password: sanitized });
+                  }}
                   placeholder="••••••••"
                   className="w-full bg-[#0a0d14] border border-gray-800 rounded-xl px-6 py-4 pr-12 text-base focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all"
                 />
@@ -129,12 +220,22 @@ export function Signup() {
                   id="confirmPassword"
                   type={showConfirmPassword ? "text" : "password"}
                   value={formData.confirmPassword}
-                  onChange={(e) =>
+                  disabled={isSubmitting}
+                  onChange={(e) => {
+                    const rawValue = e.target.value;
+                    const sanitized = sanitizePasswordInput(rawValue);
+                    if (rawValue !== sanitized) {
+                      if (error !== invalidPasswordCharsMessage) {
+                        setError(invalidPasswordCharsMessage);
+                      }
+                    } else if (error === invalidPasswordCharsMessage) {
+                      setError("");
+                    }
                     setFormData({
                       ...formData,
-                      confirmPassword: e.target.value,
-                    })
-                  }
+                      confirmPassword: sanitized,
+                    });
+                  }}
                   placeholder="••••••••"
                   className="w-full bg-[#0a0d14] border border-gray-800 rounded-xl px-6 py-4 pr-12 text-base focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all"
                 />
@@ -165,9 +266,19 @@ export function Signup() {
                 id="nickname"
                 type="text"
                 value={formData.nickname}
-                onChange={(e) =>
-                  setFormData({ ...formData, nickname: e.target.value })
-                }
+                disabled={isSubmitting}
+                onChange={(e) => {
+                  const rawValue = e.target.value;
+                  const sanitized = sanitizeNicknameInput(rawValue);
+                  if (rawValue !== sanitized) {
+                    if (error !== invalidNicknameCharsMessage) {
+                      setError(invalidNicknameCharsMessage);
+                    }
+                  } else if (error === invalidNicknameCharsMessage) {
+                    setError("");
+                  }
+                  setFormData({ ...formData, nickname: sanitized });
+                }}
                 placeholder={t("form.displayNamePlaceholder")}
                 className="w-full bg-[#0a0d14] border border-gray-800 rounded-xl px-6 py-4 text-base focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all"
               />
@@ -179,6 +290,7 @@ export function Signup() {
                 id="terms"
                 type="checkbox"
                 checked={formData.agreeToTerms}
+                disabled={isSubmitting}
                 onChange={(e) =>
                   setFormData({
                     ...formData,
@@ -209,7 +321,12 @@ export function Signup() {
             {/* Submit Button */}
             <button
               type="submit"
-              className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-medium py-4 rounded-xl transition-all shadow-lg shadow-emerald-500/20 text-base"
+              disabled={isSubmitting}
+              className={`w-full font-medium py-4 rounded-xl transition-all shadow-lg shadow-emerald-500/20 text-base ${
+                isSubmitting
+                  ? "bg-gray-800 text-gray-500 cursor-not-allowed"
+                  : "bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white"
+              }`}
             >
               {t("signup.button")}
             </button>

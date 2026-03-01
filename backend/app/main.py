@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from app.backtests.routes import router as backtests_router
 from app.benchmarks.routes import router as benchmarks_router
 from app.bot.routes import router as bot_router
+from app.brokers.routes import router as brokers_router
 from app.core.config import get_settings
 from app.core.cors import configure_cors
 from app.core.errors import add_exception_handlers
@@ -27,6 +28,7 @@ def create_app() -> FastAPI:
     app.include_router(backtests_router, prefix="/api/v1")
     app.include_router(universes_router, prefix="/api/v1")
     app.include_router(benchmarks_router, prefix="/api/v1")
+    app.include_router(brokers_router, prefix="/api/v1")
     app.include_router(trading_router, prefix="/api/v1")
     app.include_router(trading_monitor_router, prefix="/api/v1")
     app.include_router(bot_router, prefix="/api/v1")

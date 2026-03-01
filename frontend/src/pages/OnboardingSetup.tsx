@@ -41,18 +41,14 @@ export function OnboardingSetup() {
               <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-sm text-emerald-400">
                 ✓
               </div>
-              <span className="text-sm text-gray-500">
-                {t("onboarding.step.welcome")}
-              </span>
+              <span className="text-sm text-gray-500">Welcome</span>
             </div>
             <div className="w-12 h-px bg-gray-800"></div>
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-sm text-emerald-400">
                 ✓
               </div>
-              <span className="text-sm text-gray-500">
-                {t("onboarding.step.connect")}
-              </span>
+              <span className="text-sm text-gray-500">Connect</span>
             </div>
             <div className="w-12 h-px bg-gray-800"></div>
             <div className="flex items-center gap-2">
@@ -60,7 +56,7 @@ export function OnboardingSetup() {
                 3
               </div>
               <span className="text-sm text-emerald-400 font-medium">
-                {t("onboarding.step.setup")}
+                Setup
               </span>
             </div>
           </div>
