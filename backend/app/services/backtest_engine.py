@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Tuple
 
 from app.services.data_provider import load_price_series, parse_date, trading_days
-from app.services.metrics import compute_drawdown, compute_metrics, compute_returns
+from engine.backtest.metrics import compute_drawdown, compute_metrics, compute_returns
 
 
 @dataclass

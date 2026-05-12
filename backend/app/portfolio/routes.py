@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Literal, Optional
@@ -11,6 +10,7 @@ from fastapi import APIRouter, Query
 from app.alpaca.client import AlpacaAccount, AlpacaClient
 from app.core.config import get_settings
 from app.core.errors import APIError
+from app.core.user import resolve_user_id as _resolve_user_id_from_db
 from app.core.alpaca_cache import (
     ALPACA_CACHE,
     _cache_key,
@@ -20,6 +20,7 @@ from app.core.alpaca_cache import (
 )
 from app.core.time import now_kst
 from app.services.backtest_runner import build_price_frame, resolve_universe
+from engine.backtest.metrics import compute_drawdown, compute_metrics, compute_returns
 from app.services.data_provider import load_price_series
 from app.strategies.base import StrategyContext
 from app.strategies.registry import get_strategy
@@ -77,7 +78,7 @@ ORDERS_SYNC_CACHE_TTL = 5.0
 
 def _resolve_user_id() -> str:
     settings = get_settings()
-    return settings.default_user_id or "demo_user"
+    return _resolve_user_id_from_db(settings, None)
 
 
 def _range_days(range_value: RangeLiteral) -> int:
@@ -385,18 +386,13 @@ def _history_to_equity_points(history: Any) -> List[Dict[str, Any]]:
     return points
 
 
+def _to_engine_curve(equity_curve: List[Dict[str, Any]]) -> List[Dict[str, float]]:
+    """portfolio 형식 {"t": ..., "equity": ...} → engine 형식 {"date": ..., "equity": ...}"""
+    return [{"date": str(p.get("t", "")), "equity": _to_float(p.get("equity", 0.0))} for p in equity_curve]
+
+
 def _compute_returns(equity_curve: List[Dict[str, Any]]) -> List[float]:
-    returns: List[float] = []
-    prev = None
-    for point in equity_curve:
-        equity = _to_float(point.get("equity", 0.0))
-        if prev is None:
-            prev = equity
-            continue
-        ret = (equity / prev - 1.0) if prev else 0.0
-        returns.append(ret)
-        prev = equity
-    return returns
+    return [item["ret"] for item in compute_returns(_to_engine_curve(equity_curve))]
 
 
 def _aggregate_position_values(
@@ -577,56 +573,24 @@ def _build_flatten_to_cash_orders(
 
 
 def _drawdown_curve(equity_curve: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    drawdown: List[Dict[str, Any]] = []
-    peak = None
-    for point in equity_curve:
-        equity = _to_float(point.get("equity", 0.0))
-        if peak is None or equity > peak:
-            peak = equity
-        dd = (equity - peak) / peak * 100 if peak else 0.0
-        drawdown.append({"t": point.get("t"), "drawdown_pct": round(dd, 2)})
-    return drawdown
+    engine_dd = compute_drawdown(_to_engine_curve(equity_curve))
+    return [{"t": ec.get("t"), "drawdown_pct": round(dd["dd_pct"], 2)}
+            for ec, dd in zip(equity_curve, engine_dd)]
 
 
 def _kpi_from_equity(equity_curve: List[Dict[str, Any]]) -> Dict[str, float]:
     if len(equity_curve) < 2:
-        return {
-            "period_return_pct": 0.0,
-            "cagr_pct": 0.0,
-            "volatility_pct": 0.0,
-            "sharpe": 0.0,
-            "max_drawdown_pct": 0.0,
-            "win_rate_pct": 0.0,
-        }
-
-    first = _to_float(equity_curve[0].get("equity", 0.0))
-    last = _to_float(equity_curve[-1].get("equity", 0.0))
-    period_return_pct = ((last / first - 1.0) * 100) if first else 0.0
-
+        return {"period_return_pct": 0.0, "cagr_pct": 0.0, "volatility_pct": 0.0,
+                "sharpe": 0.0, "max_drawdown_pct": 0.0, "win_rate_pct": 0.0}
+    m = compute_metrics(_to_engine_curve(equity_curve))
     returns = _compute_returns(equity_curve)
-    mean = sum(returns) / len(returns) if returns else 0.0
-    variance = sum((r - mean) ** 2 for r in returns) / len(returns) if returns else 0.0
-    std = math.sqrt(variance) if variance else 0.0
-
-    volatility_pct = std * math.sqrt(252) * 100 if std else 0.0
-    sharpe = (mean / std * math.sqrt(252)) if std else 0.0
-
-    periods = max(len(returns), 1)
-    cagr_pct = ((last / first) ** (252 / periods) - 1) * 100 if first else 0.0
-
-    drawdown = _drawdown_curve(equity_curve)
-    max_drawdown_pct = min((d["drawdown_pct"] for d in drawdown), default=0.0)
-
-    win_rate_pct = (
-        sum(1 for r in returns if r > 0) / len(returns) * 100 if returns else 0.0
-    )
-
+    win_rate_pct = sum(1 for r in returns if r > 0) / len(returns) * 100 if returns else 0.0
     return {
-        "period_return_pct": round(period_return_pct, 2),
-        "cagr_pct": round(cagr_pct, 2),
-        "volatility_pct": round(volatility_pct, 2),
-        "sharpe": round(sharpe, 2),
-        "max_drawdown_pct": round(max_drawdown_pct, 2),
+        "period_return_pct": round(m["total_return_pct"], 2),
+        "cagr_pct": round(m["cagr_pct"], 2),
+        "volatility_pct": round(m["volatility_pct"], 2),
+        "sharpe": round(m["sharpe"], 2),
+        "max_drawdown_pct": round(m["max_drawdown_pct"], 2),
         "win_rate_pct": round(win_rate_pct, 2),
     }
 

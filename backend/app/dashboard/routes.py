@@ -68,17 +68,10 @@ def _equity_curve_fallback(equity_value: float) -> List[dict]:
 def _max_drawdown_pct(equity_curve: List[dict]) -> float:
     if not equity_curve:
         return 0.0
-    peak = equity_curve[0]["equity"]
-    max_drawdown = 0.0
-    for point in equity_curve:
-        equity = point["equity"]
-        if equity > peak:
-            peak = equity
-        if peak:
-            drawdown = (equity - peak) / peak * 100
-            if drawdown < max_drawdown:
-                max_drawdown = drawdown
-    return max_drawdown
+    from engine.backtest.metrics import compute_drawdown
+    engine_curve = [{"date": str(p.get("t", "")), "equity": float(p.get("equity", 0))} for p in equity_curve]
+    dd = compute_drawdown(engine_curve)
+    return min((d["dd_pct"] for d in dd), default=0.0)
 
 
 def _get_field(obj: Any, name: str, default: Any = None) -> Any:

@@ -43,7 +43,11 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     async def _startup() -> None:
         bootstrap_storage()
-        await init_db()
+        try:
+            await init_db()
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning("DB init failed (DB-dependent endpoints will error): %s", exc)
 
     @app.on_event("shutdown")
     async def _shutdown() -> None:
