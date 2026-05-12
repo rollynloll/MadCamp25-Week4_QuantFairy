@@ -2,85 +2,110 @@
 
 ---
 
-## 2026-05-12
+## v1.0.0 — 2026-05-12
 
-### 버그 수정
+### 웹 레이어 정리 (P3)
 
-- **백테스트 NaN 전파 버그 수정** (`engine/backtest/runner.py`)
-  - Python에서 `bool(float('nan')) == True` 이므로 `if prev_p and curr_p:` 조건이 NaN을 걸러내지 못함
-  - `pd.notna()` 체크 추가 → 2014년 이전 장기 백테스트 정상 작동
+- **백엔드 라우터 슬림화** (`backend/app/backtests/routes.py` 1101줄 → 57줄, `strategies/routes.py` 597줄 → 67줄)
+  - 비즈니스 로직 전체를 서비스 레이어로 분리
+  - `BacktestService`, `StrategyService` 신규 생성 (`backend/app/services/`)
+  - `TradingService` 에 `set_mode()` / `set_kill_switch()` 추가
+  - 라우터는 서비스 위임만 담당 (30줄 이하)
 
----
+- **에러 클래스 추가** (`engine/errors.py`)
+  - `OrderRejectedError`, `InsufficientFundsError`, `BrokerConnectionError` 신규
+  - 서비스 레이어에서 엔진 에러 → HTTP 상태코드 매핑 (`422`, `503`)
 
-### 백테스트 개선
-
-- **진행률 표시 추가** (`cli/commands/backtest.py`)
-  - 데이터 로드 → 신호 생성 → 시뮬레이션(0~100%) → 지표 계산 4단계 rich progress bar
-  - `transient=True` 로 완료 후 자동 소멸
-
-- **매매 기록 출력 추가** (`--trades`, `--top-n`)
-  - 리밸런싱 날짜별 Equity / 포지션 수 / 턴오버 / 상위 N개 종목(비중) 테이블 출력
-  - `BacktestResult.trade_log` 필드 신규 추가
-
----
-
-### 자동매매 엔진 신규 구현
-
-- **`engine/trading/` 모듈 신설**
-  - `order.py` — `Order(symbol, side, notional)` 데이터클래스
-  - `position.py` — `Position(symbol, qty, market_value, avg_entry_price, unrealized_pnl, unrealized_pnl_pct)`
-  - `account.py` — `Account(equity, cash, buying_power, portfolio_value, currency)`
-  - `broker.py` — `BrokerProvider` Protocol (브로커 교체 가능 구조)
-  - `executor.py` — `compute_orders()` 순수 함수 (인프라 의존 없음)
-  - `scheduler.py` — `should_rebalance()` + `run_live()` 한 사이클
-
-- **`infra/broker/alpaca.py` 신규 구현**
-  - `get_account()`, `get_positions()` (미실현 손익 포함), `place_orders()`, `is_market_open()`
-  - `ALPACA_API_KEY_ID` / `ALPACA_API_SECRET_KEY` 환경 변수 사용
+- **데드 코드 제거**
+  - `backend/app/strategies/descriptions.py` 삭제 (import 없음)
+  - `backend/app/schemas/backtests_run.py` 삭제 (구버전 스키마)
+  - `backend/app/schemas/strategies.py` 삭제 (구버전 스키마)
+  - `backend/app/storage/settings_repo.py` 삭제 (`user_settings_repo.py`로 대체됨)
 
 ---
 
-### CLI 신규 커맨드
+### 엔진 분리 및 CLI (P1·P2·P4)
 
-- **`sf trade run`** — 자동매매 한 사이클 실행
-  - `--dry-run` (기본) / `--execute` 로 실제 주문 제출 전환
-  - 마지막 리밸런싱 날짜 `~/.sf/state.json` 자동 로드·저장
+- **`engine/` 모듈 신설** — FastAPI·asyncpg 의존 없음
+  - `engine/backtest/runner.py` — DataProvider 주입, NaN 방어, trade_log 출력
+  - `engine/backtest/metrics.py` — CAGR, Sharpe, MDD, alpha, beta 순수 함수
+  - `engine/strategies/` — Strategy Protocol, StrategySpec, 내장 전략 6개, AST 샌드박스
+  - `engine/trading/` — Order, Position, Account 데이터클래스, BrokerProvider Protocol, executor, scheduler
+  - `engine/errors.py` — DataNotFoundError, DataSourceError, StrategyError
 
-- **`sf trade schedule`** — APScheduler 장기 실행 (서버 배포용)
-  - `monthly` / `weekly` / `daily` 주기에 맞춰 NYSE 개장 5분 후 자동 실행
+- **`infra/` 모듈 신설**
+  - `infra/broker/alpaca.py` — AlpacaBroker (paper / live), `get_account()`, `get_positions()`, `place_orders()`, `is_market_open()`
+  - `infra/data/yfinance.py` — YFinanceProvider
+  - `infra/data/db.py` — DBProvider (market_prices 테이블)
 
-- **`sf account show`** — 계좌 요약 (총 자산 / 현금 / 매수 가능 금액 / 시장 상태)
+- **CLI `sf` 커맨드** (`cli/`)
+  - `sf backtest run` — 백테스트 실행 + rich progress bar + `--trades` / `--top-n` 매매 기록 출력
+  - `sf trade run` — 자동매매 한 사이클 (`--dry-run` / `--execute`)
+  - `sf trade schedule` — APScheduler 장기 실행 (monthly / weekly / daily)
+  - `sf account show` — 계좌 요약
+  - `sf account positions` — 보유 포지션 (미실현 손익 컬러)
+  - `cli/state.py` — 리밸런싱 상태 영속화 (`~/.sf/state.json`)
 
-- **`sf account positions`** — 보유 포지션 상세 (평균 단가 / 미실현 손익 / 손익률 컬러)
+- **내장 전략 6개** (`engine/strategies/catalog/`)
+  - Momentum Top-N, TrendSMA200, RSI Mean Reversion, Low Volatility, Vol-Adj Momentum, Risk-On/Off
 
 ---
 
-### 환경 변수 분리
+### 온보딩 UI
 
-- `backend/.env` 에서 Alpaca / DEFAULT_USER_ID 항목을 프로젝트 루트 `madcamp-week4/.env` 로 이동
-- `backend/.env` 에는 Supabase / DB 연결 정보만 유지
-- `infra/broker/alpaca.py` 환경 변수명 수정: `ALPACA_API_KEY` → `ALPACA_API_KEY_ID`, `ALPACA_SECRET_KEY` → `ALPACA_API_SECRET_KEY`
-- `cli/main.py` 에 `load_dotenv(루트/.env)` 자동 로드 추가
-- `.env.example` 신규 생성 (협업용 템플릿)
+- **신규 페이지** (`frontend/src/pages/`)
+  - `Login.tsx`, `Signup.tsx`, `VerifyEmail.tsx` — Supabase Auth 연동
+  - `OnboardingWelcome.tsx`, `OnboardingSetup.tsx`, `OnboardingConnect.tsx` — 3단계 온보딩 플로우
+  - `Account.tsx` — 계정 설정 페이지
+
+- **한/영 전환** (`LanguageContext.tsx`)
+  - 전체 앱 한국어 / 영어 실시간 전환
+  - 온보딩·로그인·포트폴리오·백테스트 등 전 페이지 적용
+
+- **다크/라이트 테마** (`ThemeContext.tsx`)
+
+---
+
+### Alpaca OAuth API
+
+- **브로커 연결 엔드포인트** (`backend/app/brokers/routes.py`)
+  - Alpaca OAuth 인가 플로우 (`/brokers/alpaca/oauth/authorize`, `/callback`)
+  - 토큰 저장 / 조회 / 삭제 (`broker_tokens` 테이블)
+  - `backend/app/storage/broker_tokens_repo.py` 신규
+
+---
+
+### 포트폴리오 · 트레이딩 UI
+
+- **Portfolio 페이지** — Alpaca paper 계좌 연동, KPI 카드, 포지션 테이블, 전략별 수익 귀속, Activity 피드
+- **Trading 페이지** — 실시간 WebSocket 가격 차트, 주문장, 오픈 오더, 포지션 테이블
+- **Dashboard** — Active Strategies 실행 상태, 포트폴리오 요약, Recent Trades
+- **Backtest UI** — 전략·날짜·유니버스 설정, Equity Curve, Monthly Returns, Portfolio Change 차트
 
 ---
 
 ### GitHub Actions 자동매매
 
-- **`.github/workflows/trade.yml` 신규 생성**
-  - 평일 매일 14:35 UTC (NYSE 9:35 AM ET) cron 트리거
-  - Alpaca Clock API로 공휴일 자동 건너뜀 (`is_market_open` 체크)
-  - 리밸런싱 상태를 `.trade/state.json` 으로 레포에 커밋 → 캐시 만료 없이 영구 보존
+- **`.github/workflows/trade.yml`**
+  - 평일 매일 14:35 UTC (NYSE 개장 5분 후) cron 트리거
+  - Alpaca Clock API로 공휴일 자동 건너뜀
+  - 리밸런싱 상태 `.trade/state.json` 레포 커밋으로 영구 보존
   - `workflow_dispatch` 수동 실행 + `dry_run` 선택 지원
-  - `permissions: contents: write` + `[skip ci]` 커밋으로 재트리거 방지
 
 ---
 
-### 기타
+### 백테스트 버그 수정
 
-- `.gitignore` 에 `*.egg-info/` 추가
-- `pyproject.toml` 에 `apscheduler>=3.10,<4` 의존성 추가
-- `cli/container.py` 에 `get_broker()` 팩토리 추가 (브로커 교체 시 이 함수만 수정)
-- `cli/state.py` 신규 생성 (`~/.sf/state.json` 읽기/쓰기)
-- `features.md` 구현 상태 업데이트 (P1·P2·P4 완료, P3 미완)
-- `engine/README.md`, `cli/README.md` 신규 내용 반영
+- **NaN 전파 버그 수정** (`engine/backtest/runner.py`)
+  - `bool(float('nan')) == True` 로 인한 NaN 필터 미작동 → `pd.notna()` 체크 추가
+  - 2014년 이전 장기 백테스트 정상 작동
+
+---
+
+### 인프라 / 설정
+
+- **배포**: 백엔드 Render (`https://madcamp25-week4-quantfairy.onrender.com`), 프론트엔드 Cloudflare Pages
+- **DB**: Supabase PostgreSQL (asyncpg 연결 풀), Supabase Auth
+- **환경 변수 분리**: Alpaca 키·DEFAULT_USER_ID → 루트 `.env`, Supabase/DB → `backend/.env`
+- `.env.example` 협업 템플릿 추가
+- `pyproject.toml` 의존성 정의 (apscheduler, yfinance 등)
