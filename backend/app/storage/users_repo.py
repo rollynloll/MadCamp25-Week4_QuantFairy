@@ -63,3 +63,27 @@ class UsersRepository:
         except Exception:
             return row
         return row
+
+    def upsert_profile(
+        self,
+        user_id: str,
+        display_name: str | None = None,
+        email: str | None = None,
+        auth_user_id: str | None = None,
+    ) -> Dict[str, Any]:
+        row: Dict[str, Any] = {
+            "id": user_id,
+            "auth_user_id": auth_user_id or user_id,
+            "updated_at": now_kst().isoformat(),
+        }
+        if display_name is not None:
+            row["display_name"] = display_name
+        if email is not None:
+            row["email"] = email
+        if self.supabase is None:
+            return row
+        try:
+            self.supabase.table("app_users").upsert(row).execute()
+        except Exception:
+            return row
+        return row

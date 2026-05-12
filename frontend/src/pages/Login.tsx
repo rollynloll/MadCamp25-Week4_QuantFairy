@@ -80,7 +80,7 @@ export function Login() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0a0d14] via-[#0d1117] to-[#0a0d14] flex items-center justify-center p-8">
       {/* Main Container */}
-      <div className="w-full max-w-[600px]">
+      <div className="w-full max-w-[520px]">
         {/* Logo and Tagline */}
         <div className="mb-16 text-center">
           <h1 className="text-5xl font-bold mb-3 bg-gradient-to-r from-emerald-400 to-teal-500 bg-clip-text text-transparent">

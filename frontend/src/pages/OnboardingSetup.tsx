@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Shield, TrendingUp, Zap } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { ensureUserProfile } from "@/api/users";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 
 type RiskLevel = "conservative" | "balanced" | "aggressive" | null;
 
@@ -9,6 +11,8 @@ export function OnboardingSetup() {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const [selectedRisk, setSelectedRisk] = useState<RiskLevel>(null);
+  const [saveError, setSaveError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   const riskLabel = selectedRisk
     ? t(`onboarding.setup.risk.${selectedRisk}`)
@@ -17,9 +21,30 @@ export function OnboardingSetup() {
     ? t("onboarding.setup.recommendedTitle").replace("{risk}", riskLabel)
     : "";
 
-  const handleComplete = () => {
-    if (selectedRisk) {
+  const handleComplete = async () => {
+    if (!selectedRisk || isSaving) return;
+    setSaveError("");
+    setIsSaving(true);
+    try {
+      const supabase = getSupabaseClient();
+      const { data } = await supabase.auth.getUser();
+      const user = data.user;
+      if (user?.id) {
+        const displayName =
+          (user.user_metadata?.display_name as string | undefined) ||
+          (user.user_metadata?.nickname as string | undefined) ||
+          undefined;
+        await ensureUserProfile({
+          userId: user.id,
+          email: user.email ?? undefined,
+          displayName,
+        });
+      }
       navigate("/");
+    } catch {
+      setSaveError(t("onboarding.setup.error.profile"));
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -223,12 +248,18 @@ export function OnboardingSetup() {
             </div>
           )}
 
+          {saveError && (
+            <div className="mb-4 rounded-xl border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+              {saveError}
+            </div>
+          )}
+
           {/* Complete Button */}
           <button
             onClick={handleComplete}
-            disabled={!selectedRisk}
+            disabled={!selectedRisk || isSaving}
             className={`w-full font-medium py-3 rounded-xl transition-all ${
-              selectedRisk
+              selectedRisk && !isSaving
                 ? "bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white shadow-lg shadow-emerald-500/20"
                 : "bg-gray-800 text-gray-500 cursor-not-allowed"
             }`}

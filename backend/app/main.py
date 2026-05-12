@@ -10,6 +10,7 @@ from app.core.errors import add_exception_handlers
 from app.dashboard.routes import router as dashboard_router
 from app.db import close_db, init_db
 from app.portfolio.routes import router as portfolio_router
+from app.users.routes import router as users_router
 from app.routers.trading import router as trading_monitor_router
 from app.storage.bootstrap import bootstrap_storage
 from app.strategies.routes import router as strategies_router
@@ -29,6 +30,7 @@ def create_app() -> FastAPI:
     app.include_router(universes_router, prefix="/api/v1")
     app.include_router(benchmarks_router, prefix="/api/v1")
     app.include_router(brokers_router, prefix="/api/v1")
+    app.include_router(users_router, prefix="/api/v1")
     app.include_router(trading_router, prefix="/api/v1")
     app.include_router(trading_monitor_router, prefix="/api/v1")
     app.include_router(bot_router, prefix="/api/v1")

@@ -1,0 +1,127 @@
+name: Automated Trading
+
+# ──────────────────────────────────────────────────────────
+# 트리거
+# NYSE 개장: 9:30 AM ET
+#   EST (11월~3월): UTC-5  →  14:35 UTC = 9:35 AM ET  ✓
+#   EDT (3월~11월): UTC-4  →  14:35 UTC = 10:35 AM ET ✓ (개장 중)
+# 공휴일 여부는 5번 스텝에서 Alpaca Clock API로 판단해 자동 건너뜀.
+# ──────────────────────────────────────────────────────────
+on:
+  schedule:
+    - cron: "35 14 * * 1-5"   # 평일 매일 14:35 UTC
+
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "true = 주문 계산만 (실제 제출 안 함)"
+        required: false
+        default: "true"
+        type: choice
+        options: ["true", "false"]
+
+# 상태 파일을 레포에 커밋하기 위해 write 필요
+permissions:
+  contents: write
+
+jobs:
+  trade:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. 코드 체크아웃
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # 2. Python 설치
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # 3. 패키지 설치
+      - name: Install
+        run: pip install -e .
+
+      # 4. 상태 파일 복원 (마지막 리밸런싱 날짜)
+      - name: Restore trade state
+        run: |
+          if [ -f .trade/state.json ]; then
+            mkdir -p ~/.sf
+            cp .trade/state.json ~/.sf/state.json
+            echo "상태 복원됨: $(cat ~/.sf/state.json)"
+          else
+            echo "저장된 상태 없음 — 첫 실행으로 간주해 즉시 리밸런싱합니다."
+          fi
+
+      # 5. 시장 개장 여부 확인 (공휴일 자동 건너뜀)
+      - name: Check market status
+        id: market
+        env:
+          ALPACA_API_KEY_ID: ${{ secrets.ALPACA_API_KEY_ID }}
+          ALPACA_API_SECRET_KEY: ${{ secrets.ALPACA_API_SECRET_KEY }}
+          ALPACA_PAPER: ${{ vars.ALPACA_PAPER || 'true' }}
+        run: |
+          IS_OPEN=$(python - <<'EOF'
+          import os
+          from alpaca.trading.client import TradingClient
+          client = TradingClient(
+              os.environ["ALPACA_API_KEY_ID"],
+              os.environ["ALPACA_API_SECRET_KEY"],
+              paper=os.environ.get("ALPACA_PAPER", "true").lower() != "false",
+          )
+          clock = client.get_clock()
+          print("true" if clock.is_open else "false")
+          EOF
+          )
+          echo "is_open=$IS_OPEN" >> "$GITHUB_OUTPUT"
+          if [ "$IS_OPEN" = "false" ]; then
+            echo "NYSE 휴장 — 매매 건너뜀"
+          else
+            echo "NYSE 개장 — 매매 실행"
+          fi
+
+      # 6. 매매 실행 (개장일에만)
+      #    schedule 트리거 → --execute  /  workflow_dispatch → dry_run 입력값에 따라
+      - name: Execute trade
+        if: steps.market.outputs.is_open == 'true'
+        env:
+          ALPACA_API_KEY_ID: ${{ secrets.ALPACA_API_KEY_ID }}
+          ALPACA_API_SECRET_KEY: ${{ secrets.ALPACA_API_SECRET_KEY }}
+          ALPACA_PAPER: ${{ vars.ALPACA_PAPER || 'true' }}
+          DEFAULT_USER_ID: ${{ secrets.DEFAULT_USER_ID }}
+        run: |
+          DRY_RUN="${{ github.event.inputs.dry_run }}"
+
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "$DRY_RUN" = "false" ]; then
+            sf trade run -s momentum --sector technology --rebalance daily --execute
+          else
+            sf trade run -s momentum --sector technology --rebalance daily
+          fi
+          # ↑ 전략·유니버스·파라미터를 원하는 설정으로 변경하세요.
+
+      # 7. 상태 파일을 레포에 커밋 (영구 보존)
+      - name: Save trade state
+        if: always()
+        run: |
+          if [ ! -f ~/.sf/state.json ]; then
+            echo "상태 파일 없음 — 저장 건너뜀"
+            exit 0
+          fi
+
+          mkdir -p .trade
+          cp ~/.sf/state.json .trade/state.json
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .trade/state.json
+
+          if git diff --staged --quiet; then
+            echo "상태 변경 없음 — 커밋 건너뜀"
+          else
+            git commit -m "chore: update trade state [skip ci]"
+            git push
+          fi
