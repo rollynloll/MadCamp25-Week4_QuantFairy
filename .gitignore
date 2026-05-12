@@ -5,6 +5,8 @@ Thumbs.db
 # Editor
 .vscode/
 .idea/
+*.swp
+*.swo
 
 # Logs
 *.log
@@ -34,16 +36,27 @@ __pycache__/
 .coverage
 htmlcov/
 
+# Python packaging
+*.egg-info/
+*.egg
+.eggs/
+dist/
+wheels/
+
 # Virtual environments
 .venv/
 venv/
 ENV/
 env/
 
-# Env files
+# Env files — 시크릿 보호
+# GitHub Actions는 Secrets를 사용하므로 .env는 절대 커밋하지 않는다.
 .env
 .env.*
 !.env.example
+
+# Trade state — 레포에 커밋해 Actions 간 상태 공유 (gitignore 제외)
+# .trade/state.json  ← 의도적으로 추적함
 
 # Misc
 .cache/

@@ -137,6 +137,8 @@ const translations: Record<Language, Record<string, string>> = {
     "onboarding.setup.strategy.pairs": "Pairs Trading",
     "onboarding.setup.strategy.pairsDesc": "Statistical arbitrage",
     "onboarding.setup.button.complete": "Go to Portfolio",
+    "onboarding.setup.error.profile":
+      "Failed to save profile. Please try again.",
     "account.title": "Account Settings",
     "account.subtitle": "Manage your profile and trading connections",
     "account.section.profile": "Profile",
@@ -300,6 +302,8 @@ const translations: Record<Language, Record<string, string>> = {
     "onboarding.setup.strategy.pairs": "페어 트레이딩",
     "onboarding.setup.strategy.pairsDesc": "통계적 차익거래",
     "onboarding.setup.button.complete": "포트폴리오로 이동",
+    "onboarding.setup.error.profile":
+      "프로필 저장에 실패했습니다. 다시 시도해주세요.",
     "account.title": "계정 설정",
     "account.subtitle": "프로필과 거래 연결을 관리하세요",
     "account.section.profile": "프로필",

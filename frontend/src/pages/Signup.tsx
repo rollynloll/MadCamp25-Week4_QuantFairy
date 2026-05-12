@@ -124,22 +124,22 @@ export function Signup() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0a0d14] via-[#0d1117] to-[#0a0d14] flex items-center justify-center p-8">
       {/* Main Container */}
-      <div className="w-full max-w-[560px]">
+      <div className="w-full max-w-[460px]">
         {/* Logo and Tagline */}
-        <div className="mb-12 text-center">
-          <h1 className="text-4xl font-bold mb-3 bg-gradient-to-r from-emerald-400 to-teal-500 bg-clip-text text-transparent">
+        <div className="mb-10 text-center">
+          <h1 className="text-3xl font-bold mb-2 bg-gradient-to-r from-emerald-400 to-teal-500 bg-clip-text text-transparent">
             QuantFairy
           </h1>
-          <p className="text-base text-gray-400">{t("brand.tagline")}</p>
+          <p className="text-sm text-gray-400">{t("brand.tagline")}</p>
         </div>
 
         {/* Signup Card */}
-        <div className="bg-[#0d1117] border border-gray-800 rounded-xl p-10 shadow-2xl">
-          <div className="mb-8">
-            <h2 className="text-3xl font-semibold mb-2">
+        <div className="bg-[#0d1117] border border-gray-800 rounded-xl p-8 shadow-2xl">
+          <div className="mb-6">
+            <h2 className="text-2xl font-semibold mb-2">
               {t("signup.title")}
             </h2>
-            <p className="text-base text-gray-400">{t("signup.subtitle")}</p>
+            <p className="text-sm text-gray-400">{t("signup.subtitle")}</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -147,7 +147,7 @@ export function Signup() {
             <div>
               <label
                 htmlFor="email"
-                className="block text-base font-medium text-gray-300 mb-3"
+                className="block text-sm font-medium text-gray-300 mb-2"
               >
                 {t("form.email")}
               </label>
@@ -160,7 +160,7 @@ export function Signup() {
                   setFormData({ ...formData, email: e.target.value })
                 }
                 placeholder={t("form.emailPlaceholder")}
-                className="w-full bg-[#0a0d14] border border-gray-800 rounded-xl px-6 py-4 text-base focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all"
+                className="w-full bg-[#0a0d14] border border-gray-800 rounded-xl px-5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all"
               />
             </div>
 
@@ -168,7 +168,7 @@ export function Signup() {
             <div>
               <label
                 htmlFor="password"
-                className="block text-base font-medium text-gray-300 mb-3"
+                className="block text-sm font-medium text-gray-300 mb-2"
               >
                 {t("form.password")}
               </label>
@@ -191,7 +191,7 @@ export function Signup() {
                     setFormData({ ...formData, password: sanitized });
                   }}
                   placeholder="••••••••"
-                  className="w-full bg-[#0a0d14] border border-gray-800 rounded-xl px-6 py-4 pr-12 text-base focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all"
+                  className="w-full bg-[#0a0d14] border border-gray-800 rounded-xl px-5 py-3 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all"
                 />
                 <button
                   type="button"
@@ -211,7 +211,7 @@ export function Signup() {
             <div>
               <label
                 htmlFor="confirmPassword"
-                className="block text-base font-medium text-gray-300 mb-3"
+                className="block text-sm font-medium text-gray-300 mb-2"
               >
                 {t("form.confirmPassword")}
               </label>
@@ -237,7 +237,7 @@ export function Signup() {
                     });
                   }}
                   placeholder="••••••••"
-                  className="w-full bg-[#0a0d14] border border-gray-800 rounded-xl px-6 py-4 pr-12 text-base focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all"
+                  className="w-full bg-[#0a0d14] border border-gray-800 rounded-xl px-5 py-3 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all"
                 />
                 <button
                   type="button"
@@ -257,9 +257,9 @@ export function Signup() {
             <div>
               <label
                 htmlFor="nickname"
-                className="block text-base font-medium text-gray-300 mb-3"
+                className="block text-sm font-medium text-gray-300 mb-2"
               >
-                {t("form.nickname")} {" "}
+                {t("form.nickname")}{" "}
                 <span className="text-gray-500">{t("form.optional")}</span>
               </label>
               <input
@@ -280,7 +280,7 @@ export function Signup() {
                   setFormData({ ...formData, nickname: sanitized });
                 }}
                 placeholder={t("form.displayNamePlaceholder")}
-                className="w-full bg-[#0a0d14] border border-gray-800 rounded-xl px-6 py-4 text-base focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all"
+                className="w-full bg-[#0a0d14] border border-gray-800 rounded-xl px-5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all"
               />
             </div>
 
@@ -299,12 +299,12 @@ export function Signup() {
                 }
                 className="mt-1 w-4 h-4 rounded border-gray-800 bg-[#0a0d14] text-emerald-500 focus:ring-2 focus:ring-emerald-500/50"
               />
-              <label htmlFor="terms" className="text-sm text-gray-400">
-                {t("signup.termsPrefix")} {" "}
+              <label htmlFor="terms" className="text-xs text-gray-400">
+                {t("signup.termsPrefix")}{" "}
                 <a href="#" className="text-emerald-400 hover:text-emerald-300">
                   {t("signup.termsLabel")}
                 </a>{" "}
-                {t("signup.termsConnector")} {" "}
+                {t("signup.termsConnector")}{" "}
                 <a href="#" className="text-emerald-400 hover:text-emerald-300">
                   {t("signup.privacyLabel")}
                 </a>
@@ -322,7 +322,7 @@ export function Signup() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className={`w-full font-medium py-4 rounded-xl transition-all shadow-lg shadow-emerald-500/20 text-base ${
+              className={`w-full font-medium py-3 rounded-xl transition-all shadow-lg shadow-emerald-500/20 text-sm ${
                 isSubmitting
                   ? "bg-gray-800 text-gray-500 cursor-not-allowed"
                   : "bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white"
@@ -332,15 +332,15 @@ export function Signup() {
             </button>
 
             {/* Info Text */}
-            <p className="text-sm text-gray-500 text-center">
+            <p className="text-xs text-gray-500 text-center">
               {t("signup.info")}
             </p>
           </form>
 
           {/* Login Link */}
-          <div className="mt-6 text-center">
-            <p className="text-base text-gray-400">
-              {t("signup.loginPrompt")} {" "}
+          <div className="mt-5 text-center">
+            <p className="text-sm text-gray-400">
+              {t("signup.loginPrompt")}{" "}
               <Link
                 to="/login"
                 className="text-emerald-400 hover:text-emerald-300 font-medium transition-colors"

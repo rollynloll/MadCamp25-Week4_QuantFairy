@@ -1,0 +1,38 @@
+[project]
+name = "stockfairy"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    # web
+    "fastapi",
+    "uvicorn[standard]",
+    "python-dotenv",
+    "supabase",
+    "asyncpg",
+    "websockets",
+    "email-validator",
+    # trading
+    "alpaca-py",
+    # data
+    "yfinance",
+    "pandas",
+    "requests",
+    "jsonschema",
+    # core
+    "pydantic>=2",
+    # cli
+    "typer",
+    "rich",
+    "apscheduler>=3.10,<4",
+]
+
+[project.scripts]
+sf = "cli.main:main"
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["engine*", "infra*", "cli*"]
