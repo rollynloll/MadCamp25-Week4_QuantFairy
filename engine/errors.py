@@ -20,3 +20,15 @@ class DataSourceError(RuntimeError):
 # ValueError를 상속하므로 "전략 로직의 입력/출력 오류"에 해당하는 의미를 가진다.
 class StrategyError(ValueError):
     """Strategy produced invalid output (bad weights, sandbox error, etc.)."""
+
+
+class OrderRejectedError(RuntimeError):
+    """Broker rejected an order (insufficient funds, invalid symbol, etc.)."""
+
+
+class InsufficientFundsError(OrderRejectedError):
+    """Account has insufficient buying power to place the order."""
+
+
+class BrokerConnectionError(RuntimeError):
+    """Failed to connect to or communicate with the broker API."""

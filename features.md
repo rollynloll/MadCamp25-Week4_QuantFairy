@@ -35,14 +35,14 @@
 ### Caller
 
 #### `backend/app/api/` — 라우터
-- `[~]` 백테스트 라우터 (`backtests/routes.py`) — P3: 비즈니스 로직 분리, 30줄 이하로
-- `[~]` 자동 매매 라우터 (`trading/routes.py`, `bot/routes.py`) — P3: 동일
-- `[~]` 전략 관리 라우터 (`strategies/routes.py`) — P3: 동일
+- `[x]` 백테스트 라우터 (`backtests/routes.py`) — 57줄, BacktestService 위임
+- `[x]` 자동 매매 라우터 (`trading/routes.py`, `bot/routes.py`) — 이미 54/74줄
+- `[x]` 전략 관리 라우터 (`strategies/routes.py`) — 67줄, StrategyService 위임
 
 #### `backend/app/services/` — 에러 변환 레이어
-- `[ ]` BacktestService — P3: DataNotFoundError → 404, DataSourceError → 503
-- `[ ]` TradingService — P3: OrderRejectedError → 422, BrokerConnectionError → 503
-- `[ ]` StrategyService — P3: StrategyError → 422
+- `[x]` BacktestService (`backtest_service.py`) — DataNotFoundError → 404, DataSourceError → 503
+- `[x]` TradingService (`trading_service.py`) — OrderRejectedError → 422, BrokerConnectionError → 503
+- `[x]` StrategyService (`strategy_service.py`) — StrategyError → 422
 
 #### `cli/` — CLI 커맨드
 - `[x]` `cli/container.py` — DI 조립 (YFinanceProvider + AlpacaBroker)
@@ -78,7 +78,7 @@
 
 #### `engine/errors.py`
 - `[x]` DataNotFoundError, DataSourceError, StrategyError
-- `[ ]` OrderRejectedError, InsufficientFundsError, BrokerConnectionError — P4
+- `[x]` OrderRejectedError, InsufficientFundsError, BrokerConnectionError
 
 ---
 
@@ -116,5 +116,5 @@
 |---|---|---|---|
 | **P1** | Engine 분리 | `engine/` 내 FastAPI·asyncpg import 없음. `python -c "from engine.backtest.runner import run"` 성공 | `[x]` |
 | **P2** | CLI | `sf backtest run --strategy momentum --start 2020-01-01 --end 2024-12-31` 터미널 출력 성공 | `[x]` |
-| **P3** | 웹 레이어 정리 | 라우터 30줄 이하. 기존 `/api/v1/*` 스펙 100% 유지 | `[ ]` |
+| **P3** | 웹 레이어 정리 | 라우터 30줄 이하. 기존 `/api/v1/*` 스펙 100% 유지 | `[x]` |
 | **P4** | 라이브 트레이딩 | `sf trade run --strategy momentum` Alpaca paper 주문 실행 성공 | `[x]` |

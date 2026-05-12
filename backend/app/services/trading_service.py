@@ -5,6 +5,35 @@ from typing import Any, Dict, List
 
 import asyncpg
 
+from app.core.config import Settings
+from app.core.errors import APIError
+from app.storage.user_settings_repo import UserSettingsRepository
+from engine.errors import BrokerConnectionError, OrderRejectedError
+
+
+class TradingService:
+    """Thin web-layer service for trading settings. Maps engine errors to HTTP errors."""
+
+    def __init__(self, settings: Settings, user_id: str) -> None:
+        self._user_id = user_id
+        self._repo = UserSettingsRepository(settings)
+
+    def set_mode(self, environment: str, allow_live: bool) -> dict:
+        if environment == "live" and not allow_live:
+            raise APIError("LIVE_TRADING_DISABLED", "Live trading is disabled", "Set ALLOW_LIVE_TRADING=true to enable", status_code=403)
+        try:
+            self._repo.update(self._user_id, {"environment": environment})
+        except BrokerConnectionError as exc:
+            raise APIError("BROKER_CONNECTION_ERROR", "Broker connection failed", str(exc), status_code=503) from exc
+        return {"environment": environment}
+
+    def set_kill_switch(self, enabled: bool, reason: str | None) -> dict:
+        try:
+            self._repo.update(self._user_id, {"kill_switch": enabled, "kill_switch_reason": reason})
+        except OrderRejectedError as exc:
+            raise APIError("ORDER_REJECTED", str(exc), status_code=422) from exc
+        return {"enabled": enabled}
+
 
 def _to_iso(value: Any) -> str | None:
     if value is None:

@@ -3,7 +3,6 @@ from __future__ import annotations
 from fastapi import APIRouter, Header, Query
 
 from app.core.config import get_settings
-from app.core.errors import APIError
 from app.core.user import resolve_user_id
 from app.schemas.trading import (
     KillSwitchRequest,
@@ -11,10 +10,15 @@ from app.schemas.trading import (
     TradingModeRequest,
     TradingModeResponse,
 )
-from app.storage.user_settings_repo import UserSettingsRepository
-
+from app.services.trading_service import TradingService
 
 router = APIRouter()
+
+
+def _svc(user_id: str | None, x_user_id: str | None) -> TradingService:
+    settings = get_settings()
+    resolved = resolve_user_id(settings, x_user_id or user_id)
+    return TradingService(settings, resolved)
 
 
 @router.post("/trading/mode", response_model=TradingModeResponse)
@@ -24,17 +28,7 @@ async def set_trading_mode(
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
 ):
     settings = get_settings()
-    resolved_user_id = resolve_user_id(settings, x_user_id or user_id)
-    repo = UserSettingsRepository(settings)
-    if payload.environment == "live" and not settings.allow_live_trading:
-        raise APIError(
-            "LIVE_TRADING_DISABLED",
-            "Live trading is disabled",
-            "Set ALLOW_LIVE_TRADING=true to enable",
-            status_code=403,
-        )
-    repo.update(resolved_user_id, {"environment": payload.environment})
-    return TradingModeResponse(environment=payload.environment)
+    return _svc(user_id, x_user_id).set_mode(payload.environment, settings.allow_live_trading)
 
 
 @router.post("/trading/kill-switch", response_model=KillSwitchResponse)
@@ -43,11 +37,4 @@ async def set_kill_switch(
     user_id: str | None = Query(default=None),
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
 ):
-    settings = get_settings()
-    resolved_user_id = resolve_user_id(settings, x_user_id or user_id)
-    repo = UserSettingsRepository(settings)
-    repo.update(
-        resolved_user_id,
-        {"kill_switch": payload.enabled, "kill_switch_reason": payload.reason},
-    )
-    return KillSwitchResponse(enabled=payload.enabled)
+    return _svc(user_id, x_user_id).set_kill_switch(payload.enabled, payload.reason)
