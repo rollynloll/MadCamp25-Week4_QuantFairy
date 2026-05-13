@@ -152,3 +152,84 @@
 - S&P 500 생존 편향 미적용 (ADR-002) — 유니버스 고정 상태
 - CLI 백테스트 결과 웹 DB 저장 미구현 — CLI 실행 결과는 로컬 JSON만 저장, Supabase 저장 미지원
 - 전략 CRUD CLI 미구현 — `sf strategy` 커맨드 없음, 웹 API만 존재
+
+---
+
+## v2.1.0 — 2026-05-13
+
+### 다중 봇 자동매매 CLI
+
+- **`config/bots.yaml` 신규** — 봇 목록 정의 파일 (전략·유니버스·자본 비율·리밸런싱 주기)
+- **`cli/bots.py` 신규** — `BotConfig` / `RiskConfig` / `BotsConfig` 데이터클래스, `load_bots_config()`, `validate_bots_config()`
+  - 검증 항목: `capital_pct` 합계 ≤ 1.0, 유효한 전략·유니버스·리밸런싱 주기, 봇 이름 중복
+- **`sf run`** (`cli/commands/run.py`) — bots.yaml 기반 전체/개별 봇 순차 실행
+  - `--all` / `--bot <name>` / `--dry-run` / `--config <path>`
+  - `bot_equity = total_equity × capital_pct` 슬라이스 기반 주문 산정
+  - 중지된 봇·리밸런싱 주기 미도달 봇 자동 건너뜀
+- **`sf status`** (`cli/commands/status.py`) — 계좌 요약 + 봇별 전략·유니버스·자본·마지막 실행일·다음 실행일·상태 테이블
+- **`sf stop`** (`cli/commands/stop.py`) — 봇 중지 / 재개 / 청산
+  - `--liquidate`: 미체결 주문 전량 취소(`cancel_all_orders`) + 전체 포지션 시장가 매도
+
+---
+
+### 엔진 확장
+
+- **`engine/trading/market_hours.py` 신규** — NYSE 장중 여부 체크
+  - `is_within_market_hours(dt?)` — 09:30–16:00 ET, 평일만 `True`
+  - `assert_market_hours(dt?)` — 장외 시 `MarketClosedError` raise
+- **`engine/errors.py`** — `MarketClosedError(RuntimeError)` 추가
+- **`engine/data/universe.py`** — 유니버스 프리셋 추가
+  - `SECTOR_ETF_TICKERS` — 11개 섹터 ETF (XLK·XLF·XLE·XLV·XLI·XLY·XLP·XLU·XLB·XLRE·XLC)
+  - `resolve_universe_preset(name)` — `"snp500"` / `"sector_etf"` 해석, 미지원 시 `ValueError`
+- **`engine/trading/executor.py`** — sell-first 순서 보장
+  - `compute_orders()` 반환값 = `sells + buys` (매도 대금으로 매수 가능하도록)
+- **`engine/trading/scheduler.py`** — `run_live()` `capital_pct` 파라미터 추가
+  - 실효 자산 = `total_equity × capital_pct`로 주문 수량 산정
+- **`engine/strategies/registry.py`** — 전략 이름 full-name alias 추가
+  - 단축형(`momentum`)과 전체 이름(`momentum_topn_v1`) 모두 같은 클래스 반환
+  - bots.yaml에서 전체 이름 사용 권장
+
+---
+
+### infra 확장
+
+- **`infra/broker/alpaca.py`**
+  - `cancel_all_orders()` 구현 — `BrokerProvider` Protocol 신규 메서드
+  - `ALPACA_MODE=paper|live` 환경 변수로 브로커 모드 전환 (`ALPACA_PAPER` 대체)
+
+---
+
+### CLI 확장
+
+- **`sf backtest compare`** (`cli/commands/backtest.py`) — 여러 전략 동시 백테스트 비교 테이블
+  - `--strategies a,b,c` 지정, 각 지표에서 최고값 초록 굵은 글씨 표시
+- **`cli/state.py`** — 봇 상태 함수 추가
+  - `get/set_bot_last_rebalance(bot_name, dt)`, `is_bot_stopped()`, `mark_bot_stopped()`, `mark_bot_running()`
+  - 상태 키 포맷: `bot:<name>`, `bot:<name>:stopped`
+- **`cli/main.py`** — `sf run` / `sf status` / `sf stop` 직접 커맨드로 등록, `.env.local` 로드 추가
+
+---
+
+### 테스트
+
+- **`test/` 신규 — 199개 테스트 (pytest, 외부 네트워크·DB 의존 없음)**
+
+| 파일 | 테스트 수 | 커버리지 |
+|------|-----------|---------|
+| `test_metrics.py` | 19 | CAGR, Sharpe, MDD, alpha/beta, NaN 없음 |
+| `test_executor.py` | 22 | sell-first 순서, min notional, 엣지케이스 |
+| `test_scheduler.py` | 16 | daily/weekly/monthly 경계값, capital_pct 스케일링 |
+| `test_market_hours.py` | 16 | 개장 전·후, 주말, 정각 경계, MarketClosedError |
+| `test_universe.py` | 20 | sector_etf 11개, 대소문자 무관, ValueError |
+| `test_registry.py` | 16 | 단축/전체 이름 동일 타입, 매번 새 인스턴스 |
+| `test_runner.py` | 16 | 정상 실행, 수수료, 벤치마크, 데이터 없음 에러 |
+| `test_bots.py` | 26 | capital_pct 합계, 중복 이름, 알 수 없는 전략·유니버스 |
+| `test_state.py` | 18 | 봇 stop/resume, 상태 격리, 파일 손상 복원 |
+
+---
+
+### 남은 작업
+
+- 리스크 관리 (`daily_loss_limit_pct`, `max_drawdown_pct`) 미구현 — bots.yaml 필드만 정의
+- CLI 백테스트 결과 웹 DB 저장 미구현
+- 전략 CRUD CLI 미구현
