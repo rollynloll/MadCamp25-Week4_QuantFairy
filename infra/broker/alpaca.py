@@ -22,7 +22,9 @@ class AlpacaBroker:
 
         api_key = os.environ["ALPACA_API_KEY_ID"]
         secret_key = os.environ["ALPACA_API_SECRET_KEY"]
-        paper = os.environ.get("ALPACA_PAPER", "true").lower() != "false"
+        # ALPACA_MODE=live → live, 그 외 → paper (기본값)
+        mode = os.environ.get("ALPACA_MODE", "paper").lower()
+        paper = mode != "live"
         self._client = TradingClient(api_key, secret_key, paper=paper)
 
     def get_account(self) -> Account:
@@ -71,3 +73,6 @@ class AlpacaBroker:
     def is_market_open(self) -> bool:
         clock = self._client.get_clock()
         return bool(clock.is_open)
+
+    def cancel_all_orders(self) -> None:
+        self._client.cancel_orders()

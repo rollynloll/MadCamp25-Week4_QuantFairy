@@ -23,12 +23,13 @@ def compute_orders(
       - |차액| ≤ min_order_notional → 주문 생략 (소액 리밸런싱 방지)
     """
     current: Dict[str, float] = {p.symbol: p.market_value for p in current_positions}
-    orders: List[Order] = []
+    sells: List[Order] = []
+    buys: List[Order] = []
 
     # 보유 중이지만 목표 비중이 없는 종목 → 전량 청산
     for symbol, value in current.items():
         if symbol not in target_weights and value > min_order_notional:
-            orders.append(Order(symbol=symbol, side="sell", notional=value))
+            sells.append(Order(symbol=symbol, side="sell", notional=value))
 
     # 목표 비중 대비 차액 매수·매도
     for symbol, weight in target_weights.items():
@@ -36,8 +37,9 @@ def compute_orders(
         current_value = current.get(symbol, 0.0)
         delta = target_value - current_value
         if delta > min_order_notional:
-            orders.append(Order(symbol=symbol, side="buy", notional=delta))
+            buys.append(Order(symbol=symbol, side="buy", notional=delta))
         elif delta < -min_order_notional:
-            orders.append(Order(symbol=symbol, side="sell", notional=abs(delta)))
+            sells.append(Order(symbol=symbol, side="sell", notional=abs(delta)))
 
-    return orders
+    # sell 먼저 실행해야 매도 대금으로 매수 가능
+    return sells + buys

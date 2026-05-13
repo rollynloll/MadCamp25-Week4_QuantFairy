@@ -14,12 +14,20 @@ from engine.strategies.catalog.risk_on_off import RiskOnOffStrategy
 # 전략 entrypoint 문자열 → 전략 클래스 매핑 테이블.
 # 새 전략을 추가할 때는 이 딕셔너리에 항목을 추가하면 된다.
 _REGISTRY: Dict[str, Type[Strategy]] = {
+    # 단축 키 (sf backtest run --strategy momentum)
     "momentum":      MomentumTopNStrategy,
     "trend":         TrendSMA200Strategy,
     "rsi-reversion": RSIMeanReversionStrategy,
     "low-vol":       LowVolatilityStrategy,
     "vol-momentum":  VolatilityAdjustedMomentumStrategy,
     "risk-on-off":   RiskOnOffStrategy,
+    # 전체 이름 키 (bots.yaml strategy: momentum_topn_v1)
+    "momentum_topn_v1":        MomentumTopNStrategy,
+    "trend_sma200_v1":         TrendSMA200Strategy,
+    "rsi_mean_reversion_v1":   RSIMeanReversionStrategy,
+    "low_volatility":          LowVolatilityStrategy,
+    "vol_adj_momentum":        VolatilityAdjustedMomentumStrategy,
+    "risk_on_off":             RiskOnOffStrategy,
 }
 
 

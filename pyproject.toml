@@ -24,6 +24,7 @@ dependencies = [
     "typer",
     "rich",
     "apscheduler>=3.10,<4",
+    "pyyaml",
 ]
 
 [project.scripts]

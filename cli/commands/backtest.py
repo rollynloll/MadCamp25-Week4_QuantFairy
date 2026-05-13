@@ -217,3 +217,127 @@ def _save_output(result, path: str) -> None:
     }
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2, default=str)
+
+
+@app.command("compare")
+def backtest_compare(
+    strategies: str = typer.Option(..., "--strategies", "-s", help="전략 이름 (쉼표 구분, 예: momentum,low-vol)"),
+    start: str = typer.Option(..., "--start", help="시작일 YYYY-MM-DD"),
+    end: str = typer.Option(..., "--end", help="종료일 YYYY-MM-DD"),
+    universe: Optional[str] = typer.Option(None, "--universe", help="티커 직접 지정 (쉼표 구분)"),
+    sector: Optional[str] = typer.Option(None, "--sector", help=_SECTOR_HELP),
+    initial_cash: float = typer.Option(10_000.0, "--initial-cash", help="초기 자본금"),
+    benchmark: Optional[str] = typer.Option("SPY", "--benchmark", help="벤치마크 티커"),
+) -> None:
+    """여러 전략을 동시 백테스트하고 성과를 비교한다."""
+
+    strategy_names = [s.strip() for s in strategies.split(",") if s.strip()]
+    if not strategy_names:
+        console.print("[red]오류:[/red] --strategies에 전략 이름을 입력해야 합니다.")
+        raise typer.Exit(1)
+
+    tickers = [t.strip() for t in universe.split(",")] if universe else None
+    try:
+        resolved = resolve_universe(universe=tickers, sector=sector)
+    except ValueError as e:
+        console.print(f"[red]오류:[/red] {e}")
+        raise typer.Exit(1)
+
+    console.print(f"\n[bold]전략 비교 백테스트[/bold]")
+    console.print(f"  전략    : {', '.join(strategy_names)}")
+    console.print(f"  기간    : {start} ~ {end}")
+    console.print(f"  유니버스: {len(resolved)}개 종목")
+    console.print()
+
+    results = {}
+    for name in strategy_names:
+        try:
+            strategy_instance = get_strategy(name)
+        except ValueError as e:
+            console.print(f"  [red]오류:[/red] {e}")
+            continue
+
+        ctx = StrategyContext(params={})
+        try:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn(f"[cyan]{name}[/cyan] {{task.description}}"),
+                BarColumn(),
+                TextColumn("{task.percentage:>3.0f}%"),
+                TimeElapsedColumn(),
+                console=console,
+                transient=True,
+            ) as progress:
+                task = progress.add_task("준비 중...", total=100)
+                _STAGE_BASE = {"load_data": 0, "signals": 30, "simulate": 40, "metrics": 90}
+
+                def _cb(stage: str, pct: float | None, _t=task, _p=progress) -> None:
+                    base = _STAGE_BASE.get(stage, 0)
+                    completed = base + int((pct or 0) * 50) if stage == "simulate" else base
+                    _p.update(_t, description=stage, completed=completed)
+
+                result = run(
+                    strategy=strategy_instance,
+                    data_provider=get_data_provider(),
+                    ctx=ctx,
+                    universe=resolved,
+                    start_date=start,
+                    end_date=end,
+                    benchmark_symbol=benchmark,
+                    initial_cash=initial_cash,
+                    fee_bps=0.0,
+                    slippage_bps=0.0,
+                    progress_cb=_cb,
+                )
+                progress.update(task, description="완료", completed=100)
+            results[name] = result
+        except Exception as e:
+            console.print(f"  [red]{name} 백테스트 실패:[/red] {e}")
+
+    if not results:
+        raise typer.Exit(1)
+
+    _print_comparison(results)
+
+
+def _print_comparison(results: dict) -> None:
+    _METRIC_LABELS = [
+        ("total_return_pct",   "총 수익률 (%)",     True),
+        ("cagr_pct",           "CAGR (%)",          True),
+        ("sharpe",             "샤프 비율",          True),
+        ("max_drawdown_pct",   "MDD (%)",            False),
+        ("volatility_pct",     "변동성 (%)",         False),
+        ("alpha_pct",          "알파 (%)",           True),
+        ("beta",               "베타",               False),
+    ]
+
+    table = Table(title="전략 비교", show_lines=True)
+    table.add_column("지표", style="cyan", no_wrap=True)
+    for name in results:
+        table.add_column(name, justify="right")
+
+    for key, label, higher_is_better in _METRIC_LABELS:
+        vals = {n: r.metrics.get(key) for n, r in results.items()}
+        if all(v is None for v in vals.values()):
+            continue
+
+        best = max(
+            (v for v in vals.values() if v is not None),
+            default=None,
+            key=lambda x: x if higher_is_better else -x,
+        )
+
+        row = [label]
+        for name in results:
+            v = vals.get(name)
+            if v is None:
+                row.append("-")
+                continue
+            formatted = f"{v:+.2f}" if key in ("total_return_pct", "cagr_pct", "alpha_pct", "max_drawdown_pct", "volatility_pct") else f"{v:.4f}"
+            if v == best:
+                row.append(f"[bold green]{formatted}[/bold green]")
+            else:
+                row.append(formatted)
+        table.add_row(*row)
+
+    console.print(table)

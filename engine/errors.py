@@ -32,3 +32,7 @@ class InsufficientFundsError(OrderRejectedError):
 
 class BrokerConnectionError(RuntimeError):
     """Failed to connect to or communicate with the broker API."""
+
+
+class MarketClosedError(RuntimeError):
+    """Order attempted outside US market hours (09:30–16:00 ET, Mon–Fri)."""

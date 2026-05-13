@@ -29,3 +29,7 @@ class BrokerProvider(Protocol):
     def is_market_open(self) -> bool:
         """현재 시장이 열려 있는지 여부를 반환한다."""
         ...
+
+    def cancel_all_orders(self) -> None:
+        """미체결 주문을 전부 취소한다."""
+        ...

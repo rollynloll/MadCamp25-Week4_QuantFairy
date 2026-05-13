@@ -54,7 +54,6 @@ cp .env.example .env
 
 ### 1) Backend
 ```bash
-cd backend
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\Activate.ps1
 pip install -e ".[dev]"

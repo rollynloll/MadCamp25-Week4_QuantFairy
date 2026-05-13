@@ -1,0 +1,22 @@
+bots:
+  - name: momentum_snp
+    strategy: momentum_topn_v1
+    universe: snp500
+    capital_pct: 0.40
+    rebalance: weekly
+
+  - name: sector_rotation
+    strategy: rsi_mean_reversion_v1
+    universe: sector_etf
+    capital_pct: 0.30
+    rebalance: monthly
+
+  - name: low_vol_snp
+    strategy: low_volatility
+    universe: snp500
+    capital_pct: 0.30
+    rebalance: monthly
+
+risk:
+  daily_loss_limit_pct: 0.05
+  max_drawdown_pct: 0.20

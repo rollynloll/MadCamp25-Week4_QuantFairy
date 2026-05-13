@@ -6,6 +6,12 @@ from typing import List, Optional
 
 _SP500_FILE = Path(__file__).parent / "sp500.json"
 
+# GICS 섹터 ETF 11개 — bots.yaml universe: sector_etf
+SECTOR_ETF_TICKERS: List[str] = [
+    "XLK", "XLF", "XLE", "XLV", "XLI",
+    "XLY", "XLP", "XLU", "XLB", "XLRE", "XLC",
+]
+
 
 def _load() -> dict:
     with open(_SP500_FILE, encoding="utf-8") as f:
@@ -31,6 +37,23 @@ def resolve_universe(
         return [c["ticker"] for c in constituents if c["sector"] == key]
 
     return [c["ticker"] for c in constituents]
+
+
+def resolve_universe_preset(name: str) -> List[str]:
+    """bots.yaml의 universe 이름 → 티커 목록.
+
+    지원 프리셋:
+      snp500     — S&P 500 구성 종목 전체
+      sector_etf — GICS 섹터 ETF 11개 (XLK, XLF, ...)
+    """
+    key = name.lower()
+    if key == "sector_etf":
+        return list(SECTOR_ETF_TICKERS)
+    if key == "snp500":
+        return resolve_universe()
+    raise ValueError(
+        f"알 수 없는 유니버스 프리셋: {name!r}. 사용 가능: snp500, sector_etf"
+    )
 
 
 def list_sectors() -> List[str]:

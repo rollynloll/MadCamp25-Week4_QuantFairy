@@ -48,6 +48,7 @@ def run_live(
     rebalance_freq: str = "monthly",
     lookback_days: int = 400,       # 전략 룩백 + 여유분 (모멘텀 기본 252일 → 400일)
     last_rebalance_date: date | None = None,
+    capital_pct: float = 1.0,       # 전체 자산 중 이 봇에 배분된 비율 (기본 100%)
     min_order_notional: float = 1.0,
     dry_run: bool = True,           # True면 주문 계산만 하고 실제 실행은 하지 않음
 ) -> LiveResult:
@@ -106,8 +107,8 @@ def run_live(
     positions = broker.get_positions()
     equity = broker.get_account().equity
 
-    # 주문 생성
-    orders = compute_orders(target_weights, positions, equity, min_order_notional)
+    # 주문 생성 (capital_pct만큼의 자산만 사용)
+    orders = compute_orders(target_weights, positions, equity * capital_pct, min_order_notional)
 
     # 실제 주문 실행 (dry_run=False일 때만)
     if not dry_run and orders:
