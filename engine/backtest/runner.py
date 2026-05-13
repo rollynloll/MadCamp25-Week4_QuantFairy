@@ -106,6 +106,9 @@ def run(
     initial_cash: float = 10_000.0,
     fee_bps: float = 0.0,
     slippage_bps: float = 0.0,
+    benchmark_initial_cash: float | None = None,
+    benchmark_fee_bps: float | None = None,
+    benchmark_slippage_bps: float | None = None,
     rebalance_freq: str | None = None,
     long_only: bool = True,
     cash_buffer: float = 0.0,
@@ -381,8 +384,12 @@ def run(
     benchmark_payload = None
     if benchmark_norm:
         # 벤치마크 Buy-and-Hold 곡선을 계산하여 전략과 비교한다
+        # benchmark_* 파라미터가 명시되면 해당 값을 우선, 아니면 전략과 동일한 값 사용
+        bench_cash = benchmark_initial_cash if benchmark_initial_cash is not None else initial_cash
+        bench_fee = benchmark_fee_bps if benchmark_fee_bps is not None else fee_bps
+        bench_slip = benchmark_slippage_bps if benchmark_slippage_bps is not None else slippage_bps
         bench_curve = _benchmark_curve(
-            price_matrix, benchmark_norm, initial_cash, fee_bps, slippage_bps
+            price_matrix, benchmark_norm, bench_cash, bench_fee, bench_slip
         )
         if bench_curve:
             benchmark_payload = {

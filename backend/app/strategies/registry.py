@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from typing import Dict, Type
 
-from app.strategies.base import Strategy
-from app.strategies.momentum_topn_v1.strategy import MomentumTopNStrategy
-from app.strategies.trend_sma200_v1.strategy import TrendSMA200Strategy
-from app.strategies.rsi_mean_reversion_v1.strategy import RSIMeanReversionStrategy
-from app.strategies.low_volatility import LowVolatilityStrategy
-from app.strategies.vol_adj_momentum import VolatilityAdjustedMomentumStrategy
-from app.strategies.risk_on_off import RiskOnOffStrategy
+from engine.strategies.base import Strategy
+from engine.strategies.catalog.low_volatility import LowVolatilityStrategy
+from engine.strategies.catalog.momentum_topn_v1 import MomentumTopNStrategy
+from engine.strategies.catalog.risk_on_off import RiskOnOffStrategy
+from engine.strategies.catalog.rsi_mean_reversion_v1 import RSIMeanReversionStrategy
+from engine.strategies.catalog.trend_sma200_v1 import TrendSMA200Strategy
+from engine.strategies.catalog.vol_adj_momentum import VolatilityAdjustedMomentumStrategy
 
-
+# 기존 DB에 저장된 entrypoint 키를 그대로 유지한다.
 _REGISTRY: Dict[str, Type[Strategy]] = {
     "strategies.momentum_topn_v1:MomentumTopNStrategy": MomentumTopNStrategy,
     "strategies.trend_sma200_v1:TrendSMA200Strategy": TrendSMA200Strategy,
@@ -22,7 +22,6 @@ _REGISTRY: Dict[str, Type[Strategy]] = {
 
 
 def get_strategy(entrypoint: str) -> Strategy:
-    """Instantiate strategy by entrypoint string."""
     if entrypoint not in _REGISTRY:
         raise ValueError(f"Unknown entrypoint: {entrypoint}")
     return _REGISTRY[entrypoint]()

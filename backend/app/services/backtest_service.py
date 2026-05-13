@@ -19,7 +19,7 @@ from app.schemas.backtests import (
 from app.services.backtest_engine import StrategyContext, run_ensemble_backtest, run_single_backtest
 from app.services.backtest_runner import run_backtest
 from app.services.data_provider import load_price_series, parse_date, trading_days
-from app.services.metrics import compute_drawdown, compute_metrics, compute_returns
+from engine.backtest.metrics import compute_drawdown, compute_metrics, compute_returns
 from app.storage.backtest_runs_repo import BacktestRunsRepository
 from app.storage.backtests_store import STORE
 from app.storage.my_strategies_repo import MyStrategiesRepository

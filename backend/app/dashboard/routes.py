@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import math
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal
 
@@ -13,6 +12,12 @@ from app.core.config import get_settings
 from app.core.alpaca_cache import get_account_cached, get_positions_cached
 from app.core.time import now_kst, parse_datetime, plus_hours
 from app.core.user import resolve_user_id
+from engine.data.timeseries import (
+    downsample_equity_to_hourly as _downsample_equity_to_hourly,
+    ensure_latest_equity_point as _ensure_latest_equity_point,
+    sanitize_equity_curve as _sanitize_equity_curve,
+)
+from engine.trading.metrics import compute_strategy_runtime_metrics as _compute_strategy_runtime_metrics
 from app.schemas.dashboard import DashboardResponse
 from app.storage.alerts_repo import AlertsRepository
 from app.storage.bot_runs_repo import BotRunsRepository
@@ -68,17 +73,10 @@ def _equity_curve_fallback(equity_value: float) -> List[dict]:
 def _max_drawdown_pct(equity_curve: List[dict]) -> float:
     if not equity_curve:
         return 0.0
-    peak = equity_curve[0]["equity"]
-    max_drawdown = 0.0
-    for point in equity_curve:
-        equity = point["equity"]
-        if equity > peak:
-            peak = equity
-        if peak:
-            drawdown = (equity - peak) / peak * 100
-            if drawdown < max_drawdown:
-                max_drawdown = drawdown
-    return max_drawdown
+    from engine.backtest.metrics import compute_drawdown
+    engine_curve = [{"date": str(p.get("t", "")), "equity": float(p.get("equity", 0))} for p in equity_curve]
+    dd = compute_drawdown(engine_curve)
+    return min((d["dd_pct"] for d in dd), default=0.0)
 
 
 def _get_field(obj: Any, name: str, default: Any = None) -> Any:
@@ -135,71 +133,6 @@ def _history_to_equity_points(history: Any) -> List[dict]:
     return _sanitize_equity_curve(points)
 
 
-def _sanitize_equity_curve(points: List[dict]) -> List[dict]:
-    cleaned: List[dict] = []
-    for point in sorted(points, key=lambda item: str(item.get("t", ""))):
-        ts = point.get("t")
-        if ts is None:
-            continue
-        equity = _to_float(point.get("equity", 0.0), 0.0)
-        if not math.isfinite(equity):
-            continue
-        cleaned.append({"t": str(ts), "equity": equity})
-
-    # Drop zero placeholder points when valid positive points exist.
-    if any(item["equity"] > 0 for item in cleaned):
-        cleaned = [item for item in cleaned if item["equity"] > 0]
-    return cleaned
-
-
-def _downsample_equity_to_hourly(points: List[dict]) -> List[dict]:
-    if not points:
-        return []
-    bucketed: Dict[str, dict] = {}
-    for point in points:
-        ts = point.get("t")
-        if ts is None:
-            continue
-        try:
-            dt = parse_datetime(str(ts))
-        except Exception:
-            continue
-        key = dt.replace(minute=0, second=0, microsecond=0).isoformat()
-        bucketed[key] = point
-    downsampled = sorted(bucketed.values(), key=lambda item: str(item.get("t", "")))
-    return _sanitize_equity_curve(downsampled)
-
-
-def _ensure_latest_equity_point(
-    equity_curve: List[dict],
-    latest_equity: float,
-    *,
-    now_dt: datetime | None = None,
-) -> tuple[List[dict], bool]:
-    if latest_equity <= 0:
-        return equity_curve, False
-    now_dt = now_dt or now_kst()
-    now_iso = now_dt.isoformat()
-    if not equity_curve:
-        return [{"t": now_iso, "equity": latest_equity}], True
-
-    last_point = equity_curve[-1]
-    last_equity = _to_float(last_point.get("equity"), latest_equity)
-    last_ts = last_point.get("t")
-    last_dt: datetime | None = None
-    if last_ts is not None:
-        try:
-            last_dt = parse_datetime(str(last_ts))
-        except Exception:
-            last_dt = None
-
-    # Reflect latest account equity when history lags by day or value changed intraday.
-    should_append = abs(last_equity - latest_equity) > 0.01
-    if last_dt is not None and last_dt.date() < now_dt.date():
-        should_append = True
-    if not should_append:
-        return equity_curve, False
-    return [*equity_curve, {"t": now_iso, "equity": latest_equity}], True
 
 
 def _normalize_orders(
@@ -343,36 +276,6 @@ def _normalize_positions(
     return rows
 
 
-def _compute_strategy_runtime_metrics(position_rows: List[dict]) -> Dict[str, Dict[str, float | int]]:
-    metrics: Dict[str, Dict[str, float | int]] = {}
-    for row in position_rows:
-        strategy_id = row.get("strategy_id") or row.get("user_strategy_id")
-        if not strategy_id:
-            continue
-        strategy_key = str(strategy_id)
-        qty = abs(_to_float(row.get("qty", 0.0)))
-        avg_entry_price = _to_float(row.get("avg_entry_price", 0.0))
-        unrealized_pnl = _to_float(row.get("unrealized_pnl", row.get("unrealized_pl", 0.0)))
-        exposure_value = abs(qty * avg_entry_price)
-        item = metrics.setdefault(
-            strategy_key,
-            {
-                "positions_count": 0,
-                "pnl_today_value": 0.0,
-                "pnl_today_pct": 0.0,
-                "managed_value": 0.0,
-            },
-        )
-        if qty > 0:
-            item["positions_count"] = int(item["positions_count"]) + 1
-        item["pnl_today_value"] = float(item["pnl_today_value"]) + unrealized_pnl
-        item["managed_value"] = float(item["managed_value"]) + exposure_value
-
-    for item in metrics.values():
-        managed_value = float(item.get("managed_value", 0.0) or 0.0)
-        pnl_value = float(item.get("pnl_today_value", 0.0) or 0.0)
-        item["pnl_today_pct"] = (pnl_value / managed_value * 100.0) if managed_value > 0 else 0.0
-    return metrics
 
 @router.get("/dashboard", response_model=DashboardResponse)
 async def get_dashboard(

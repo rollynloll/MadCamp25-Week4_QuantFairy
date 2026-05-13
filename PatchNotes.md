@@ -109,3 +109,46 @@
 - **환경 변수 분리**: Alpaca 키·DEFAULT_USER_ID → 루트 `.env`, Supabase/DB → `backend/.env`
 - `.env.example` 협업 템플릿 추가
 - `pyproject.toml` 의존성 정의 (apscheduler, yfinance 등)
+
+---
+
+## v1.1.0 — 2026-05-13
+
+### 백엔드 로직 engine 위임 리팩토링
+
+- **`backend/app/services/metrics.py` 삭제** — `engine/backtest/metrics.py` 완전 중복, 삭제 후 3개 호출처 import 수정
+- **`backend/app/services/backtest_runner.py` 교체** — 478줄 인라인 시뮬레이션 루프 → `_DataProviderAdapter` + `engine.backtest.runner.run()` 위임 (40줄)
+- **`engine/backtest/runner.py` 확장** — `benchmark_initial_cash`, `benchmark_fee_bps`, `benchmark_slippage_bps` 파라미터 추가
+- **`engine/backtest/ensemble.py` 신규** — 앙상블 백테스트 로직 (`simulate_portfolio`, `run_single`, `run_ensemble`, 비중 계산 함수) engine으로 이동
+  - `backend/app/services/backtest_engine.py` 287줄 → 60줄 (가격 로딩만 담당)
+- **`engine/data/timeseries.py` 신규** — `dashboard/routes.py` 인라인 시계열 유틸 3개 이동
+  - `sanitize_equity_curve`, `downsample_equity_to_hourly`, `ensure_latest_equity_point`
+- **`engine/trading/metrics.py` 신규** — 포지션 목록 → 전략별 런타임 지표 집계 (`compute_strategy_runtime_metrics`)
+- **`backend/app/strategies/` 전체 re-export화** — 9개 파일이 `engine/strategies/` 클래스를 re-export하는 얇은 래퍼로 교체
+  - `base`, `spec`, `indicators`, `validation`, `sandbox`, `registry`, `low_volatility`, `vol_adj_momentum`, `risk_on_off`, subdirectory 3개
+  - DB 저장된 entrypoint 키 포맷(`strategies.xxx:ClassName`) 그대로 유지
+- **`portfolio/routes.py`, `dashboard/routes.py` 인라인 지표 교체** — 인라인 수익률·드로다운·KPI 계산 함수 삭제, `engine.backtest.metrics` 호출로 교체
+
+---
+
+### 환경 변수 통합
+
+- **루트 `.env` 단일 관리** — `backend/.env`(Supabase), `frontend/.env`(Vite) 병합 → 루트 `.env` 하나로 통합
+- **`frontend/vite.config.ts`** — `envDir: "../"` 추가, Vite가 프로젝트 루트 `.env` 참조
+- **`backend/app/core/config.py`** — `load_dotenv(PROJECT_ROOT / ".env")` 명시적 경로로 수정
+- **`.env.local`** — 로컬 dev 오버라이드 (`VITE_API_BASE_URL=http://localhost:8000`)
+
+---
+
+### 로컬 개발 환경
+
+- **uvicorn 비치명 시작** — `init_db()` try/except 처리로 Supabase 연결 실패 시 경고만 출력하고 서버 기동
+- **`_resolve_user_id` UUID 버그 수정** — `portfolio/routes.py`의 fallback이 `"demo_user"`(non-UUID)를 반환하던 문제 → `resolve_user_id_from_db()` 호출로 교체
+
+---
+
+### 남은 작업
+
+- S&P 500 생존 편향 미적용 (ADR-002) — 유니버스 고정 상태
+- CLI 백테스트 결과 웹 DB 저장 미구현 — CLI 실행 결과는 로컬 JSON만 저장, Supabase 저장 미지원
+- 전략 CRUD CLI 미구현 — `sf strategy` 커맨드 없음, 웹 API만 존재

@@ -1,13 +1,17 @@
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List
 
 from dotenv import load_dotenv
 
 
+_PROJECT_ROOT = Path(__file__).parent.parent.parent.parent  # madcamp-week4/
+
 # 로컬에서만 .env 로드 (Render는 대시보드 env 사용)
 if os.getenv("ENV", "").lower() not in {"prod", "production"}:
-    load_dotenv()
+    load_dotenv(_PROJECT_ROOT / ".env", override=False)
+    load_dotenv(_PROJECT_ROOT / ".env.local", override=True)
 
 
 @dataclass(frozen=True)

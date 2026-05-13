@@ -4,14 +4,15 @@ import { fileURLToPath, URL } from "url";
 
 export default defineConfig({
   plugins: [react()],
+  envDir: "../",
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
   server: {
-  proxy: {
-    "/api": "http://localhost:8000",
+    proxy: {
+      "/api": "http://localhost:8000",
+    },
   },
-},
 });
