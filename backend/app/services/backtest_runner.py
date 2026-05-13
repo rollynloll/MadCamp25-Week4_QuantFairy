@@ -13,7 +13,7 @@ from app.strategies.registry import get_strategy
 from app.universes.presets import UNIVERSE_PRESETS
 from engine.backtest import runner as _engine_runner
 from engine.errors import DataNotFoundError, DataSourceError, StrategyError
-from engine.strategies.base import StrategyContext as _EngineCtx
+from app.strategies.base import StrategyContext as _EngineCtx
 
 
 @dataclass
