@@ -36,15 +36,28 @@
 madcamp-week4/
   frontend/   # React + Vite SPA
   backend/    # FastAPI 서버
+  engine/     # 순수 계산 엔진 (백테스트, 전략, 트레이딩 로직)
+  infra/      # 브로커/데이터 어댑터 (Alpaca, yfinance, DB)
+  cli/        # sf 커맨드라인 도구
+  .env        # 환경 변수 (프로젝트 루트 단일 관리)
 ```
 
 ## 설치 및 실행
+### 공통: 환경 변수 설정
+프로젝트 루트의 `.env.example`을 복사해 `.env`를 만들고, 키를 채웁니다.
+로컬 개발 시 `.env.local`로 오버라이드할 수 있습니다.
+
+```bash
+cp .env.example .env
+# .env 파일을 열어 키 입력
+```
+
 ### 1) Backend
 ```bash
 cd backend
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install -e ".[dev]"
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
@@ -57,11 +70,36 @@ npm run dev
 
 브라우저에서 `http://localhost:5173` 접속.
 
-## 환경 변수
-Backend는 `.env`를 사용합니다. 실제 키는 레포에 커밋하지 않는 것을 권장합니다.
+### 3) CLI (`sf`)
+백테스트, 자동매매, 계좌 조회를 터미널에서 바로 실행할 수 있습니다.
 
 ```bash
-# backend/.env (예시)
+# 프로젝트 루트에서 설치 (백엔드 venv 활성화 상태)
+pip install -e ".[cli]"
+```
+
+#### 주요 커맨드
+```bash
+# 백테스트
+sf backtest run --strategy momentum_topn_v1 --start 2020-01-01 --end 2024-12-31
+sf backtest run --strategy momentum_topn_v1 --start 2020-01-01 --end 2024-12-31 --trades --top-n 5
+
+# 자동매매
+sf trade run --dry-run          # 매매 시뮬레이션 (실제 주문 없음)
+sf trade run --execute          # 실제 주문 실행
+sf trade schedule --freq daily  # APScheduler 장기 실행 (daily / weekly / monthly)
+
+# 계좌
+sf account show       # 계좌 요약 (현금, 포트폴리오 가치)
+sf account positions  # 보유 포지션 + 미실현 손익
+```
+
+## 환경 변수
+모든 환경 변수는 **프로젝트 루트 `.env`** 한 곳에서 관리합니다.  
+로컬 오버라이드는 `.env.local`에 작성합니다 (`.gitignore` 등록 권장).
+
+```bash
+# .env (예시)
 APP_NAME=QuantFairy API
 ENV=development
 DATABASE_URL=postgresql+asyncpg://USER:PASSWORD@HOST:PORT/postgres
@@ -76,14 +114,19 @@ ALPACA_DATA_FEED=iex
 
 ALLOW_LIVE_TRADING=false
 CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+
+# Frontend (Vite)
+VITE_API_BASE_URL=https://YOUR_BACKEND_URL
+VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
 ```
 
-Frontend는 필요 시 `VITE_API_BASE_URL`을 설정합니다.
 ```bash
-# frontend/.env (예시)
+# .env.local (로컬 dev 오버라이드)
 VITE_API_BASE_URL=http://localhost:8000
 ```
 
 ## 참고
 - 기본 API prefix는 `/api/v1` 입니다.
 - 실시간 시세/체결 스트리밍은 WebSocket을 사용합니다.
+- GitHub Actions (`trade.yml`)로 평일 장 시작 후 자동매매를 실행합니다.
